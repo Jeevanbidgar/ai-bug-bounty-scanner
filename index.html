@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en" data-color-scheme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Bug Bounty Scanner</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Navigation Sidebar -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h2>AI Bug Bounty</h2>
+                <span class="scanner-badge">Scanner</span>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="#" class="nav-item active" data-view="dashboard">Dashboard</a></li>
+                <li><a href="#" class="nav-item" data-view="scan-manager">Scan Manager</a></li>
+                <li><a href="#" class="nav-item" data-view="ai-agents">AI Agents</a></li>
+                <li><a href="#" class="nav-item" data-view="reports">Reports</a></li>
+                <li><a href="#" class="nav-item" data-view="scan-results">Scan Results</a></li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <h1 id="page-title">Dashboard</h1>
+                </div>
+                <div class="header-right">
+                    <div class="status-indicators">
+                        <span class="status status--success">5 Agents Active</span>
+                        <span class="status status--info">2 Scans Running</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dashboard View -->
+            <div id="dashboard-view" class="view active">
+                <!-- Overview Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-content">
+                            <h3>Total Scans</h3>
+                            <p class="stat-number">47</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🤖</div>
+                        <div class="stat-content">
+                            <h3>Active Agents</h3>
+                            <p class="stat-number">5</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🔍</div>
+                        <div class="stat-content">
+                            <h3>Vulnerabilities Found</h3>
+                            <p class="stat-number">156</p>
+                        </div>
+                    </div>
+                    <div class="stat-card critical">
+                        <div class="stat-icon">⚠️</div>
+                        <div class="stat-content">
+                            <h3>Critical Issues</h3>
+                            <p class="stat-number">23</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-content">
+                    <!-- Quick Scan Form -->
+                    <div class="card">
+                        <div class="card__header">
+                            <h3>Quick Scan</h3>
+                        </div>
+                        <div class="card__body">
+                            <form id="quick-scan-form" class="quick-scan-form">
+                                <div class="form-group">
+                                    <label class="form-label">Target URL</label>
+                                    <input type="url" class="form-control" placeholder="https://example.com" required>
+                                </div>
+                                <button type="submit" class="btn btn--primary">Start Quick Scan</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Vulnerability Trends Chart -->
+                    <div class="card">
+                        <div class="card__header">
+                            <h3>Vulnerability Trends</h3>
+                        </div>
+                        <div class="card__body">
+                            <div class="chart-container" style="position: relative; height: 300px;">
+                                <canvas id="vulnerabilityChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="card">
+                    <div class="card__header">
+                        <h3>Recent Activity</h3>
+                    </div>
+                    <div class="card__body">
+                        <div class="activity-feed" id="activity-feed"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scan Manager View -->
+            <div id="scan-manager-view" class="view">
+                <div class="scan-manager-content">
+                    <!-- New Scan Form -->
+                    <div class="card">
+                        <div class="card__header">
+                            <h3>Configure New Scan</h3>
+                        </div>
+                        <div class="card__body">
+                            <form id="new-scan-form" class="scan-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Target URL/Domain</label>
+                                        <input type="url" class="form-control" placeholder="https://example.com" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Scan Type</label>
+                                        <select class="form-control">
+                                            <option>Quick Scan</option>
+                                            <option>Full Scan</option>
+                                            <option>Custom Scan</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">AI Agents</label>
+                                    <div class="agent-selection">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" checked> Recon Agent
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" checked> Web App Agent
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox"> Network Agent
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox"> API Agent
+                                        </label>
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn--primary">Start Scan</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Active Scans -->
+                    <div class="card">
+                        <div class="card__header">
+                            <h3>Active Scans</h3>
+                        </div>
+                        <div class="card__body">
+                            <div class="scans-table" id="active-scans"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Agents View -->
+            <div id="ai-agents-view" class="view">
+                <div class="agents-grid" id="agents-grid"></div>
+            </div>
+
+            <!-- Reports View -->
+            <div id="reports-view" class="view">
+                <div class="reports-content">
+                    <div class="reports-header">
+                        <h3>Generated Reports</h3>
+                        <div class="reports-filters">
+                            <select class="form-control">
+                                <option>All Severities</option>
+                                <option>Critical</option>
+                                <option>High</option>
+                                <option>Medium</option>
+                            </select>
+                            <button class="btn btn--outline">Export All</button>
+                        </div>
+                    </div>
+                    <div class="reports-grid" id="reports-grid"></div>
+                </div>
+            </div>
+
+            <!-- Scan Results View -->
+            <div id="scan-results-view" class="view">
+                <div class="results-content">
+                    <div class="results-header">
+                        <h3>Vulnerability Results</h3>
+                        <div class="results-filters">
+                            <select class="form-control" id="severity-filter">
+                                <option value="">All Severities</option>
+                                <option value="Critical">Critical</option>
+                                <option value="High">High</option>
+                                <option value="Medium">Medium</option>
+                                <option value="Low">Low</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="vulnerabilities-list" id="vulnerabilities-list"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Vulnerability Details -->
+    <div id="vulnerability-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Vulnerability Details</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
