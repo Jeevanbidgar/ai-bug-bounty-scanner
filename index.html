@@ -4,101 +4,147 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Bug Bounty Scanner</title>
-    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#6366f1',
+                        secondary: '#8b5cf6',
+                        accent: '#06b6d4',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        error: '#ef4444',
+                        dark: '#1f2937',
+                        'dark-lighter': '#374151',
+                        'dark-lightest': '#4b5563'
+                    }
+                }
+            }
+        }
+    </script>
 </head>
-<body>
-    <div class="app-container">
+<body class="bg-gray-900 text-white">
+    <div class="flex min-h-screen">
         <!-- Navigation Sidebar -->
-        <nav class="sidebar">
-            <div class="sidebar-header">
-                <h2>AI Bug Bounty</h2>
-                <span class="scanner-badge">Scanner</span>
+        <nav class="w-64 bg-dark-lighter border-r border-gray-700 flex-shrink-0">
+            <div class="p-6 border-b border-gray-700">
+                <h2 class="text-xl font-bold text-primary">AI Bug Bounty</h2>
+                <span class="inline-block mt-1 px-2 py-1 text-xs bg-primary text-white rounded-full">Scanner</span>
             </div>
-            <ul class="nav-menu">
-                <li><a href="#" class="nav-item active" data-view="dashboard">Dashboard</a></li>
-                <li><a href="#" class="nav-item" data-view="scan-manager">Scan Manager</a></li>
-                <li><a href="#" class="nav-item" data-view="ai-agents">AI Agents</a></li>
-                <li><a href="#" class="nav-item" data-view="reports">Reports</a></li>
-                <li><a href="#" class="nav-item" data-view="scan-results">Scan Results</a></li>
+            <ul class="p-4 space-y-2">
+                <li><a href="#" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg bg-primary text-white font-medium" data-view="dashboard">
+                    📊 Dashboard
+                </a></li>
+                <li><a href="#" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors" data-view="scan-manager">
+                    🔍 Scan Manager
+                </a></li>
+                <li><a href="#" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors" data-view="ai-agents">
+                    🤖 AI Agents
+                </a></li>
+                <li><a href="#" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors" data-view="reports">
+                    📋 Reports
+                </a></li>
+                <li><a href="#" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors" data-view="scan-results">
+                    📊 Scan Results
+                </a></li>
             </ul>
         </nav>
 
         <!-- Main Content -->
-        <main class="main-content">
+        <main class="flex-1 bg-gray-900">
             <!-- Header -->
-            <header class="header">
-                <div class="header-left">
-                    <h1 id="page-title">Dashboard</h1>
-                </div>
-                <div class="header-right">
-                    <div class="status-indicators">
-                        <span class="status status--success">5 Agents Active</span>
-                        <span class="status status--info">2 Scans Running</span>
+            <header class="bg-dark-lighter border-b border-gray-700 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <h1 id="page-title" class="text-2xl font-bold text-white">Dashboard</h1>
+                    <div class="flex items-center gap-4">
+                        <div class="flex items-center gap-3">
+                            <span class="px-3 py-1 bg-success text-white text-sm rounded-full">5 Agents Active</span>
+                            <span class="px-3 py-1 bg-accent text-white text-sm rounded-full">2 Scans Running</span>
+                        </div>
+                        <!-- Real-time connection status and test -->
+                        <div class="flex items-center gap-3">
+                            <button id="test-socket" class="px-3 py-1 bg-secondary text-white text-sm rounded-lg hover:bg-purple-600 transition-colors">
+                                🔄 Test Socket.IO
+                            </button>
+                            <div class="flex items-center gap-2">
+                                <div id="connection-status" class="w-3 h-3 bg-gray-500 rounded-full"></div>
+                                <span id="connection-text" class="text-sm text-gray-400">Connecting...</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </header>
 
             <!-- Dashboard View -->
-            <div id="dashboard-view" class="view active">
+            <div id="dashboard-view" class="view active p-6">
                 <!-- Overview Cards -->
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-icon">📊</div>
-                        <div class="stat-content">
-                            <h3>Total Scans</h3>
-                            <p class="stat-number">47</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-primary transition-colors">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-primary bg-opacity-20 rounded-lg flex items-center justify-center text-2xl">📊</div>
+                            <div>
+                                <h3 class="text-gray-400 text-sm font-medium">Total Scans</h3>
+                                <p class="text-2xl font-bold text-white" id="total-scans">47</p>
+                            </div>
                         </div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-icon">🤖</div>
-                        <div class="stat-content">
-                            <h3>Active Agents</h3>
-                            <p class="stat-number">5</p>
+                    <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-success transition-colors">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-success bg-opacity-20 rounded-lg flex items-center justify-center text-2xl">🤖</div>
+                            <div>
+                                <h3 class="text-gray-400 text-sm font-medium">Active Agents</h3>
+                                <p class="text-2xl font-bold text-white" id="active-agents">5</p>
+                            </div>
                         </div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-icon">🔍</div>
-                        <div class="stat-content">
-                            <h3>Vulnerabilities Found</h3>
-                            <p class="stat-number">156</p>
+                    <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-warning transition-colors">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-warning bg-opacity-20 rounded-lg flex items-center justify-center text-2xl">🔍</div>
+                            <div>
+                                <h3 class="text-gray-400 text-sm font-medium">Vulnerabilities Found</h3>
+                                <p class="text-2xl font-bold text-white" id="total-vulnerabilities">156</p>
+                            </div>
                         </div>
                     </div>
-                    <div class="stat-card critical">
-                        <div class="stat-icon">⚠️</div>
-                        <div class="stat-content">
-                            <h3>Critical Issues</h3>
-                            <p class="stat-number">23</p>
+                    <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-error transition-colors">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-error bg-opacity-20 rounded-lg flex items-center justify-center text-2xl">⚠️</div>
+                            <div>
+                                <h3 class="text-gray-400 text-sm font-medium">Critical Issues</h3>
+                                <p class="text-2xl font-bold text-white" id="critical-issues">23</p>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="dashboard-content">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                     <!-- Quick Scan Form -->
-                    <div class="card">
-                        <div class="card__header">
-                            <h3>Quick Scan</h3>
+                    <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
+                        <div class="mb-4">
+                            <h3 class="text-lg font-semibold text-white">🚀 Quick Scan</h3>
                         </div>
-                        <div class="card__body">
-                            <form id="quick-scan-form" class="quick-scan-form">
-                                <div class="form-group">
-                                    <label class="form-label">Target URL</label>
-                                    <input type="url" class="form-control" placeholder="https://example.com" required>
-                                </div>
-                                <button type="submit" class="btn btn--primary">Start Quick Scan</button>
-                            </form>
-                        </div>
+                        <form id="quick-scan-form" class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-2">Target URL</label>
+                                <input type="url" class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-colors" placeholder="https://example.com" required>
+                            </div>
+                            <button type="submit" class="w-full px-4 py-3 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors font-medium">
+                                🔍 Start Quick Scan
+                            </button>
+                        </form>
                     </div>
 
                     <!-- Vulnerability Trends Chart -->
-                    <div class="card">
-                        <div class="card__header">
-                            <h3>Vulnerability Trends</h3>
+                    <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
+                        <div class="mb-4">
+                            <h3 class="text-lg font-semibold text-white">📈 Vulnerability Trends</h3>
                         </div>
-                        <div class="card__body">
-                            <div class="chart-container" style="position: relative; height: 300px;">
-                                <canvas id="vulnerabilityChart"></canvas>
-                            </div>
+                        <div class="relative h-64">
+                            <canvas id="vulnerabilityChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -138,7 +184,7 @@
                                         </select>
                                     </div>
                                 </div>
-                                <div class="form-group">
+                                <div class="form-group" id="ai-agents-group">
                                     <label class="form-label">AI Agents</label>
                                     <div class="agent-selection">
                                         <label class="checkbox-label">
@@ -152,6 +198,9 @@
                                         </label>
                                         <label class="checkbox-label">
                                             <input type="checkbox"> API Agent
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox"> Report Agent
                                         </label>
                                     </div>
                                 </div>
@@ -226,6 +275,32 @@
             </div>
             <div class="modal-body" id="modal-body">
                 <!-- Content will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Scan Progress Modal -->
+    <div id="scan-progress-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4">
+            <div class="mb-6">
+                <h3 class="text-xl font-bold text-white mb-2">🔍 Security Scan in Progress</h3>
+                <div class="text-sm text-gray-400" id="scan-target-display"></div>
+            </div>
+            <div class="space-y-4">
+                <div class="space-y-2">
+                    <div class="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-primary to-accent transition-all duration-300 ease-out"
+                             id="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="text-right text-sm font-medium text-white" id="progress-percentage">0%</div>
+                </div>
+                <div class="text-sm text-gray-300 p-3 bg-gray-800 rounded-lg" id="current-test">
+                    Initializing scan...
+                </div>
+                <div class="flex justify-between text-xs text-gray-400">
+                    <span id="scan-type-display"></span>
+                    <span id="scan-agents-display"></span>
+                </div>
             </div>
         </div>
     </div>

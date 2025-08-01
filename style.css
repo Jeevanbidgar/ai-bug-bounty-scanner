@@ -925,6 +925,66 @@ select.form-control {
   gap: var(--space-12);
 }
 
+/* Scan Type Description Styling */
+.scan-type-description {
+    margin-top: 0.75rem;
+    padding: 1rem;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 0.9rem;
+}
+
+.scan-description p {
+    margin: 0.5rem 0;
+    line-height: 1.4;
+}
+
+.scan-description p:first-child {
+    margin-top: 0;
+}
+
+.scan-description p:last-child {
+    margin-bottom: 0;
+}
+
+.scan-description small {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Agent Selection States */
+.agent-selection .checkbox-label {
+    transition: opacity 0.2s ease;
+}
+
+.agent-selection .checkbox-label input:disabled + span {
+    color: var(--text-muted);
+}
+
+.agent-selection .checkbox-label input:disabled:checked + span {
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
+/* AI Agents Group Transitions */
+#ai-agents-group {
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+#ai-agents-group[style*="display: none"] {
+    opacity: 0;
+    max-height: 0;
+    margin: 0;
+    padding: 0;
+}
+
+#ai-agents-group[style*="display: block"] {
+    opacity: 1;
+    max-height: 500px;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -1460,4 +1520,260 @@ select.form-control {
   .reports-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-overlay.hidden {
+  display: none !important;
+}
+
+.modal-container {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: var(--shadow-xl);
+}
+
+/* Scan Details Modal */
+.scan-details-modal {
+  width: 800px;
+  max-width: 90vw;
+}
+
+.scan-details-header {
+  display: flex;
+  justify-content: between;
+  align-items: center;
+  padding: var(--space-24);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-1);
+}
+
+.scan-details-header h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-xl);
+  flex: 1;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: var(--space-8);
+  border-radius: var(--radius-base);
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: var(--color-bg-2);
+  color: var(--color-text);
+}
+
+.scan-details-content {
+  padding: var(--space-24);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.scan-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-16);
+  margin-bottom: var(--space-24);
+}
+
+.scan-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.scan-info-item label {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.scan-info-item span {
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+}
+
+.vulnerabilities-section {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-24);
+}
+
+.vulnerabilities-section h3 {
+  margin: 0 0 var(--space-16) 0;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+}
+
+.vulnerabilities-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+
+.vulnerability-item {
+  background: var(--color-bg-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-base);
+  padding: var(--space-16);
+}
+
+.vuln-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-12);
+}
+
+.vuln-title {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+}
+
+.vuln-severity {
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.vuln-severity.critical {
+  background: var(--color-bg-4);
+  color: var(--color-red-500);
+}
+
+.vuln-severity.high {
+  background: var(--color-bg-6);
+  color: var(--color-orange-500);
+}
+
+.vuln-severity.medium {
+  background: var(--color-bg-2);
+  color: var(--color-orange-400);
+}
+
+.vuln-severity.low {
+  background: var(--color-bg-3);
+  color: var(--color-teal-600);
+}
+
+.vuln-details p {
+  margin: var(--space-8) 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.vuln-details strong {
+  color: var(--color-text);
+}
+
+/* Scan Progress Modal */
+#scan-progress-modal .modal-content {
+  max-width: 500px;
+  padding: 2rem;
+}
+
+.scan-progress-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.scan-progress-header h3 {
+  margin: 0 0 0.5rem 0;
+  color: var(--color-primary);
+}
+
+.scan-target {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  word-break: break-all;
+}
+
+.progress-bar-container {
+  margin-bottom: 1.5rem;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 20px;
+  background-color: var(--color-bg-2);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+  border-radius: 10px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.progress-percentage {
+  text-align: center;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.current-test {
+  background-color: var(--color-bg-2);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+}
+
+.scan-details {
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+.scan-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.scan-type {
+  font-weight: 600;
+}
+
+.scan-agents {
+  text-align: right;
 }

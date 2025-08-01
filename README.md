@@ -1,10 +1,12 @@
 # AI Bug Bounty Scanner
 
-🚀 **A comprehensive, automated security testing platform that performs real-world penetration testing and vulnerability assessment.**
+🚀 **A comprehensive, automated security testing platform with modern UI and real-time communication that performs real-world penetration testing and vulnerability assessment.**
 
 [![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)]()
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue)]()
+[![Version](https://img.shields.io/badge/Version-2.0.0-blue)]()
 [![Python](https://img.shields.io/badge/Python-3.13+-blue)]()
+[![Tailwind](https://img.shields.io/badge/Tailwind-CSS-38B2AC)]()
+[![Socket.IO](https://img.shields.io/badge/Socket.IO-Real--time-black)]()
 [![License](https://img.shields.io/badge/License-MIT-green)]()
 
 ## 🎯 Quick Start
@@ -16,7 +18,7 @@ git clone <repository-url>
 cd ai-bug-bounty-scanner
 pip install -r requirements.txt
 
-# Start backend
+# Start backend with Socket.IO
 python backend-app.py
 
 # Start frontend (new terminal)
@@ -25,22 +27,27 @@ python -m http.server 3000
 # Access application
 # Frontend: http://localhost:3000
 # Backend API: http://localhost:5000
+# Socket.IO: Real-time communication enabled
 ```
 
 ## ✨ Features
 
 - 🔍 **Real Security Scanning** - Actual penetration testing, not simulations
 - 🤖 **5 AI Agents** - Specialized security testing agents
-- 🌐 **Web Interface** - Professional dashboard and reporting
-- ⚡ **Real-Time Monitoring** - Live progress tracking
+- 🌐 **Modern Web Interface** - Responsive Tailwind CSS design
+- ⚡ **Real-Time Communication** - Socket.IO powered live updates
 - 📊 **Comprehensive Reports** - Detailed vulnerability analysis
 - 🛡️ **Ethical Scanning** - Built-in security validation
+- 📱 **Responsive Design** - Works on desktop, tablet, and mobile
+- 🔄 **Live Progress Tracking** - Real-time scan progress without polling
 
 ## 🏗️ Architecture
 
 ```
 Frontend (Port 3000) ←→ Backend API (Port 5000) ←→ SQLite Database
-                              ↓
+    ↓ Tailwind CSS           ↓ Flask-SocketIO
+    ↓ Socket.IO Client       ↓ Real-time Events
+    ↓ Responsive Design      ↓
                     Security Agents:
                     • Recon Agent (Network scanning)
                     • WebApp Agent (Web app testing)
@@ -48,6 +55,20 @@ Frontend (Port 3000) ←→ Backend API (Port 5000) ←→ SQLite Database
                     • API Agent (API testing)
                     • Report Agent (Report generation)
 ```
+
+## 🎨 Modern UI Features
+
+### **Tailwind CSS Integration**
+- **Responsive Design**: Mobile-first approach with breakpoints
+- **Custom Color Palette**: Professional dark theme with accent colors
+- **Component Library**: Consistent buttons, cards, forms, and modals
+- **Utility Classes**: Rapid development with utility-first CSS
+
+### **Real-time Communication**
+- **Socket.IO**: Bidirectional real-time communication
+- **Live Progress Updates**: No polling - instant scan progress
+- **Connection Status**: Visual indicators for connection health
+- **Test Interface**: Built-in Socket.IO testing functionality
 
 ## 🤖 Security Agents
 
@@ -59,18 +80,25 @@ Frontend (Port 3000) ←→ Backend API (Port 5000) ←→ SQLite Database
 | **API Agent** | API security testing | Endpoint discovery, auth bypass |
 | **Report Agent** | Report generation | Vulnerability analysis, CVSS scoring |
 
-## 📡 API Endpoints
+## 📡 API Endpoints & Real-time Events
 
-### Core Endpoints
+### Core REST Endpoints
 - `GET /api/stats` - Dashboard statistics
 - `GET /api/scans` - List all scans
 - `POST /api/scans` - Create new scan
 - `POST /api/scan/{id}` - Start real scanning
 - `GET /api/vulnerabilities` - List vulnerabilities
 
+### Socket.IO Real-time Events
+- `connect` - Client connection established
+- `disconnect` - Client disconnection
+- `ping/pong` - Connection testing
+- `scan_progress_request` - Request scan progress
+- `scan_progress_update` - Real-time progress broadcast
+
 ### Example Usage
 ```javascript
-// Create scan
+// REST API - Create scan
 const scan = await fetch('/api/scans', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -81,7 +109,13 @@ const scan = await fetch('/api/scans', {
     })
 });
 
-// Start real scanning
+// Socket.IO - Real-time updates
+const socket = io('http://localhost:5000');
+socket.on('scan_progress_update', (data) => {
+    console.log(`Progress: ${data.progress}% - ${data.current_test}`);
+});
+
+// Start real scanning with real-time updates
 await fetch(`/api/scan/${scan.id}`, {method: 'POST'});
 ```
 
@@ -211,20 +245,27 @@ The system includes 5 specialized AI agents:
 }
 ```
 
-## 🎨 UI Components
+## 🎨 Modern UI Components
 
-### Design System
-- **Color Scheme**: Dark theme with purple/blue accents
-- **Typography**: FKGroteskNeue font family
-- **Layout**: Sidebar navigation with main content area
-- **Components**: Cards, buttons, forms, modals, charts
+### Tailwind CSS Design System
+- **Color Scheme**: Professional dark theme with custom color palette
+- **Responsive Layout**: Mobile-first design with breakpoints
+- **Typography**: System fonts with proper hierarchy
+- **Components**: Utility-first approach with consistent styling
 
 ### Key UI Elements
-- **Stat Cards**: Overview metrics display
-- **Progress Bars**: Real-time scan progress visualization
-- **Severity Badges**: Color-coded vulnerability severity indicators
-- **Charts**: Chart.js integration for trend visualization
-- **Modal System**: Detailed vulnerability information popups
+- **Responsive Grid**: `grid-cols-1 md:grid-cols-2 lg:grid-cols-4`
+- **Modern Cards**: Hover effects and gradient borders
+- **Real-time Indicators**: Live connection status with color coding
+- **Progress Bars**: Gradient progress bars with smooth animations
+- **Modal System**: Tailwind-styled modals with backdrop blur
+- **Interactive Buttons**: Hover states and transition effects
+
+### Real-time Features
+- **Connection Status**: 🟢 Connected / 🔴 Disconnected indicators
+- **Live Progress**: Real-time scan progress without page refresh
+- **Socket.IO Test**: Built-in communication testing interface
+- **Auto-updates**: Instant notifications and status changes
 
 ## 🔧 API Endpoints (Backend)
 
@@ -254,20 +295,29 @@ POST   /api/reports            # Generate new report
 
 ### Prerequisites
 - Python 3.8+ (for backend)
-- Modern web browser (for frontend)
-- Flask and dependencies (see backend-app.py imports)
+- Modern web browser with Socket.IO support (for frontend)
+- Flask and dependencies (see requirements.txt)
 
 ### Installation
 
 1. **Backend Setup:**
    ```bash
-   pip install flask flask-sqlalchemy flask-cors
+   pip install -r requirements.txt
+   # Includes: flask, flask-sqlalchemy, flask-cors, flask-socketio
    python backend-app.py
    ```
 
 2. **Frontend Setup:**
-   - Open `index.html` in a web browser
-   - Or serve via a local web server for best results
+   ```bash
+   # Serve via local web server for Socket.IO support
+   python -m http.server 3000
+   # Then open http://localhost:3000
+   ```
+
+### New Dependencies
+- **Flask-SocketIO**: Real-time communication
+- **Tailwind CSS**: Utility-first CSS framework (via CDN)
+- **Socket.IO Client**: Real-time frontend communication (via CDN)
 
 ### Usage
 
@@ -376,10 +426,12 @@ python --version  # Ensure Python 3.13+
 
 ### Key Technologies
 
-- **Frontend**: Vanilla JavaScript, Chart.js, CSS Grid/Flexbox
-- **Backend**: Flask, SQLAlchemy, SQLite
-- **Styling**: Custom CSS design system with CSS variables
+- **Frontend**: Vanilla JavaScript, Socket.IO Client, Chart.js
+- **Backend**: Flask, Flask-SocketIO, SQLAlchemy, SQLite
+- **Styling**: Tailwind CSS (utility-first framework)
+- **Real-time**: Socket.IO for bidirectional communication
 - **Charts**: Chart.js for vulnerability trend visualization
+- **Responsive**: Mobile-first design with Tailwind breakpoints
 
 ## 📝 License
 

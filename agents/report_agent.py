@@ -32,7 +32,7 @@ class ReportAgent:
             'None': (0.0, 0.0)
         }
     
-    async def generate_report(self, scan_results: List[Dict[str, Any]], target_url: str) -> Dict[str, Any]:
+    async def generate_report(self, scan_results: List[Dict[str, Any]], target_url: str, progress_callback=None) -> Dict[str, Any]:
         """
         Generate comprehensive security report from scan results
         
@@ -63,30 +63,42 @@ class ReportAgent:
             }
             
             # Aggregate all vulnerabilities
+            if progress_callback:
+                progress_callback(20, "📋 Aggregating vulnerability findings...")
             all_vulnerabilities = self._aggregate_vulnerabilities(scan_results)
             report['detailed_findings'] = all_vulnerabilities
-            
+
             # Generate executive summary
+            if progress_callback:
+                progress_callback(40, "📝 Generating executive summary...")
             report['executive_summary'] = self._generate_executive_summary(all_vulnerabilities, target_url)
-            
+
             # Generate vulnerability summary
+            if progress_callback:
+                progress_callback(60, "📊 Creating vulnerability summary and statistics...")
             report['vulnerability_summary'] = self._generate_vulnerability_summary(all_vulnerabilities)
-            
+
             # Generate recommendations
+            if progress_callback:
+                progress_callback(80, "💡 Generating security recommendations...")
             report['recommendations'] = self._generate_recommendations(all_vulnerabilities)
-            
+
             # Assess scan coverage
+            if progress_callback:
+                progress_callback(90, "🔍 Assessing scan coverage and completeness...")
             report['scan_coverage'] = self._assess_scan_coverage(scan_results)
             
             # Perform risk assessment
             report['risk_assessment'] = self._perform_risk_assessment(all_vulnerabilities)
-            
+
             # Check compliance status
             report['compliance_status'] = self._check_compliance_status(all_vulnerabilities)
-            
+
             # Generate appendix
             report['appendix'] = self._generate_appendix(scan_results)
-            
+
+            if progress_callback:
+                progress_callback(100, f"✅ Security report generated: {len(all_vulnerabilities)} findings")
             logger.info(f"✅ Security report generated: {len(all_vulnerabilities)} findings")
             
             return report

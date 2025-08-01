@@ -3,6 +3,7 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit
 from datetime import datetime, timezone
 import uuid
 import json
@@ -17,13 +18,16 @@ from agents import SecurityValidator, ReconAgent, WebAppAgent, NetworkAgent, API
 
 # Initialize Flask app
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///bug_bounty_scanner.db'
+import os
+basedir = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(basedir, "instance", "bug_bounty_scanner.db")}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
 
 # Initialize extensions
 db = SQLAlchemy(app)
 CORS(app)  # Enable CORS for frontend connection
+socketio = SocketIO(app, cors_allowed_origins="*")  # Enable real-time communication
 
 # Database Models
 class Scan(db.Model):
@@ -36,6 +40,7 @@ class Scan(db.Model):
     started = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     completed = db.Column(db.DateTime, nullable=True)
     progress = db.Column(db.Integer, default=0)  # 0-100
+    current_test = db.Column(db.String(255))  # Current test being performed
     agents = db.Column(db.Text)  # JSON string of agent names
     
     # Relationships
@@ -58,6 +63,7 @@ class Scan(db.Model):
             'started': self.started.isoformat() if self.started else None,
             'completed': self.completed.isoformat() if self.completed else None,
             'progress': self.progress,
+            'current_test': self.current_test,
             'agents': json.loads(self.agents) if self.agents else [],
             'vulnerabilities': len(self.vulnerabilities),
             'critical': vuln_counts['critical'],
@@ -187,22 +193,57 @@ def get_scans():
 
 @app.route('/api/scans', methods=['POST'])
 def create_scan():
-    """Create a new scan"""
+    """Create a new scan with scan type validation"""
     data = request.get_json()
-    
+
     if not data or 'target' not in data:
         return jsonify({'error': 'Target is required'}), 400
-    
+
+    # Scan type configuration
+    SCAN_TYPE_CONFIG = {
+        'Quick Scan': {
+            'agents': ['Web App Agent', 'Report Agent'],
+            'description': 'Fast vulnerability assessment focusing on web application security'
+        },
+        'Full Scan': {
+            'agents': ['Recon Agent', 'Web App Agent', 'Network Agent', 'API Agent', 'Report Agent'],
+            'description': 'Comprehensive security assessment using all available agents'
+        },
+        'Custom Scan': {
+            'agents': [],  # User defined
+            'description': 'Choose specific agents for targeted testing'
+        }
+    }
+
+    scan_type = data.get('scanType', 'Quick Scan')
+    requested_agents = data.get('agents', [])
+
+    # Validate scan type
+    if scan_type not in SCAN_TYPE_CONFIG:
+        return jsonify({'error': f'Invalid scan type. Must be one of: {list(SCAN_TYPE_CONFIG.keys())}'}), 400
+
+    # Set agents based on scan type
+    if scan_type in ['Quick Scan', 'Full Scan']:
+        # For predefined scan types, use the configured agents
+        final_agents = SCAN_TYPE_CONFIG[scan_type]['agents']
+        logging.info(f"🔧 {scan_type} using predefined agents: {final_agents}")
+    else:
+        # For Custom Scan, use user-selected agents
+        final_agents = requested_agents if requested_agents else ['Web App Agent']
+        logging.info(f"🔧 Custom Scan using selected agents: {final_agents}")
+
     scan = Scan(
         target=data['target'],
-        scan_type=data.get('scanType', 'Quick Scan'),
-        agents=json.dumps(data.get('agents', [])),
+        scan_type=scan_type,
+        agents=json.dumps(final_agents),
         status='pending'
     )
-    
+
     db.session.add(scan)
     db.session.commit()
-    
+
+    logging.info(f"✅ Created {scan_type} for {data['target']} with agents: {final_agents}")
+
     return jsonify(scan.to_dict()), 201
 
 @app.route('/api/scans/<scan_id>', methods=['GET'])
@@ -391,6 +432,16 @@ def start_real_scan(scan_id):
                     vulnerabilities_found = []
                     scan_results = []
 
+                    # Progress callback function
+                    def update_progress(progress, current_test):
+                        scan_obj.progress = progress
+                        scan_obj.current_test = current_test
+                        session.commit()
+                        logging.info(f"📊 Progress: {progress}% - {current_test}")
+
+                        # Emit real-time progress update via Socket.IO
+                        emit_scan_progress(scan_obj.id, progress, current_test, scan_obj.status)
+
                     # Run Recon Agent if selected
                     if 'Recon Agent' in agents:
                         scan_obj.progress = 20
@@ -426,13 +477,12 @@ def start_real_scan(scan_id):
 
                     # Run Web App Agent if selected
                     if 'Web App Agent' in agents:
-                        scan_obj.progress = 40
-                        session.commit()
+                        update_progress(40, "🌐 Starting Web Application Security Scan...")
                         logging.info(f"🌐 Running Web App Agent for {scan_obj.target}")
 
                         try:
                             webapp_agent = WebAppAgent()
-                            webapp_results = loop.run_until_complete(webapp_agent.scan_target(scan_obj.target))
+                            webapp_results = loop.run_until_complete(webapp_agent.scan_target(scan_obj.target, update_progress))
                             scan_results.append(webapp_results)
                             logging.info(f"✅ Web App Agent completed for {scan_obj.target}")
 
@@ -523,17 +573,50 @@ def start_real_scan(scan_id):
                             logging.error(f"❌ API Agent failed: {e}")
                             # Continue with other agents
 
-                    # Update scan progress
-                    scan_obj.progress = 90
-                    session.commit()
+                    # Run Report Agent if selected
+                    if 'Report Agent' in agents:
+                        update_progress(90, "📊 Generating comprehensive security report...")
+                        logging.info(f"📊 Running Report Agent for {scan_obj.target}")
+
+                        try:
+                            report_agent = ReportAgent()
+                            report_results = loop.run_until_complete(report_agent.generate_report(scan_results, scan_obj.target, update_progress))
+
+                            # Create detailed report in database
+                            detailed_report = Report(
+                                scan_id=scan_obj.id,
+                                title=f'Detailed Security Assessment - {scan_obj.target}',
+                                format='JSON',
+                                content=json.dumps(report_results, indent=2)
+                            )
+                            session.add(detailed_report)
+                            logging.info(f"✅ Report Agent completed for {scan_obj.target}")
+
+                        except Exception as e:
+                            logging.error(f"❌ Report Agent failed: {e}")
+                            # Continue with scan completion
 
                     # Complete the scan
                     scan_obj.status = 'completed'
-                    scan_obj.progress = 100
+                    update_progress(100, f"✅ Scan completed: found {len(vulnerabilities_found)} vulnerabilities")
                     scan_obj.completed = datetime.now(timezone.utc)
                     session.commit()
 
                     logging.info(f"Real scan completed for {scan_obj.target}, found {len(vulnerabilities_found)} vulnerabilities")
+
+                    # Auto-generate basic report for completed scan
+                    try:
+                        report = Report(
+                            scan_id=scan_obj.id,
+                            title=f'Security Assessment Report - {scan_obj.target}',
+                            format='HTML',
+                            content=f'Comprehensive security scan completed for {scan_obj.target}. Found {len(vulnerabilities_found)} vulnerabilities across {len(scan_results)} security agents.'
+                        )
+                        session.add(report)
+                        session.commit()
+                        logging.info(f"✅ Auto-generated report for scan {scan_obj.id}")
+                    except Exception as e:
+                        logging.error(f"❌ Failed to generate report: {e}")
 
                     # Close the session
                     session.close()
@@ -568,60 +651,39 @@ def start_real_scan(scan_id):
         db.session.commit()
         return jsonify({'error': f'Failed to start scan: {str(e)}'}), 500
 
-# Keep simulation endpoint for backward compatibility and testing
-@app.route('/api/simulate/scan/<scan_id>', methods=['POST'])
-def simulate_scan(scan_id):
-    """Simulate running a scan (for demo/testing purposes)"""
-    scan = Scan.query.get_or_404(scan_id)
 
-    # Update scan to running
-    scan.status = 'running'
-    scan.progress = 10
-    db.session.commit()
-
-    # Create some sample vulnerabilities for demo
-    sample_vulnerabilities = [
-        {
-            'title': 'Demo: Cross-Site Scripting (XSS) in Contact Form',
-            'severity': 'High',
-            'cvss': 7.2,
-            'description': 'DEMO: Reflected XSS vulnerability found in the contact form parameter \'message\'',
-            'url': f'{scan.target}/contact',
-            'parameter': 'message',
-            'payload': '<script>alert(\'XSS\')</script>',
-            'remediation': 'Implement proper input validation and output encoding',
-            'discovered_by': 'Demo Agent'
-        }
-    ]
-
-    for vuln_data in sample_vulnerabilities:
-        vulnerability = Vulnerability(
-            scan_id=scan.id,
-            title=vuln_data['title'],
-            severity=vuln_data['severity'],
-            cvss=vuln_data['cvss'],
-            description=vuln_data['description'],
-            url=vuln_data['url'],
-            parameter=vuln_data['parameter'],
-            payload=vuln_data['payload'],
-            remediation=vuln_data['remediation'],
-            discovered_by=vuln_data['discovered_by']
-        )
-        db.session.add(vulnerability)
-
-    # Complete the scan
-    scan.status = 'completed'
-    scan.progress = 100
-    scan.completed = datetime.now(timezone.utc)
-    db.session.commit()
-
-    return jsonify({'message': 'Demo scan simulation completed'})
 
 def init_db():
-    """Initialize database with sample data"""
+    """Initialize database and create security agents"""
+    import os
+
+    # Get database path from URI
+    db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+    if db_uri.startswith('sqlite:///'):
+        db_path = db_uri.replace('sqlite:///', '')
+        db_dir = os.path.dirname(db_path)
+
+        # Create database directory if it doesn't exist
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+            print(f"✅ Created database directory: {db_dir}")
+        elif db_dir:
+            print(f"📁 Database directory exists: {db_dir}")
+
+        # Check if database file exists
+        db_exists = os.path.exists(db_path)
+        if not db_exists:
+            print(f"�️ Creating new database: {db_path}")
+        else:
+            print(f"🗄️ Using existing database: {db_path}")
+    else:
+        print("🗄️ Using non-SQLite database")
+
+    # Create all tables
     db.create_all()
-    
-    # Create sample agents if they don't exist
+    print("✅ Database tables created/verified successfully")
+
+    # Create security agents if they don't exist
     if Agent.query.count() == 0:
         agents_data = [
             {
@@ -666,12 +728,66 @@ def init_db():
             db.session.add(agent)
         
         db.session.commit()
-        print("Sample agents created successfully")
+        print("✅ Security agents initialized successfully")
+        print(f"📊 Created {len(agents_data)} security agents")
+    else:
+        print(f"📊 Found {Agent.query.count()} existing security agents")
+
+    # Show database statistics
+    scan_count = Scan.query.count()
+    vuln_count = Vulnerability.query.count()
+    report_count = Report.query.count()
+
+    print(f"📈 Database Statistics:")
+    print(f"   - Scans: {scan_count}")
+    print(f"   - Vulnerabilities: {vuln_count}")
+    print(f"   - Reports: {report_count}")
+    print(f"   - Agents: {Agent.query.count()}")
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'healthy', 'timestamp': datetime.now(timezone.utc).isoformat()})
+
+# Socket.IO Event Handlers for Real-time Communication
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    logging.info(f"Client connected: {request.sid}")
+    emit('connection_status', {'status': 'connected', 'message': 'Connected to AI Bug Bounty Scanner'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection"""
+    logging.info(f"Client disconnected: {request.sid}")
+
+@socketio.on('ping')
+def handle_ping(data):
+    """Handle ping from client"""
+    emit('pong', {'timestamp': datetime.now(timezone.utc).isoformat(), 'data': data})
+
+@socketio.on('scan_progress_request')
+def handle_scan_progress_request(data):
+    """Handle request for scan progress updates"""
+    scan_id = data.get('scan_id')
+    if scan_id:
+        scan = Scan.query.get(scan_id)
+        if scan:
+            emit('scan_progress_update', {
+                'scan_id': scan_id,
+                'progress': scan.progress,
+                'current_test': scan.current_test,
+                'status': scan.status
+            })
+
+def emit_scan_progress(scan_id, progress, current_test, status):
+    """Emit scan progress to all clients in the scan room"""
+    socketio.emit('scan_progress_update', {
+        'scan_id': scan_id,
+        'progress': progress,
+        'current_test': current_test,
+        'status': status
+    })
 
 if __name__ == '__main__':
     with app.app_context():
@@ -679,6 +795,7 @@ if __name__ == '__main__':
     
     print("Starting AI Bug Bounty Scanner Backend...")
     print("Backend URL: http://localhost:5000")
+    print("Socket.IO URL: http://localhost:5000")
     print("Available endpoints:")
     print("  GET  /api/stats - Dashboard statistics")
     print("  GET  /api/scans - List all scans")
@@ -686,6 +803,8 @@ if __name__ == '__main__':
     print("  GET  /api/vulnerabilities - List vulnerabilities")
     print("  GET  /api/agents - List all agents")
     print("  GET  /api/reports - List all reports")
-    print("  POST /api/simulate/scan/<id> - Simulate scan (demo)")
-    
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print("Real-time features:")
+    print("  Socket.IO events: connect, disconnect, ping, scan_progress_request")
+
+
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000)

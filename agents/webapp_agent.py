@@ -52,7 +52,7 @@ class WebAppAgent:
             "1' OR '1'='1' #"
         ]
     
-    async def scan_target(self, target_url: str) -> Dict[str, Any]:
+    async def scan_target(self, target_url: str, progress_callback=None) -> Dict[str, Any]:
         """
         Main web application scanning function
         
@@ -77,35 +77,49 @@ class WebAppAgent:
             
             try:
                 # Crawl and discover forms/endpoints
+                if progress_callback:
+                    progress_callback(10, "🕷️ Crawling web application and discovering endpoints...")
                 logger.info("🕷️ Crawling web application...")
                 crawl_data = await self._crawl_website(target_url)
                 results['crawl_data'] = crawl_data
-                
+
                 # Test for XSS vulnerabilities
+                if progress_callback:
+                    progress_callback(30, "🔍 Testing for Cross-Site Scripting (XSS) vulnerabilities...")
                 logger.info("🔍 Testing for XSS vulnerabilities...")
                 xss_vulns = await self._test_xss_vulnerabilities(target_url, crawl_data)
                 results['vulnerabilities'].extend(xss_vulns)
-                
+
                 # Test for SQL injection
+                if progress_callback:
+                    progress_callback(50, "💉 Testing for SQL injection vulnerabilities...")
                 logger.info("💉 Testing for SQL injection...")
                 sql_vulns = await self._test_sql_injection(target_url, crawl_data)
                 results['vulnerabilities'].extend(sql_vulns)
-                
+
                 # Test for security headers
+                if progress_callback:
+                    progress_callback(70, "🛡️ Checking security headers and configurations...")
                 logger.info("🛡️ Checking security headers...")
                 header_vulns = await self._check_security_headers(target_url)
                 results['vulnerabilities'].extend(header_vulns)
-                
+
                 # Test for directory traversal
+                if progress_callback:
+                    progress_callback(85, "📁 Testing for directory traversal vulnerabilities...")
                 logger.info("📁 Testing for directory traversal...")
                 dir_vulns = await self._test_directory_traversal(target_url)
                 results['vulnerabilities'].extend(dir_vulns)
-                
+
                 # Test for information disclosure
+                if progress_callback:
+                    progress_callback(95, "ℹ️ Testing for information disclosure vulnerabilities...")
                 logger.info("ℹ️ Testing for information disclosure...")
                 info_vulns = await self._test_information_disclosure(target_url)
                 results['vulnerabilities'].extend(info_vulns)
-                
+
+                if progress_callback:
+                    progress_callback(100, f"✅ Web application scan completed: found {len(results['vulnerabilities'])} vulnerabilities")
                 logger.info(f"✅ Web application scan completed: found {len(results['vulnerabilities'])} vulnerabilities")
                 
             except Exception as scan_error:
