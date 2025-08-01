@@ -1,6 +1,6 @@
 # AI Bug Bounty Scanner Backend
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
@@ -15,6 +15,26 @@ import logging
 
 # Import real scanning agents
 from agents import SecurityValidator, ReconAgent, WebAppAgent, NetworkAgent, APIAgent, ReportAgent
+
+# Import enhanced modules
+try:
+    from enhancements.threat_intelligence import ThreatIntelligenceAgent
+    from enhancements.enhanced_security_agent import EnhancedSecurityAgent
+    ENHANCEMENTS_AVAILABLE = True
+    
+    # Test threat intelligence initialization
+    threat_test = ThreatIntelligenceAgent()
+    threat_status = threat_test.get_agent_status()
+    print(f"🛡️  Threat Intelligence: {threat_status['api_keys_configured']}/3 API keys configured")
+    if threat_status['api_keys_configured'] > 0:
+        print("✅ Threat intelligence features available")
+    else:
+        print("⚠️  Limited threat intelligence (no API keys)")
+        
+except ImportError as e:
+    ENHANCEMENTS_AVAILABLE = False
+    print(f"⚠️  Enhanced modules not available: {e}")
+    print("   Install with: pip install aiohttp requests scikit-learn")
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -209,6 +229,10 @@ def create_scan():
             'agents': ['Recon Agent', 'Web App Agent', 'Network Agent', 'API Agent', 'Report Agent'],
             'description': 'Comprehensive security assessment using all available agents'
         },
+        'Enhanced Scan': {
+            'agents': ['Recon Agent', 'Web App Agent', 'Network Agent', 'API Agent', 'Enhanced Security Agent', 'Threat Intelligence Agent', 'Report Agent'],
+            'description': 'Advanced security assessment with ML-powered vulnerability detection and threat intelligence'
+        },
         'Custom Scan': {
             'agents': [],  # User defined
             'description': 'Choose specific agents for targeted testing'
@@ -223,13 +247,15 @@ def create_scan():
         return jsonify({'error': f'Invalid scan type. Must be one of: {list(SCAN_TYPE_CONFIG.keys())}'}), 400
 
     # Set agents based on scan type
-    if scan_type in ['Quick Scan', 'Full Scan']:
+    if scan_type in ['Quick Scan', 'Full Scan', 'Enhanced Scan']:
         # For predefined scan types, use the configured agents
         final_agents = SCAN_TYPE_CONFIG[scan_type]['agents']
         logging.info(f"🔧 {scan_type} using predefined agents: {final_agents}")
     else:
-        # For Custom Scan, use user-selected agents
-        final_agents = requested_agents if requested_agents else ['Web App Agent']
+        # For Custom Scan, use user-selected agents (don't default to any if none selected)
+        final_agents = requested_agents
+        if not final_agents:
+            return jsonify({'error': 'Custom Scan requires at least one agent to be selected'}), 400
         logging.info(f"🔧 Custom Scan using selected agents: {final_agents}")
 
     scan = Scan(
@@ -371,6 +397,22 @@ def get_reports():
     reports = Report.query.order_by(Report.generated.desc()).all()
     return jsonify([report.to_dict() for report in reports])
 
+@app.route('/api/reports/<report_id>', methods=['GET'])
+def get_report(report_id):
+    """Get a specific report with content"""
+    report = Report.query.get_or_404(report_id)
+
+    # Get the scan and vulnerabilities for this report
+    scan = Scan.query.get(report.scan_id)
+    vulnerabilities = scan.vulnerabilities if scan else []
+
+    report_data = report.to_dict()
+    report_data['content'] = report.content
+    report_data['scan'] = scan.to_dict() if scan else None
+    report_data['vulnerabilities'] = [vuln.to_dict() for vuln in vulnerabilities]
+
+    return jsonify(report_data)
+
 @app.route('/api/reports', methods=['POST'])
 def create_report():
     """Create a new report"""
@@ -444,8 +486,7 @@ def start_real_scan(scan_id):
 
                     # Run Recon Agent if selected
                     if 'Recon Agent' in agents:
-                        scan_obj.progress = 20
-                        session.commit()
+                        update_progress(20, "🔍 Starting Reconnaissance Scan...")
                         logging.info(f"🔍 Running Recon Agent for {scan_obj.target}")
 
                         try:
@@ -453,6 +494,7 @@ def start_real_scan(scan_id):
                             recon_results = loop.run_until_complete(recon_agent.scan_target(scan_obj.target))
                             scan_results.append(recon_results)
                             logging.info(f"✅ Recon Agent completed for {scan_obj.target}")
+                            logging.info(f"📊 Recon Agent found {len(recon_results.get('vulnerabilities', []))} vulnerabilities")
 
                             # Store vulnerabilities found by Recon Agent
                             for vuln_data in recon_results.get('vulnerabilities', []):
@@ -470,9 +512,14 @@ def start_real_scan(scan_id):
                             )
                             session.add(vulnerability)
                             vulnerabilities_found.append(vulnerability)
+                            
+                            # Commit vulnerabilities immediately
+                            session.commit()
+                            logging.info(f"💾 Stored {len(recon_results.get('vulnerabilities', []))} vulnerabilities from Recon Agent")
 
                         except Exception as e:
                             logging.error(f"❌ Recon Agent failed: {e}")
+                            logging.error(f"📊 Recon Agent error details: {type(e).__name__}: {str(e)}")
                             # Continue with other agents
 
                     # Run Web App Agent if selected
@@ -485,6 +532,7 @@ def start_real_scan(scan_id):
                             webapp_results = loop.run_until_complete(webapp_agent.scan_target(scan_obj.target, update_progress))
                             scan_results.append(webapp_results)
                             logging.info(f"✅ Web App Agent completed for {scan_obj.target}")
+                            logging.info(f"📊 Web App Agent found {len(webapp_results.get('vulnerabilities', []))} vulnerabilities")
 
                             # Store vulnerabilities found by Web App Agent
                             for vuln_data in webapp_results.get('vulnerabilities', []):
@@ -502,15 +550,19 @@ def start_real_scan(scan_id):
                                 )
                                 session.add(vulnerability)
                                 vulnerabilities_found.append(vulnerability)
+                                
+                            # Commit vulnerabilities immediately
+                            session.commit()
+                            logging.info(f"💾 Stored {len(webapp_results.get('vulnerabilities', []))} vulnerabilities from Web App Agent")
 
                         except Exception as e:
                             logging.error(f"❌ Web App Agent failed: {e}")
+                            logging.error(f"📊 Web App Agent error details: {type(e).__name__}: {str(e)}")
                             # Continue with other agents
 
                     # Run Network Agent if selected
                     if 'Network Agent' in agents:
-                        scan_obj.progress = 60
-                        session.commit()
+                        update_progress(60, "🔌 Starting Network Security Scan...")
                         logging.info(f"🔌 Running Network Agent for {scan_obj.target}")
 
                         try:
@@ -518,6 +570,7 @@ def start_real_scan(scan_id):
                             network_results = loop.run_until_complete(network_agent.scan_target(scan_obj.target))
                             scan_results.append(network_results)
                             logging.info(f"✅ Network Agent completed for {scan_obj.target}")
+                            logging.info(f"📊 Network Agent found {len(network_results.get('vulnerabilities', []))} vulnerabilities")
 
                             # Store vulnerabilities found by Network Agent
                             for vuln_data in network_results.get('vulnerabilities', []):
@@ -528,22 +581,26 @@ def start_real_scan(scan_id):
                                     cvss=vuln_data.get('cvss', 0.0),
                                     description=vuln_data['description'],
                                     url=vuln_data.get('url', scan_obj.target),
-                                parameter=vuln_data.get('parameter', ''),
-                                payload=vuln_data.get('payload', ''),
-                                remediation=vuln_data.get('remediation', ''),
-                                discovered_by=vuln_data['discovered_by']
-                            )
+                                    parameter=vuln_data.get('parameter', ''),
+                                    payload=vuln_data.get('payload', ''),
+                                    remediation=vuln_data.get('remediation', ''),
+                                    discovered_by=vuln_data['discovered_by']
+                                )
                                 session.add(vulnerability)
                                 vulnerabilities_found.append(vulnerability)
+                                
+                            # Commit vulnerabilities immediately
+                            session.commit()
+                            logging.info(f"💾 Stored {len(network_results.get('vulnerabilities', []))} vulnerabilities from Network Agent")
 
                         except Exception as e:
                             logging.error(f"❌ Network Agent failed: {e}")
+                            logging.error(f"📊 Network Agent error details: {type(e).__name__}: {str(e)}")
                             # Continue with other agents
 
                     # Run API Agent if selected
                     if 'API Agent' in agents:
-                        scan_obj.progress = 80
-                        session.commit()
+                        update_progress(75, "🔌 Starting API Security Scan...")
                         logging.info(f"🔌 Running API Agent for {scan_obj.target}")
 
                         try:
@@ -551,6 +608,7 @@ def start_real_scan(scan_id):
                             api_results = loop.run_until_complete(api_agent.scan_target(scan_obj.target))
                             scan_results.append(api_results)
                             logging.info(f"✅ API Agent completed for {scan_obj.target}")
+                            logging.info(f"📊 API Agent found {len(api_results.get('vulnerabilities', []))} vulnerabilities")
 
                             # Store vulnerabilities found by API Agent
                             for vuln_data in api_results.get('vulnerabilities', []):
@@ -568,9 +626,110 @@ def start_real_scan(scan_id):
                                 )
                                 session.add(vulnerability)
                                 vulnerabilities_found.append(vulnerability)
+                                
+                            # Commit vulnerabilities immediately
+                            session.commit()
+                            logging.info(f"💾 Stored {len(api_results.get('vulnerabilities', []))} vulnerabilities from API Agent")
 
                         except Exception as e:
                             logging.error(f"❌ API Agent failed: {e}")
+                            logging.error(f"📊 API Agent error details: {type(e).__name__}: {str(e)}")
+                            # Continue with other agents
+
+                    # Run Enhanced Security Agent if available and selected
+                    if ENHANCEMENTS_AVAILABLE and 'Enhanced Security Agent' in agents:
+                        update_progress(85, "🔬 Running Enhanced Security Analysis...")
+                        logging.info(f"🔬 Running Enhanced Security Agent for {scan_obj.target}")
+
+                        try:
+                            from enhancements.enhanced_security_agent import EnhancedSecurityAgent
+                            enhanced_agent = EnhancedSecurityAgent()
+                            
+                            # Use async function wrapper for Enhanced Security Agent
+                            async def run_enhanced_security_scan():
+                                results = await enhanced_agent.comprehensive_security_scan(scan_obj.target)
+                                await enhanced_agent.close()
+                                return results
+                            
+                            enhanced_results = loop.run_until_complete(run_enhanced_security_scan())
+                            scan_results.append({'agent': 'Enhanced Security Agent', 'results': enhanced_results})
+                            logging.info(f"✅ Enhanced Security Agent completed for {scan_obj.target}")
+                            logging.info(f"📊 Enhanced Security Agent found {len(enhanced_results)} vulnerabilities")
+
+                            # Store vulnerabilities found by Enhanced Security Agent
+                            for vuln_data in enhanced_results:
+                                vulnerability = Vulnerability(
+                                    scan_id=scan_obj.id,
+                                    title=vuln_data['title'],
+                                    severity=vuln_data['severity'],
+                                    cvss=vuln_data.get('cvss', 0.0),
+                                    description=vuln_data['description'],
+                                    url=vuln_data.get('url', scan_obj.target),
+                                    parameter=vuln_data.get('parameter', ''),
+                                    payload=vuln_data.get('payload', ''),
+                                    remediation=vuln_data.get('remediation', ''),
+                                    discovered_by=vuln_data['discoveredBy']
+                                )
+                                session.add(vulnerability)
+                                vulnerabilities_found.append(vulnerability)
+                                
+                            # Commit vulnerabilities immediately
+                            session.commit()
+                            logging.info(f"💾 Stored {len(enhanced_results)} vulnerabilities from Enhanced Security Agent")
+
+                        except Exception as e:
+                            logging.error(f"❌ Enhanced Security Agent failed: {e}")
+                            logging.error(f"📊 Enhanced Security Agent error details: {type(e).__name__}: {str(e)}")
+                            # Continue with other agents
+
+                    # Run Threat Intelligence Analysis if available and selected
+                    if ENHANCEMENTS_AVAILABLE and ('Threat Intelligence Agent' in agents or len(vulnerabilities_found) > 0):
+                        update_progress(88, "🛡️ Analyzing threats and enriching vulnerability data...")
+                        logging.info(f"🛡️ Running Threat Intelligence Analysis for {scan_obj.target}")
+
+                        try:
+                            from enhancements.threat_intelligence import ThreatIntelligenceAgent
+                            threat_agent = ThreatIntelligenceAgent()
+                            
+                            # Analyze target reputation
+                            reputation_data = loop.run_until_complete(threat_agent.analyze_target_reputation(scan_obj.target))
+                            logging.info(f"📊 Threat Intelligence: Target risk score {reputation_data.get('threat_score', 0)}/100")
+                            
+                            # Store threat intelligence as a special vulnerability/finding
+                            if reputation_data.get('threat_score', 0) > 30:  # If significant threat indicators
+                                threat_finding = Vulnerability(
+                                    scan_id=scan_obj.id,
+                                    title=f'Threat Intelligence: {scan_obj.target}',
+                                    severity='Medium' if reputation_data['threat_score'] < 70 else 'High',
+                                    cvss=min(10.0, reputation_data['threat_score'] / 10),
+                                    description=f"Threat analysis revealed risk score of {reputation_data['threat_score']}/100. {', '.join(reputation_data.get('recommendations', []))}",
+                                    url=scan_obj.target,
+                                    parameter='threat_intelligence',
+                                    payload=json.dumps(reputation_data, indent=2),
+                                    remediation='Review threat intelligence findings and implement recommended security measures',
+                                    discovered_by='Threat Intelligence Agent'
+                                )
+                                session.add(threat_finding)
+                                vulnerabilities_found.append(threat_finding)
+
+                            # Enrich existing vulnerabilities with threat intelligence
+                            for vuln in vulnerabilities_found[-10:]:  # Last 10 vulnerabilities
+                                if hasattr(vuln, 'title'):
+                                    enriched_data = loop.run_until_complete(threat_agent.enrich_vulnerability_data({
+                                        'title': vuln.title,
+                                        'severity': vuln.severity,
+                                        'description': vuln.description
+                                    }))
+                                    
+                                    # Update vulnerability description with threat intelligence
+                                    if enriched_data.get('threat_intel'):
+                                        vuln.description += f"\n\nThreat Intelligence: {enriched_data['threat_intel']['mitigation_priority']} priority"
+
+                            logging.info(f"✅ Threat Intelligence Analysis completed for {scan_obj.target}")
+
+                        except Exception as e:
+                            logging.error(f"❌ Threat Intelligence Analysis failed: {e}")
+                            logging.error(f"📊 Threat Intelligence error details: {type(e).__name__}: {str(e)}")
                             # Continue with other agents
 
                     # Run Report Agent if selected
@@ -598,10 +757,14 @@ def start_real_scan(scan_id):
 
                     # Complete the scan
                     scan_obj.status = 'completed'
-                    update_progress(100, f"✅ Scan completed: found {len(vulnerabilities_found)} vulnerabilities")
+                    scan_obj.progress = 100
+                    scan_obj.current_test = f"✅ Scan completed: found {len(vulnerabilities_found)} vulnerabilities"
                     scan_obj.completed = datetime.now(timezone.utc)
                     session.commit()
 
+                    # Emit final progress update
+                    emit_scan_progress(scan_obj.id, 100, scan_obj.current_test, 'completed')
+                    
                     logging.info(f"Real scan completed for {scan_obj.target}, found {len(vulnerabilities_found)} vulnerabilities")
 
                     # Auto-generate basic report for completed scan
@@ -626,7 +789,12 @@ def start_real_scan(scan_id):
                     try:
                         scan_obj.status = 'failed'
                         scan_obj.progress = 0
+                        scan_obj.current_test = f"❌ Scan failed: {str(e)}"
                         session.commit()
+                        
+                        # Emit final progress update for failed scan
+                        emit_scan_progress(scan_obj.id, 0, scan_obj.current_test, 'failed')
+                        
                         logging.error(f"Scan failed for {scan_obj.target}: {e}")
                     except:
                         logging.error(f"Failed to update scan status: {e}")
@@ -730,6 +898,38 @@ def init_db():
         db.session.commit()
         print("✅ Security agents initialized successfully")
         print(f"📊 Created {len(agents_data)} security agents")
+        
+        # Initialize enhanced agents if available
+        if ENHANCEMENTS_AVAILABLE:
+            enhanced_agents_data = [
+                {
+                    'name': 'Threat Intelligence Agent',
+                    'description': 'Provides real-time threat intelligence and reputation analysis',
+                    'capabilities': ['CVE Integration', 'IP Reputation', 'Domain Analysis', 'Threat Feeds'],
+                    'success_rate': 95
+                },
+                {
+                    'name': 'Enhanced Security Agent',
+                    'description': 'Advanced security testing with ML-powered vulnerability detection',
+                    'capabilities': ['Advanced XSS', 'Time-based SQLi', 'SSL Analysis', 'WAF Detection'],
+                    'success_rate': 92
+                }
+            ]
+            
+            for agent_data in enhanced_agents_data:
+                # Check if agent already exists
+                existing_agent = Agent.query.filter_by(name=agent_data['name']).first()
+                if not existing_agent:
+                    agent = Agent(
+                        name=agent_data['name'],
+                        description=agent_data['description'],
+                        capabilities=json.dumps(agent_data['capabilities']),
+                        success_rate=agent_data['success_rate']
+                    )
+                    db.session.add(agent)
+            
+            db.session.commit()
+            print("🚀 Enhanced agents initialized successfully")
     else:
         print(f"📊 Found {Agent.query.count()} existing security agents")
 
@@ -806,5 +1006,15 @@ if __name__ == '__main__':
     print("Real-time features:")
     print("  Socket.IO events: connect, disconnect, ping, scan_progress_request")
 
+@app.route('/')
+def index():
+    """Serve the main HTML file"""
+    return send_from_directory('.', 'index.html')
 
+@app.route('/<path:filename>')
+def static_files(filename):
+    """Serve static files"""
+    return send_from_directory('.', filename)
+
+if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)

@@ -135,7 +135,7 @@ function handleRealTimeScanProgress(data) {
 
     // Update progress modal if it's open
     const modal = document.getElementById('scan-progress-modal');
-    if (modal && !modal.classList.contains('hidden')) {
+    if (modal && !modal.classList.contains('hidden') && currentScanId === scan_id) {
         updateScanProgressModal({
             id: scan_id,
             progress: progress,
@@ -143,16 +143,83 @@ function handleRealTimeScanProgress(data) {
             status: status
         });
 
-        // Auto-hide modal when scan completes
+        // Auto-hide modal when scan completes - give more time to see completion
         if (status === 'completed' || status === 'failed') {
             setTimeout(() => {
-                hideScanProgressModal();
-            }, 2000);
+                if (!isModalMinimized) {
+                    hideScanProgressModal();
+                }
+            }, 5000); // Increased to 5 seconds
+        }
+    }
+
+    // Also update minimized indicator if visible
+    const minimizedIndicator = document.getElementById('minimized-scan-indicator');
+    if (minimizedIndicator && !minimizedIndicator.classList.contains('hidden') && currentScanId === scan_id) {
+        const minimizedProgress = document.getElementById('minimized-progress');
+        if (minimizedProgress) {
+            minimizedProgress.textContent = `${progress}%`;
+        }
+        
+        // Auto-hide minimized indicator when scan completes
+        if (status === 'completed' || status === 'failed') {
+            setTimeout(() => {
+                minimizedIndicator.classList.add('hidden');
+                currentScanId = null;
+            }, 5000);
         }
     }
 
     // Update active scans display
     renderActiveScans();
+    
+    // Update activity feed with enhanced information
+    if (data.agent_name) {
+        const agentEmoji = getAgentEmoji(data.agent_name);
+        updateActivityFeed(`${agentEmoji} ${data.agent_name}: ${current_test || 'Processing...'}`);
+    }
+}
+
+// Helper function to get agent emojis
+function getAgentEmoji(agentName) {
+    const emojiMap = {
+        'Recon Agent': '🔍',
+        'Web App Agent': '🌐',
+        'Network Agent': '🔒',
+        'API Agent': '⚡',
+        'Report Agent': '📋',
+        'Enhanced Security Agent': '🔬',
+        'Threat Intelligence Agent': '🛡️'
+    };
+    return emojiMap[agentName] || '🤖';
+}
+
+// Function to update activity feed
+function updateActivityFeed(message) {
+    const activityFeed = document.getElementById('activity-feed');
+    if (!activityFeed) return;
+    
+    const timestamp = new Date().toLocaleTimeString();
+    const activityItem = document.createElement('div');
+    activityItem.className = 'flex items-center gap-2 text-sm text-gray-300 mb-2';
+    activityItem.innerHTML = `
+        <span class="text-gray-500">${timestamp}</span>
+        <span>${message}</span>
+    `;
+    
+    // Add to beginning of feed
+    if (activityFeed.firstChild && activityFeed.firstChild.tagName !== 'P') {
+        activityFeed.insertBefore(activityItem, activityFeed.firstChild);
+    } else {
+        // Replace "No Recent Activity" message
+        activityFeed.innerHTML = '';
+        activityFeed.appendChild(activityItem);
+    }
+    
+    // Keep only last 10 items
+    while (activityFeed.children.length > 10) {
+        activityFeed.removeChild(activityFeed.lastChild);
+    }
 }
 
 // Initialize Socket.IO test functionality
@@ -213,11 +280,78 @@ async function loadScans() {
 async function loadAgents() {
     try {
         const agents = await apiRequest('/agents');
-        appData.agents = agents;
+        
+        // If no agents from API, use enhanced default agents
+        if (!agents || agents.length === 0) {
+            appData.agents = getDefaultEnhancedAgents();
+        } else {
+            appData.agents = agents;
+        }
+        
         renderAgents();
     } catch (error) {
         console.error('Failed to load agents:', error);
+        // Fallback to default enhanced agents
+        appData.agents = getDefaultEnhancedAgents();
+        renderAgents();
     }
+}
+
+// Default enhanced agents configuration
+function getDefaultEnhancedAgents() {
+    return [
+        {
+            name: "Recon Agent",
+            status: "Active",
+            description: "Performs reconnaissance and subdomain discovery",
+            successRate: 94,
+            capabilities: ["Subdomain Discovery", "DNS Analysis", "Port Scanning", "Service Detection"]
+        },
+        {
+            name: "Web App Agent", 
+            status: "Active",
+            description: "Analyzes web applications for common vulnerabilities",
+            successRate: 87,
+            capabilities: ["XSS Detection", "SQL Injection", "CSRF", "Directory Traversal"]
+        },
+        {
+            name: "Network Agent",
+            status: "Active", 
+            description: "Scans network infrastructure and services",
+            successRate: 91,
+            capabilities: ["Port Scanning", "Service Enumeration", "Network Mapping", "Protocol Analysis"]
+        },
+        {
+            name: "API Agent",
+            status: "Active",
+            description: "Tests REST APIs and web services for security flaws",
+            successRate: 89,
+            capabilities: ["API Enumeration", "Authentication Bypass", "Rate Limiting", "Input Validation"]
+        },
+        {
+            name: "Report Agent",
+            status: "Active",
+            description: "Generates comprehensive security reports",
+            successRate: 99,
+            capabilities: ["PDF Generation", "Risk Assessment", "Executive Summary", "Technical Details"]
+        },
+        {
+            name: "Enhanced Security Agent",
+            status: "Enhanced",
+            description: "Advanced security testing with 15+ payload variants and WAF evasion",
+            successRate: 96,
+            capabilities: ["Advanced XSS", "Time-based SQLi", "WAF Evasion", "SSL/TLS Analysis", "Advanced Payloads"],
+            enhanced: true
+        },
+        {
+            name: "Threat Intelligence Agent", 
+            status: "Enhanced",
+            description: "Real-time threat intelligence from AbuseIPDB, Shodan, and VirusTotal",
+            successRate: 93,
+            capabilities: ["IP Reputation", "Domain Analysis", "Malware Detection", "CVE Database", "Device Intelligence"],
+            enhanced: true
+        }
+    ];
 }
 
 async function loadVulnerabilities() {
@@ -286,25 +420,34 @@ document.addEventListener('DOMContentLoaded', async function() {
     console.log('🔄 Real-time updates started');
 });
 
-// Update stats display
+// Update stats display - FIXED FOR TAILWIND CSS
 function updateStatsDisplay() {
     const stats = appData.stats;
 
-    // Update stat cards
-    const statCards = document.querySelectorAll('.stat-card');
-    if (statCards.length >= 4) {
-        statCards[0].querySelector('.stat-number').textContent = stats.totalScans;
-        statCards[1].querySelector('.stat-number').textContent = stats.activeAgents;
-        statCards[2].querySelector('.stat-number').textContent = stats.vulnerabilitiesFound;
-        statCards[3].querySelector('.stat-number').textContent = stats.criticalIssues;
+    if (!stats) {
+        console.warn('No stats data available');
+        return;
     }
+
+    // Update stat cards using specific IDs
+    const totalScansEl = document.getElementById('total-scans');
+    const activeAgentsEl = document.getElementById('active-agents');
+    const totalVulnerabilitiesEl = document.getElementById('total-vulnerabilities');
+    const criticalIssuesEl = document.getElementById('critical-issues');
+
+    if (totalScansEl) totalScansEl.textContent = stats.totalScans || 0;
+    if (activeAgentsEl) activeAgentsEl.textContent = stats.activeAgents || 0;
+    if (totalVulnerabilitiesEl) totalVulnerabilitiesEl.textContent = stats.vulnerabilitiesFound || 0;
+    if (criticalIssuesEl) criticalIssuesEl.textContent = stats.criticalIssues || 0;
 
     // Update header status indicators
     const statusIndicators = document.querySelectorAll('.status');
     if (statusIndicators.length >= 2) {
-        statusIndicators[0].textContent = `${stats.activeAgents} Agents Active`;
-        statusIndicators[1].textContent = `${appData.scans.filter(s => s.status === 'running').length} Scans Running`;
+        statusIndicators[0].textContent = `${stats.activeAgents || 0} Agents Active`;
+        statusIndicators[1].textContent = `${appData.scans ? appData.scans.filter(s => s.status === 'running').length : 0} Scans Running`;
     }
+
+    console.log('📊 Stats updated:', stats);
 }
 
 // Error notification function
@@ -344,7 +487,14 @@ function initializeNavigation() {
 
 // Chart initialization - REAL DATA
 async function initializeCharts() {
-    const ctx = document.getElementById('vulnerabilityChart').getContext('2d');
+    const chartElement = document.getElementById('vulnerabilityChart');
+    
+    if (!chartElement) {
+        console.warn('vulnerabilityChart element not found, skipping chart initialization');
+        return;
+    }
+    
+    const ctx = chartElement.getContext('2d');
 
     try {
         // Get real vulnerability data
@@ -605,8 +755,8 @@ async function renderActivityFeed() {
         // Add recent vulnerabilities
         vulnerabilities.slice(0, 3).forEach(vuln => {
             activities.push({
-                title: `${vuln.severity.toUpperCase()} ${vuln.type} Found`,
-                description: `${vuln.agent} discovered ${vuln.type.toLowerCase()} in ${vuln.location || 'target'}`,
+                title: `${vuln.severity.toUpperCase()} Vulnerability Found`,
+                description: `${vuln.discoveredBy || 'Scanner'} discovered ${vuln.title} in ${vuln.url || 'target'}`,
                 time: getRelativeTime(vuln.timestamp),
                 type: getSeverityType(vuln.severity),
                 timestamp: new Date(vuln.timestamp)
@@ -667,12 +817,12 @@ async function renderActivityFeed() {
         }
 
         const activityHTML = recentActivities.map(activity => `
-            <div class="activity-item">
-                <div class="activity-content">
-                    <h4 class="activity-title">${activity.title}</h4>
-                    <p class="activity-description">${activity.description}</p>
+            <div class="flex justify-between items-start p-3 bg-gray-800 rounded-lg border border-gray-700">
+                <div class="flex-1">
+                    <h4 class="font-medium text-white text-sm">${activity.title}</h4>
+                    <p class="text-gray-400 text-xs mt-1">${activity.description}</p>
                 </div>
-                <div class="activity-time">${activity.time}</div>
+                <div class="text-xs text-gray-500 ml-3">${activity.time}</div>
             </div>
         `).join('');
 
@@ -681,12 +831,12 @@ async function renderActivityFeed() {
     } catch (error) {
         console.error('Failed to load activity feed:', error);
         activityFeed.innerHTML = `
-            <div class="activity-item">
-                <div class="activity-content">
-                    <h4 class="activity-title">Unable to Load Activity</h4>
-                    <p class="activity-description">Failed to fetch recent activity data</p>
+            <div class="flex justify-between items-start p-3 bg-gray-800 rounded-lg border border-gray-700">
+                <div class="flex-1">
+                    <h4 class="font-medium text-white text-sm">Unable to Load Activity</h4>
+                    <p class="text-gray-400 text-xs mt-1">Failed to fetch recent activity data</p>
                 </div>
-                <div class="activity-time">Error</div>
+                <div class="text-xs text-gray-500 ml-3">Error</div>
             </div>
         `;
     }
@@ -721,39 +871,53 @@ function getSeverityType(severity) {
     }
 }
 
-// Render active scans - FIXED
+// Render active scans - TAILWIND CSS
 function renderActiveScans() {
     const activeScansContainer = document.getElementById('active-scans');
-    
+
+    if (!activeScansContainer) {
+        console.warn('active-scans element not found');
+        return;
+    }
+
+    if (!appData.scans || appData.scans.length === 0) {
+        activeScansContainer.innerHTML = '<p class="text-gray-400">No active scans</p>';
+        return;
+    }
+
     const scansHTML = appData.scans.map(scan => {
         const progress = scan.progress || 100;
-        const statusClass = scan.status === 'running' ? 'info' : 'success';
-        
+        const statusClass = scan.status === 'running' ? 'text-blue-400' : 'text-green-400';
+
         return `
-            <div class="scan-item">
-                <div class="scan-target">
-                    <strong>${scan.target}</strong>
-                    <div class="scan-type">${scan.scanType}</div>
+            <div class="bg-gray-800 border border-gray-600 rounded-lg p-4 space-y-3">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="font-semibold text-white">${scan.target}</div>
+                        <div class="text-sm text-gray-400">${scan.scanType}</div>
+                    </div>
+                    <span class="px-2 py-1 rounded text-xs font-medium ${statusClass} bg-gray-700">${scan.status}</span>
                 </div>
-                <div class="scan-status">
-                    <span class="status status--${statusClass}">${scan.status}</span>
-                    ${scan.status === 'running' ? `
-                        <div class="scan-progress">
-                            <div class="scan-progress-bar" style="width: ${progress}%"></div>
-                        </div>
-                    ` : ''}
+
+                ${scan.status === 'running' ? `
+                    <div class="w-full bg-gray-700 rounded-full h-2">
+                        <div class="bg-primary h-2 rounded-full transition-all duration-300" style="width: ${progress}%"></div>
+                    </div>
+                ` : ''}
+
+                <div class="flex gap-4 text-sm">
+                    <span class="text-red-400">🔴 ${scan.critical || 0}</span>
+                    <span class="text-orange-400">🟠 ${scan.high || 0}</span>
+                    <span class="text-yellow-400">🟡 ${scan.medium || 0}</span>
                 </div>
-                <div class="vulnerability-counts">
-                    <div class="vuln-count critical">🔴 ${scan.critical}</div>
-                    <div class="vuln-count high">🟠 ${scan.high}</div>
-                    <div class="vuln-count medium">🟡 ${scan.medium}</div>
+
+                <div class="text-sm text-gray-400">
+                    Agents: ${scan.agents.join(', ')}
                 </div>
-                <div class="scan-agents">
-                    ${scan.agents.join(', ')}
-                </div>
-                <div class="scan-actions">
-                    <button class="btn btn--sm btn--outline" onclick="viewScanDetails('${scan.id}')">View</button>
-                </div>
+
+                <button class="w-full px-3 py-2 border border-primary text-primary rounded hover:bg-primary hover:text-white transition-colors text-sm" onclick="viewScanDetails('${scan.id}')">
+                    View Details
+                </button>
             </div>
         `;
     }).join('');
@@ -761,65 +925,102 @@ function renderActiveScans() {
     activeScansContainer.innerHTML = scansHTML;
 }
 
-// Render AI agents - FIXED
+// Render AI agents - TAILWIND CSS
 function renderAgents() {
     const agentsGrid = document.getElementById('agents-grid');
-    
-    const agentsHTML = appData.agents.map(agent => `
-        <div class="agent-card">
-            <div class="agent-header">
-                <h3 class="agent-name">${agent.name}</h3>
-                <div class="agent-status">
-                    <div class="status-dot"></div>
-                    ${agent.status}
+
+    if (!agentsGrid) {
+        console.warn('agents-grid element not found');
+        return;
+    }
+
+    const agentsHTML = appData.agents.map(agent => {
+        const isEnhanced = agent.enhanced || agent.name.includes('Enhanced') || agent.name.includes('Threat Intelligence');
+        const statusColor = agent.status === 'Enhanced' ? 'text-primary' : 'text-green-400';
+        const statusDot = agent.status === 'Enhanced' ? 'bg-primary' : 'bg-green-500';
+        const borderClass = isEnhanced ? 'border-primary border-opacity-50 bg-gradient-to-br from-primary/5 to-secondary/5' : 'border-gray-700';
+        
+        return `
+        <div class="bg-dark-lighter border ${borderClass} rounded-xl p-6 hover:border-primary transition-colors">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-2">
+                    <h3 class="text-lg font-semibold text-white">${agent.name}</h3>
+                    ${isEnhanced ? '<span class="px-2 py-1 bg-primary bg-opacity-20 text-primary text-xs rounded-full">ENHANCED</span>' : ''}
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 ${statusDot} rounded-full animate-pulse"></div>
+                    <span class="text-sm ${statusColor}">${agent.status}</span>
                 </div>
             </div>
-            <p class="agent-description">${agent.description}</p>
-            <div class="agent-metrics">
-                <div class="metric">
-                    <p class="metric-value">${agent.successRate}%</p>
-                    <p class="metric-label">Success Rate</p>
+            <p class="text-gray-300 text-sm mb-4">${agent.description}</p>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div class="text-center">
+                    <p class="text-2xl font-bold ${isEnhanced ? 'text-primary' : 'text-accent'}">${agent.successRate}%</p>
+                    <p class="text-xs text-gray-400">Success Rate</p>
                 </div>
-                <div class="metric">
-                    <p class="metric-value">24/7</p>
-                    <p class="metric-label">Uptime</p>
-                </div>
-            </div>
-            <div class="agent-capabilities">
-                <h4>Capabilities</h4>
-                <div class="capabilities-list">
-                    ${agent.capabilities.map(cap => `<span class="capability-tag">${cap}</span>`).join('')}
+                <div class="text-center">
+                    <p class="text-2xl font-bold ${isEnhanced ? 'text-secondary' : 'text-accent'}">24/7</p>
+                    <p class="text-xs text-gray-400">Uptime</p>
                 </div>
             </div>
-            <button class="btn btn--outline btn--full-width" onclick="configureAgent('${agent.name}')">Configure Agent</button>
+            <div class="mb-4">
+                <h4 class="text-sm font-medium text-gray-300 mb-2">Capabilities</h4>
+                <div class="flex flex-wrap gap-1">
+                    ${agent.capabilities.map(cap => `
+                        <span class="px-2 py-1 ${isEnhanced ? 'bg-primary bg-opacity-20 text-primary' : 'bg-gray-800 text-gray-300'} text-xs rounded-md">${cap}</span>
+                    `).join('')}
+                </div>
+            </div>
+            ${isEnhanced ? `
+            <div class="mb-4 p-3 bg-primary bg-opacity-10 border border-primary border-opacity-30 rounded-lg">
+                <div class="flex items-center gap-2 text-primary text-xs font-medium">
+                    <div class="w-2 h-2 bg-primary rounded-full"></div>
+                    <span>Enhanced features active</span>
+                </div>
+            </div>
+            ` : ''}
+            <button class="w-full px-4 py-2 border ${isEnhanced ? 'border-primary text-primary hover:bg-primary' : 'border-gray-600 text-gray-300 hover:bg-gray-600'} rounded-lg hover:text-white transition-colors"
+                    onclick="configureAgent('${agent.name}')">
+                ${isEnhanced ? '⚡ Configure Enhanced Agent' : 'Configure Agent'}
+            </button>
         </div>
-    `).join('');
+    `;}).join('');
 
     agentsGrid.innerHTML = agentsHTML;
 }
 
-// Render reports - FIXED
+// Render reports - TAILWIND CSS
 function renderReports() {
     const reportsGrid = document.getElementById('reports-grid');
-    
+
+    if (!reportsGrid) {
+        console.warn('reports-grid element not found');
+        return;
+    }
+
+    if (!appData.reports || appData.reports.length === 0) {
+        reportsGrid.innerHTML = '<p class="text-gray-400 col-span-full">No reports generated yet</p>';
+        return;
+    }
+
     const reportsHTML = appData.reports.map(report => `
-        <div class="report-card" onclick="downloadReport('${report.id}')">
-            <div class="report-header">
-                <h4 class="report-title">${report.title}</h4>
-                <span class="report-severity ${report.severity.toLowerCase()}">${report.severity}</span>
+        <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-primary transition-colors cursor-pointer" onclick="downloadReport('${report.id}')">
+            <div class="flex justify-between items-start mb-4">
+                <h4 class="text-lg font-semibold text-white">${report.title}</h4>
+                <span class="px-2 py-1 rounded-md text-xs font-medium ${getSeverityClasses(report.severity)}">${report.severity}</span>
             </div>
-            <div class="report-meta">
-                <span>${new Date(report.generated).toLocaleDateString()}</span>
-                <span>${report.format}</span>
+            <div class="flex justify-between text-sm text-gray-400 mb-4">
+                <span>📅 ${new Date(report.generated).toLocaleDateString()}</span>
+                <span>📄 ${report.format}</span>
             </div>
-            <div class="report-stats">
-                <div class="report-stat">
-                    <div class="report-stat-value">${report.vulnerabilities}</div>
-                    <div>Vulnerabilities</div>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-primary">${report.vulnerabilities}</div>
+                    <div class="text-xs text-gray-400">Vulnerabilities</div>
                 </div>
-                <div class="report-stat">
-                    <div class="report-stat-value">${report.pages}</div>
-                    <div>Pages</div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-accent">${report.pages}</div>
+                    <div class="text-xs text-gray-400">Pages</div>
                 </div>
             </div>
         </div>
@@ -828,38 +1029,89 @@ function renderReports() {
     reportsGrid.innerHTML = reportsHTML;
 }
 
-// Render vulnerabilities - FIXED
+// Render vulnerabilities - TAILWIND CSS
 function renderVulnerabilities() {
     const vulnerabilitiesList = document.getElementById('vulnerabilities-list');
-    
-    let filteredVulns = appData.vulnerabilities;
+
+    if (!vulnerabilitiesList) {
+        console.warn('vulnerabilities-list element not found');
+        return;
+    }
+
+    let filteredVulns = appData.vulnerabilities || [];
     if (currentFilter) {
         filteredVulns = appData.vulnerabilities.filter(vuln => vuln.severity === currentFilter);
     }
-    
-    const vulnerabilitiesHTML = filteredVulns.map(vuln => `
-        <div class="vulnerability-item" onclick="showVulnerabilityDetails('${vuln.id}')">
-            <div class="vulnerability-header">
-                <h4 class="vulnerability-title">${vuln.title}</h4>
-                <span class="severity-badge ${vuln.severity.toLowerCase()}">${vuln.severity}</span>
+
+    if (filteredVulns.length === 0) {
+        vulnerabilitiesList.innerHTML = '<p class="text-gray-400">No vulnerabilities found yet</p>';
+        return;
+    }
+
+    const vulnerabilitiesHTML = filteredVulns.map(vuln => {
+        // Check if vulnerability has threat intelligence data
+        const hasThreatIntel = vuln.threat_intel || vuln.threatIntel;
+        const threatScore = hasThreatIntel ? (vuln.threat_intel?.risk_score || vuln.threatIntel?.risk_score || 0) : 0;
+        
+        return `
+        <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-primary transition-colors cursor-pointer" onclick="showVulnerabilityDetails('${vuln.id}')">
+            <div class="flex justify-between items-start mb-4">
+                <h4 class="text-lg font-semibold text-white">${vuln.title}</h4>
+                <div class="flex items-center gap-2">
+                    <span class="px-2 py-1 rounded-md text-xs font-medium ${getSeverityClasses(vuln.severity)}">${vuln.severity}</span>
+                    ${hasThreatIntel ? `<span class="px-2 py-1 bg-purple-900 text-purple-300 border border-purple-700 rounded-md text-xs font-medium">🛡️ Enhanced</span>` : ''}
+                </div>
             </div>
-            <div class="vulnerability-meta">
-                <span>CVSS: ${vuln.cvss}</span>
-                <span>URL: ${vuln.url}</span>
-                <span>Parameter: ${vuln.parameter}</span>
+            
+            ${hasThreatIntel && threatScore > 0 ? `
+            <div class="mb-3 p-3 bg-purple-900 bg-opacity-30 border border-purple-700 border-opacity-50 rounded-lg">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-purple-400 text-sm font-medium">🛡️ Threat Intelligence</span>
+                    <span class="px-2 py-1 bg-purple-700 text-purple-200 text-xs rounded-full">Risk Score: ${threatScore}/100</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                    ${vuln.threat_intel?.intelligence_sources?.includes('AbuseIPDB') ? '<span class="text-blue-300">🛡️ IP Reputation</span>' : ''}
+                    ${vuln.threat_intel?.intelligence_sources?.includes('Shodan') ? '<span class="text-cyan-300">🌐 Device Intel</span>' : ''}
+                    ${vuln.threat_intel?.intelligence_sources?.includes('VirusTotal') ? '<span class="text-purple-300">🦠 Malware Check</span>' : ''}
+                </div>
             </div>
-            <p class="vulnerability-description">${vuln.description}</p>
-            <div class="vulnerability-footer">
-                <div class="discovered-by">
+            ` : ''}
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-gray-400 mb-3">
+                <span>🎯 CVSS: ${vuln.cvss}</span>
+                <span>🔗 ${vuln.url}</span>
+                <span>📝 ${vuln.parameter}</span>
+            </div>
+            <p class="text-gray-300 mb-4 line-clamp-2">${vuln.description}</p>
+            <div class="flex justify-between items-center text-sm text-gray-400">
+                <div class="flex items-center gap-2">
                     <span>🤖</span>
                     <span>Discovered by ${vuln.discoveredBy}</span>
+                    ${hasThreatIntel ? '<span class="text-purple-400">+ Threat Intel</span>' : ''}
                 </div>
                 <span>${new Date(vuln.timestamp).toLocaleString()}</span>
             </div>
         </div>
-    `).join('');
+    `;}).join('');
 
     vulnerabilitiesList.innerHTML = vulnerabilitiesHTML;
+}
+
+// Helper function to get severity badge classes
+function getSeverityClasses(severity) {
+    const severityLower = severity.toLowerCase();
+    switch (severityLower) {
+        case 'critical':
+            return 'bg-red-900 text-red-300 border border-red-700';
+        case 'high':
+            return 'bg-orange-900 text-orange-300 border border-orange-700';
+        case 'medium':
+            return 'bg-yellow-900 text-yellow-300 border border-yellow-700';
+        case 'low':
+            return 'bg-blue-900 text-blue-300 border border-blue-700';
+        default:
+            return 'bg-gray-800 text-gray-300 border border-gray-600';
+    }
 }
 
 // Initialize forms - ENHANCED WITH SCAN TYPE LOGIC
@@ -907,6 +1159,8 @@ function initializeForms() {
                 updateAgentSelection(scanType);
             }
         });
+    } else {
+        console.warn('🔧 New scan form not found');
     }
 
     // Severity filter - FIXED
@@ -936,6 +1190,13 @@ const SCAN_TYPE_CONFIG = {
         readonly: true,
         agentInfo: 'Uses all 5 security agents automatically'
     },
+    'Enhanced Scan': {
+        agents: ['Recon Agent', 'Web App Agent', 'Network Agent', 'API Agent', 'Enhanced Security Agent', 'Threat Intelligence Agent', 'Report Agent'],
+        description: 'Advanced security assessment with ML-powered vulnerability detection and threat intelligence',
+        duration: '45-90 minutes',
+        readonly: true,
+        agentInfo: 'Uses all 7 security agents including enhanced ML and threat intelligence'
+    },
     'Custom Scan': {
         agents: [], // User selectable
         description: 'Choose specific agents for targeted testing',
@@ -948,33 +1209,106 @@ const SCAN_TYPE_CONFIG = {
 // Update agent selection based on scan type
 function updateAgentSelection(scanType) {
     const agentSelectionGroup = document.getElementById('ai-agents-group');
-    const agentSelection = document.querySelector('.agent-selection');
 
-    if (!agentSelection || !agentSelectionGroup) return;
+    if (!agentSelectionGroup) {
+        console.warn('🔧 ai-agents-group element not found');
+        return;
+    }
 
     const config = SCAN_TYPE_CONFIG[scanType];
-    if (!config) return;
+    if (!config) {
+        console.warn(`🔧 No config found for scan type: ${scanType}`);
+        return;
+    }
 
-    // Show/hide the entire AI Agents section based on scan type
+    console.log(`🔧 Updating agent selection for ${scanType}`);
+
     if (config.readonly) {
-        // For Quick and Full scans, hide the AI Agents section
-        agentSelectionGroup.style.display = 'none';
-        console.log(`🔧 ${scanType}: AI Agents section hidden (using predefined agents: ${config.agents.join(', ')})`);
-    } else {
-        // For Custom scan, show the AI Agents section
+        // For predefined scans, show the agents but make them readonly
         agentSelectionGroup.style.display = 'block';
-        console.log(`🔧 ${scanType}: AI Agents section shown (user can select agents)`);
-
-        // Enable all checkboxes for custom selection
-        const checkboxes = agentSelection.querySelectorAll('input[type="checkbox"]');
+        
+        // Update the agents display to show selected agents
+        const checkboxes = agentSelectionGroup.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            const label = checkbox.nextElementSibling;
+            const agentName = label ? label.textContent.trim() : '';
+            
+            // Map HTML agent names to config agent names
+            let isIncluded = false;
+            
+            if (agentName.includes('Recon Agent')) {
+                isIncluded = config.agents.includes('Recon Agent');
+            } else if (agentName.includes('Web App Agent')) {
+                isIncluded = config.agents.includes('Web App Agent');
+            } else if (agentName.includes('Network Agent')) {
+                isIncluded = config.agents.includes('Network Agent');
+            } else if (agentName.includes('API Agent')) {
+                isIncluded = config.agents.includes('API Agent');
+            } else if (agentName.includes('Report Agent')) {
+                isIncluded = config.agents.includes('Report Agent');
+            } else if (agentName.includes('Enhanced Security Agent')) {
+                isIncluded = config.agents.includes('Enhanced Security Agent');
+            } else if (agentName.includes('Threat Intelligence Agent')) {
+                isIncluded = config.agents.includes('Threat Intelligence Agent');
+            }
+            
+            checkbox.checked = isIncluded;
+            checkbox.disabled = true; // Make readonly
+            
+            // Visual styling for selected/unselected
+            const labelElement = checkbox.parentElement;
+            if (isIncluded) {
+                labelElement.style.opacity = '1';
+                labelElement.classList.add('bg-primary', 'bg-opacity-20', 'border', 'border-primary', 'border-opacity-50', 'rounded', 'px-2', 'py-1');
+            } else {
+                labelElement.style.opacity = '0.4';
+                labelElement.classList.remove('bg-primary', 'bg-opacity-20', 'border', 'border-primary', 'border-opacity-50', 'rounded', 'px-2', 'py-1');
+            }
+        });
+        
+        // Add info message
+        updateAgentInfo(config.agentInfo);
+        console.log(`🔧 ${scanType}: Using predefined agents: ${config.agents.join(', ')}`);
+    } else {
+        // For Custom scan, show the AI Agents section and enable selection
+        agentSelectionGroup.style.display = 'block';
+        
+        // Enable all checkboxes and reset styling
+        const checkboxes = agentSelectionGroup.querySelectorAll('input[type="checkbox"]');
         checkboxes.forEach(checkbox => {
             checkbox.disabled = false;
-            checkbox.parentElement.style.opacity = '1';
+            checkbox.checked = false; // Reset selection
+            const labelElement = checkbox.parentElement;
+            labelElement.style.opacity = '1';
+            labelElement.classList.remove('bg-primary', 'bg-opacity-20', 'border', 'border-primary', 'border-opacity-50', 'rounded', 'px-2', 'py-1');
         });
+        
+        updateAgentInfo(config.agentInfo);
+        console.log(`🔧 ${scanType}: User can select agents`);
     }
 
     // Update scan type description
     updateScanTypeDescription(scanType, config);
+}
+
+// Update agent info message
+function updateAgentInfo(message) {
+    let infoElement = document.getElementById('agent-info-message');
+    
+    if (!infoElement) {
+        // Create info element if it doesn't exist
+        const agentGroup = document.getElementById('ai-agents-group');
+        if (agentGroup) {
+            infoElement = document.createElement('div');
+            infoElement.id = 'agent-info-message';
+            infoElement.className = 'mt-3 p-3 bg-blue-900 bg-opacity-30 border border-blue-700 border-opacity-50 rounded-lg text-sm text-blue-300';
+            agentGroup.appendChild(infoElement);
+        }
+    }
+    
+    if (infoElement) {
+        infoElement.innerHTML = `<span class="font-medium">ℹ️ ${message}</span>`;
+    }
 }
 
 // Update scan type description
@@ -1003,28 +1337,55 @@ function getSelectedAgentsForScanType(scanType) {
     const config = SCAN_TYPE_CONFIG[scanType];
 
     if (config.readonly) {
-        // For Quick and Full scans, return predefined agents
+        // For Quick, Full, and Enhanced scans, return predefined agents
+        console.log(`🔧 ${scanType}: Using predefined agents:`, config.agents);
         return config.agents;
     } else {
-        // For Custom scan, return user-selected agents
-        const selectedAgents = Array.from(document.querySelectorAll('.agent-selection input[type="checkbox"]:checked'))
-            .map(cb => cb.nextSibling.textContent.trim());
+        // For Custom scan, return user-selected agents (map HTML names to backend names)
+        const selectedAgents = Array.from(document.querySelectorAll('#ai-agents-group input[type="checkbox"]:checked'))
+            .map(cb => {
+                const spanElement = cb.nextElementSibling;
+                if (!spanElement) {
+                    console.warn('🔧 No span element found for checkbox');
+                    return null;
+                }
+                
+                const agentText = spanElement.textContent.trim();
+                console.log(`🔧 Processing agent text: "${agentText}"`);
+                
+                // Map HTML agent names to backend names
+                if (agentText.includes('Recon Agent')) return 'Recon Agent';
+                if (agentText.includes('Web App Agent')) return 'Web App Agent';
+                if (agentText.includes('Network Agent')) return 'Network Agent';
+                if (agentText.includes('API Agent')) return 'API Agent';
+                if (agentText.includes('Report Agent')) return 'Report Agent';
+                if (agentText.includes('Enhanced Security Agent')) return 'Enhanced Security Agent';
+                if (agentText.includes('Threat Intelligence Agent')) return 'Threat Intelligence Agent';
+                
+                // Fallback: remove emoji and return cleaned name
+                const cleanName = agentText.replace(/^[🔍🌐🔒⚡📋🔬🛡️]\s*/, '');
+                console.warn(`🔧 Fallback agent mapping for: "${agentText}" -> "${cleanName}"`);
+                return cleanName;
+            })
+            .filter(agent => agent); // Remove null values
 
-        // Ensure at least one agent is selected
-        return selectedAgents.length > 0 ? selectedAgents : ['Web App Agent'];
+        console.log(`🔧 ${scanType}: Selected agents:`, selectedAgents);
+        
+        // Return selected agents (no fallback to Web App Agent since backend now requires at least one)
+        return selectedAgents;
     }
 }
 
 // Initialize modal - FIXED
 function initializeModal() {
     const modal = document.getElementById('vulnerability-modal');
-    const closeBtn = modal.querySelector('.modal-close');
-    
-    closeBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        modal.classList.add('hidden');
-    });
-    
+
+    if (!modal) {
+        console.warn('vulnerability-modal element not found');
+        return;
+    }
+
+    // Modal click outside to close
     modal.addEventListener('click', function(e) {
         if (e.target === modal) {
             modal.classList.add('hidden');
@@ -1044,51 +1405,57 @@ function showVulnerabilityDetails(vulnId) {
     modalTitle.textContent = vulnerability.title;
     
     modalBody.innerHTML = `
-        <div class="detail-section">
-            <h4>Severity & Score</h4>
-            <p><strong>Severity:</strong> <span class="severity-badge ${vulnerability.severity.toLowerCase()}">${vulnerability.severity}</span></p>
-            <p><strong>CVSS Score:</strong> ${vulnerability.cvss}</p>
-        </div>
-        
-        <div class="detail-section">
-            <h4>Vulnerability Details</h4>
-            <p><strong>URL:</strong> ${vulnerability.url}</p>
-            <p><strong>Parameter:</strong> ${vulnerability.parameter}</p>
-            <p><strong>Description:</strong> ${vulnerability.description}</p>
-        </div>
-        
-        <div class="detail-section">
-            <h4>Proof of Concept</h4>
-            <div class="code-block">${vulnerability.payload}</div>
-        </div>
-        
-        <div class="detail-section">
-            <h4>Remediation</h4>
-            <p>${vulnerability.remediation}</p>
-        </div>
-        
-        <div class="detail-section">
-            <h4>Discovery Information</h4>
-            <p><strong>Discovered by:</strong> ${vulnerability.discoveredBy}</p>
-            <p><strong>Timestamp:</strong> ${new Date(vulnerability.timestamp).toLocaleString()}</p>
+        <div class="space-y-6">
+            <div class="bg-gray-800 p-4 rounded-lg">
+                <h4 class="text-lg font-semibold text-white mb-3">Severity & Score</h4>
+                <div class="space-y-2">
+                    <p class="text-gray-300"><span class="font-medium text-gray-400">Severity:</span> <span class="px-2 py-1 rounded text-xs font-medium ${getSeverityClasses(vulnerability.severity)}">${vulnerability.severity}</span></p>
+                    <p class="text-gray-300"><span class="font-medium text-gray-400">CVSS Score:</span> ${vulnerability.cvss}</p>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 p-4 rounded-lg">
+                <h4 class="text-lg font-semibold text-white mb-3">Vulnerability Details</h4>
+                <div class="space-y-2">
+                    <p class="text-gray-300"><span class="font-medium text-gray-400">URL:</span> ${vulnerability.url}</p>
+                    <p class="text-gray-300"><span class="font-medium text-gray-400">Parameter:</span> ${vulnerability.parameter}</p>
+                    <p class="text-gray-300"><span class="font-medium text-gray-400">Description:</span> ${vulnerability.description}</p>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 p-4 rounded-lg">
+                <h4 class="text-lg font-semibold text-white mb-3">Proof of Concept</h4>
+                <div class="bg-gray-900 p-3 rounded border border-gray-600 font-mono text-sm text-green-400 overflow-x-auto">${vulnerability.payload}</div>
+            </div>
+
+            <div class="bg-gray-800 p-4 rounded-lg">
+                <h4 class="text-lg font-semibold text-white mb-3">Remediation</h4>
+                <p class="text-gray-300">${vulnerability.remediation}</p>
+            </div>
+
+            <div class="bg-gray-800 p-4 rounded-lg">
+                <h4 class="text-lg font-semibold text-white mb-3">Discovery Information</h4>
+                <div class="space-y-2">
+                    <p class="text-gray-300"><span class="font-medium text-gray-400">Discovered by:</span> ${vulnerability.discoveredBy}</p>
+                    <p class="text-gray-300"><span class="font-medium text-gray-400">Timestamp:</span> ${new Date(vulnerability.timestamp).toLocaleString()}</p>
+                </div>
+            </div>
         </div>
     `;
 
     modal.classList.remove('hidden');
 }
 
-// Show modal with custom content
+// Show modal with custom content - TAILWIND CSS
 function showModal(content) {
     // Create modal if it doesn't exist
     let modal = document.getElementById('custom-modal');
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'custom-modal';
-        modal.className = 'modal-overlay';
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
         modal.innerHTML = `
-            <div class="modal-container">
-                <div id="custom-modal-content"></div>
-            </div>
+            <div id="custom-modal-content" class="relative"></div>
         `;
         document.body.appendChild(modal);
 
@@ -1155,6 +1522,13 @@ async function startQuickScan(targetUrl) {
 // Start new scan - API INTEGRATED
 async function startNewScan(targetUrl, scanType, selectedAgents) {
     try {
+        console.log(`🚀 Starting new scan:`, {
+            targetUrl,
+            scanType,
+            selectedAgents,
+            agentCount: selectedAgents.length
+        });
+
         const notification = createNotification(`Creating ${scanType} for ${targetUrl}`, 'info');
         document.body.appendChild(notification);
 
@@ -1162,13 +1536,17 @@ async function startNewScan(targetUrl, scanType, selectedAgents) {
         const scanData = {
             target: targetUrl,
             scanType: scanType,
-            agents: selectedAgents.length > 0 ? selectedAgents : ['Web App Agent']
+            agents: selectedAgents // Send exactly what was selected, backend will validate
         };
+
+        console.log(`📡 Sending scan data to backend:`, scanData);
 
         const newScan = await apiRequest('/scans', {
             method: 'POST',
             body: JSON.stringify(scanData)
         });
+
+        console.log(`✅ Scan created successfully:`, newScan);
 
         // Add to local data and update UI
         appData.scans.unshift(newScan);
@@ -1181,8 +1559,8 @@ async function startNewScan(targetUrl, scanType, selectedAgents) {
         await startRealScan(newScan.id);
 
     } catch (error) {
-        console.error('Failed to start new scan:', error);
-        showErrorNotification('Failed to start scan. Please try again.');
+        console.error('❌ Failed to start new scan:', error);
+        showErrorNotification(`Failed to start scan: ${error.message}`);
     }
 }
 
@@ -1196,58 +1574,58 @@ async function viewScanDetails(scanId) {
         const allVulns = await apiRequest('/vulnerabilities');
         const scanVulns = allVulns.filter(v => v.scanId === scanId);
 
-        // Create modal content
+        // Create modal content with Tailwind CSS
         const modalContent = `
-            <div class="scan-details-modal">
-                <div class="scan-details-header">
-                    <h2>Scan Details: ${scan.target}</h2>
-                    <button class="modal-close" onclick="closeModal()">&times;</button>
+            <div class="bg-dark-lighter rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center p-6 border-b border-gray-700">
+                    <h2 class="text-xl font-bold text-white">Scan Details: ${scan.target}</h2>
+                    <button class="text-gray-400 hover:text-white text-2xl" onclick="closeModal()">&times;</button>
                 </div>
-                <div class="scan-details-content">
-                    <div class="scan-info-grid">
-                        <div class="scan-info-item">
-                            <label>Target:</label>
-                            <span>${scan.target}</span>
+                <div class="p-6 space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="bg-gray-800 p-4 rounded-lg">
+                            <label class="block text-sm font-medium text-gray-400 mb-1">Target</label>
+                            <span class="text-white">${scan.target}</span>
                         </div>
-                        <div class="scan-info-item">
-                            <label>Status:</label>
-                            <span class="status status--${scan.status}">${scan.status}</span>
+                        <div class="bg-gray-800 p-4 rounded-lg">
+                            <label class="block text-sm font-medium text-gray-400 mb-1">Status</label>
+                            <span class="px-2 py-1 rounded text-xs font-medium ${scan.status === 'completed' ? 'bg-green-900 text-green-300' : 'bg-blue-900 text-blue-300'}">${scan.status}</span>
                         </div>
-                        <div class="scan-info-item">
-                            <label>Progress:</label>
-                            <span>${scan.progress}%</span>
+                        <div class="bg-gray-800 p-4 rounded-lg">
+                            <label class="block text-sm font-medium text-gray-400 mb-1">Progress</label>
+                            <span class="text-white">${scan.progress}%</span>
                         </div>
-                        <div class="scan-info-item">
-                            <label>Started:</label>
-                            <span>${new Date(scan.started).toLocaleString()}</span>
+                        <div class="bg-gray-800 p-4 rounded-lg">
+                            <label class="block text-sm font-medium text-gray-400 mb-1">Started</label>
+                            <span class="text-white">${new Date(scan.started).toLocaleString()}</span>
                         </div>
-                        <div class="scan-info-item">
-                            <label>Scan Type:</label>
-                            <span>${scan.scanType}</span>
+                        <div class="bg-gray-800 p-4 rounded-lg">
+                            <label class="block text-sm font-medium text-gray-400 mb-1">Scan Type</label>
+                            <span class="text-white">${scan.scanType}</span>
                         </div>
-                        <div class="scan-info-item">
-                            <label>Agents:</label>
-                            <span>${scan.agents.join(', ')}</span>
+                        <div class="bg-gray-800 p-4 rounded-lg">
+                            <label class="block text-sm font-medium text-gray-400 mb-1">Agents</label>
+                            <span class="text-white">${scan.agents.join(', ')}</span>
                         </div>
                     </div>
 
-                    <div class="vulnerabilities-section">
-                        <h3>Vulnerabilities Found (${scanVulns.length})</h3>
-                        <div class="vulnerabilities-list">
+                    <div class="border-t border-gray-700 pt-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Vulnerabilities Found (${scanVulns.length})</h3>
+                        <div class="space-y-4">
                             ${scanVulns.length > 0 ? scanVulns.map(vuln => `
-                                <div class="vulnerability-item">
-                                    <div class="vuln-header">
-                                        <span class="vuln-title">${vuln.title}</span>
-                                        <span class="vuln-severity ${vuln.severity.toLowerCase()}">${vuln.severity}</span>
+                                <div class="bg-gray-800 border border-gray-600 rounded-lg p-4">
+                                    <div class="flex justify-between items-start mb-3">
+                                        <h4 class="font-medium text-white">${vuln.title}</h4>
+                                        <span class="px-2 py-1 rounded text-xs font-medium ${getSeverityClasses(vuln.severity)}">${vuln.severity}</span>
                                     </div>
-                                    <div class="vuln-details">
-                                        <p><strong>Description:</strong> ${vuln.description}</p>
-                                        <p><strong>URL:</strong> ${vuln.url}</p>
-                                        <p><strong>Discovered by:</strong> ${vuln.discoveredBy}</p>
-                                        ${vuln.cvss ? `<p><strong>CVSS Score:</strong> ${vuln.cvss}</p>` : ''}
+                                    <div class="space-y-2 text-sm">
+                                        <p class="text-gray-300"><span class="font-medium text-gray-400">Description:</span> ${vuln.description}</p>
+                                        <p class="text-gray-300"><span class="font-medium text-gray-400">URL:</span> ${vuln.url}</p>
+                                        <p class="text-gray-300"><span class="font-medium text-gray-400">Discovered by:</span> ${vuln.discoveredBy}</p>
+                                        ${vuln.cvss ? `<p class="text-gray-300"><span class="font-medium text-gray-400">CVSS Score:</span> ${vuln.cvss}</p>` : ''}
                                     </div>
                                 </div>
-                            `).join('') : '<p>No vulnerabilities found yet.</p>'}
+                            `).join('') : '<p class="text-gray-400 text-center py-8">No vulnerabilities found yet.</p>'}
                         </div>
                     </div>
                 </div>
@@ -1412,13 +1790,666 @@ function createNotification(message, type = 'info') {
     return notification;
 }
 
-// Download report - FIXED
-function downloadReport(reportId) {
-    const report = appData.reports.find(r => r.id === reportId);
-    if (report) {
-        const notification = createNotification('Downloading ' + report.title, 'success');
+// Download/View report - ENHANCED
+async function downloadReport(reportId) {
+    try {
+        console.log(`📄 Opening report: ${reportId}`);
+
+        // Fetch the full report data from API
+        const reportData = await apiRequest(`/reports/${reportId}`);
+
+        if (reportData.format === 'HTML' && reportData.content) {
+            // Display HTML report in a modal
+            showReportModal(reportData);
+        } else if (reportData.format === 'PDF') {
+            // For PDF, create download link
+            downloadReportFile(reportData);
+        } else if (reportData.format === 'JSON') {
+            // For JSON, display formatted data
+            showJsonReport(reportData);
+        } else {
+            // Fallback: show report summary
+            showReportSummary(reportData);
+        }
+
+        const notification = createNotification(`Opened ${reportData.title}`, 'success');
+        document.body.appendChild(notification);
+
+    } catch (error) {
+        console.error('Failed to open report:', error);
+        const notification = createNotification('Failed to open report', 'error');
         document.body.appendChild(notification);
     }
+}
+
+// Show HTML report in modal
+function showReportModal(reportData) {
+    const modalContent = `
+        <div class="bg-dark-lighter rounded-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center p-6 border-b border-gray-700">
+                <h2 class="text-xl font-bold text-white">${reportData.title}</h2>
+                <div class="flex gap-2">
+                    <button class="px-3 py-1 bg-primary text-white rounded text-sm hover:bg-primary-dark" onclick="downloadTextReport('${reportData.id}')">
+                        📄 Download TXT
+                    </button>
+                    <button class="text-gray-400 hover:text-white text-2xl" onclick="closeModal()">&times;</button>
+                </div>
+            </div>
+            <div class="p-6">
+                ${generateReportContent(reportData)}
+            </div>
+        </div>
+    `;
+    showModal(modalContent);
+}
+
+// Generate report content if not available
+function generateReportContent(reportData) {
+    const vulnerabilities = reportData.vulnerabilities || [];
+    const scan = reportData.scan || {};
+
+    // Calculate severity counts
+    const criticalCount = vulnerabilities.filter(v => v.severity === 'Critical').length;
+    const highCount = vulnerabilities.filter(v => v.severity === 'High').length;
+    const mediumCount = vulnerabilities.filter(v => v.severity === 'Medium').length;
+    const lowCount = vulnerabilities.filter(v => v.severity === 'Low').length;
+
+    // Get unique agents used
+    const agentsUsed = [...new Set(vulnerabilities.map(v => v.discoveredBy))].filter(Boolean);
+    const primaryAgent = agentsUsed[0] || 'AI Bug Bounty Scanner';
+
+    // Format scan date
+    const scanDate = scan.started ? new Date(scan.started).toLocaleDateString() : new Date().toLocaleDateString();
+    const reportDate = new Date().toLocaleDateString();
+
+    return `
+        <div class="space-y-8 text-white">
+            <!-- Report Header -->
+            <div class="bg-gradient-to-r from-primary to-blue-600 p-6 rounded-xl text-white">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">🛡️</span>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold">Vulnerability Report</h1>
+                        <p class="text-blue-100">Security Assessment Results</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary Section -->
+            <div class="bg-gray-800 border border-gray-700 rounded-xl p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <span class="text-2xl">📊</span>
+                    <h2 class="text-xl font-bold text-white">Executive Summary</h2>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="space-y-3">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Target:</span>
+                            <span class="font-medium text-primary">${scan.target || 'Unknown Target'}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Scan Date:</span>
+                            <span class="font-medium">${scanDate}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Generated By:</span>
+                            <span class="font-medium">${primaryAgent}</span>
+                        </div>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Total Vulnerabilities:</span>
+                            <span class="font-bold text-2xl text-primary">${vulnerabilities.length}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Report Generated:</span>
+                            <span class="font-medium">${reportDate}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Severity Breakdown -->
+                <div class="bg-gray-900 p-4 rounded-lg">
+                    <h3 class="text-lg font-semibold mb-4 text-white">Severity Breakdown</h3>
+                    <div class="grid grid-cols-4 gap-4">
+                        <div class="text-center p-3 bg-red-900 bg-opacity-50 rounded-lg border border-red-700">
+                            <div class="text-2xl font-bold text-red-400">${criticalCount}</div>
+                            <div class="text-xs text-red-300">Critical</div>
+                        </div>
+                        <div class="text-center p-3 bg-orange-900 bg-opacity-50 rounded-lg border border-orange-700">
+                            <div class="text-2xl font-bold text-orange-400">${highCount}</div>
+                            <div class="text-xs text-orange-300">High</div>
+                        </div>
+                        <div class="text-center p-3 bg-yellow-900 bg-opacity-50 rounded-lg border border-yellow-700">
+                            <div class="text-2xl font-bold text-yellow-400">${mediumCount}</div>
+                            <div class="text-xs text-yellow-300">Medium</div>
+                        </div>
+                        <div class="text-center p-3 bg-blue-900 bg-opacity-50 rounded-lg border border-blue-700">
+                            <div class="text-2xl font-bold text-blue-400">${lowCount}</div>
+                            <div class="text-xs text-blue-300">Low</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vulnerability Details -->
+            <div class="bg-gray-800 border border-gray-700 rounded-xl p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <span class="text-2xl">🔍</span>
+                    <h2 class="text-xl font-bold text-white">Vulnerability Details</h2>
+                </div>
+
+                ${vulnerabilities.length > 0 ? `
+                    <div class="space-y-6">
+                        ${vulnerabilities.map((vuln, index) => `
+                            <div class="bg-gray-900 border border-gray-600 rounded-lg p-6">
+                                <!-- Vulnerability Header -->
+                                <div class="flex justify-between items-start mb-4">
+                                    <div class="flex items-center gap-3">
+                                        <span class="bg-primary text-white px-3 py-1 rounded-full text-sm font-bold">${index + 1}</span>
+                                        <h3 class="text-lg font-semibold text-white">${vuln.title}</h3>
+                                    </div>
+                                    <span class="px-3 py-1 rounded-full text-sm font-medium ${getSeverityClasses(vuln.severity)}">${vuln.severity}</span>
+                                </div>
+
+                                <!-- Vulnerability Info Grid -->
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                    <div class="space-y-2">
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">CVSS Score:</span>
+                                            <span class="font-medium">${vuln.cvss || 'N/A'}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Parameter:</span>
+                                            <span class="font-medium text-primary">${vuln.parameter || 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Discovered By:</span>
+                                            <span class="font-medium">${vuln.discoveredBy}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Discovery Time:</span>
+                                            <span class="font-medium">${vuln.timestamp ? new Date(vuln.timestamp).toLocaleString() : 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Affected URL -->
+                                <div class="mb-4">
+                                    <span class="text-gray-400">Affected URL:</span>
+                                    <div class="bg-gray-800 p-2 rounded mt-1 font-mono text-sm text-blue-400 break-all">${vuln.url}</div>
+                                </div>
+
+                                <!-- Description -->
+                                <div class="mb-4">
+                                    <h4 class="font-semibold text-white mb-2">📝 Description</h4>
+                                    <p class="text-gray-300 leading-relaxed">${vuln.description}</p>
+                                </div>
+
+                                <!-- Evidence -->
+                                <div class="mb-4">
+                                    <h4 class="font-semibold text-white mb-2">🔬 Evidence / Proof of Concept</h4>
+                                    <div class="bg-gray-800 p-3 rounded border-l-4 border-yellow-500">
+                                        <code class="text-yellow-300 text-sm">${vuln.evidence || vuln.payload || 'No specific evidence provided. Manual verification recommended.'}</code>
+                                    </div>
+                                </div>
+
+                                <!-- Impact -->
+                                <div class="mb-4">
+                                    <h4 class="font-semibold text-white mb-2">⚠️ Impact</h4>
+                                    <div class="bg-red-900 bg-opacity-30 border border-red-700 p-3 rounded">
+                                        <p class="text-red-200 leading-relaxed">${getVulnerabilityImpact(vuln.severity, vuln.title)}</p>
+                                    </div>
+                                </div>
+
+                                <!-- Remediation -->
+                                <div class="mb-4">
+                                    <h4 class="font-semibold text-white mb-2">🛠️ Remediation</h4>
+                                    <div class="bg-green-900 bg-opacity-30 border border-green-700 p-3 rounded">
+                                        <p class="text-green-200 leading-relaxed">${vuln.remediation || getDefaultRemediation(vuln.title, vuln.severity)}</p>
+                                    </div>
+                                </div>
+
+                                <!-- References -->
+                                <div>
+                                    <h4 class="font-semibold text-white mb-2">📚 References</h4>
+                                    <div class="bg-blue-900 bg-opacity-30 border border-blue-700 p-3 rounded">
+                                        <pre class="text-blue-200 text-sm whitespace-pre-wrap">${getVulnerabilityReferences(vuln.title)}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : `
+                    <div class="text-center py-12">
+                        <div class="text-6xl mb-4">✅</div>
+                        <h3 class="text-xl font-semibold text-green-400 mb-2">No Vulnerabilities Found</h3>
+                        <p class="text-gray-400">This scan did not identify any security vulnerabilities.</p>
+                    </div>
+                `}
+            </div>
+
+            <!-- General Recommendations -->
+            <div class="bg-gray-800 border border-gray-700 rounded-xl p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <span class="text-2xl">💡</span>
+                    <h2 class="text-xl font-bold text-white">General Recommendations</h2>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="space-y-3">
+                        <div class="flex items-start gap-3">
+                            <span class="text-green-400 mt-1">✓</span>
+                            <span class="text-gray-300">Use secure coding best practices</span>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <span class="text-green-400 mt-1">✓</span>
+                            <span class="text-gray-300">Implement proper input validation and output encoding</span>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <span class="text-green-400 mt-1">✓</span>
+                            <span class="text-gray-300">Enforce security headers (CSP, HSTS, etc.)</span>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <span class="text-green-400 mt-1">✓</span>
+                            <span class="text-gray-300">Conduct regular security audits</span>
+                        </div>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex items-start gap-3">
+                            <span class="text-green-400 mt-1">✓</span>
+                            <span class="text-gray-300">Keep systems and dependencies updated</span>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <span class="text-green-400 mt-1">✓</span>
+                            <span class="text-gray-300">Implement Web Application Firewall (WAF)</span>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <span class="text-green-400 mt-1">✓</span>
+                            <span class="text-gray-300">Use HTTPS for all communications</span>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <span class="text-green-400 mt-1">✓</span>
+                            <span class="text-gray-300">Regular security training for teams</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Appendix -->
+            <div class="bg-gray-800 border border-gray-700 rounded-xl p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <span class="text-2xl">📋</span>
+                    <h2 class="text-xl font-bold text-white">Appendix</h2>
+                </div>
+
+                <div class="space-y-3">
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">Scan Configuration:</span>
+                        <span class="font-medium">${scan.scanType || 'Unknown'} scan performed on ${scanDate}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">Tools Used:</span>
+                        <span class="font-medium">${agentsUsed.join(', ') || 'AI Bug Bounty Scanner'}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">Contact Information:</span>
+                        <span class="font-medium">Security Team</span>
+                    </div>
+                </div>
+
+                <div class="mt-6 pt-4 border-t border-gray-700 text-center">
+                    <p class="text-gray-400 text-sm italic">
+                        This report was automatically generated by the AI Bug Bounty Scanner.<br>
+                        Please review all findings and perform manual verification where necessary.
+                    </p>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Helper function to generate vulnerability impact based on severity and type
+function getVulnerabilityImpact(severity, title) {
+    const titleLower = title.toLowerCase();
+
+    if (titleLower.includes('sql injection')) {
+        return 'SQL injection vulnerabilities can allow attackers to manipulate database queries, potentially leading to unauthorized data access, data modification, or complete database compromise. In severe cases, attackers may gain administrative access to the database server.';
+    } else if (titleLower.includes('xss') || titleLower.includes('cross-site scripting')) {
+        return 'Cross-Site Scripting (XSS) vulnerabilities can allow attackers to inject malicious scripts into web pages viewed by other users. This can lead to session hijacking, credential theft, defacement, or redirection to malicious sites.';
+    } else if (titleLower.includes('csrf') || titleLower.includes('cross-site request forgery')) {
+        return 'CSRF vulnerabilities can allow attackers to trick authenticated users into performing unintended actions on the web application, potentially leading to unauthorized transactions, data modification, or account compromise.';
+    } else if (titleLower.includes('authentication') || titleLower.includes('authorization')) {
+        return 'Authentication and authorization flaws can allow attackers to bypass security controls, gain unauthorized access to restricted areas, or escalate privileges within the application.';
+    } else if (titleLower.includes('file upload') || titleLower.includes('upload')) {
+        return 'File upload vulnerabilities can allow attackers to upload malicious files to the server, potentially leading to remote code execution, server compromise, or serving malware to other users.';
+    } else if (titleLower.includes('directory traversal') || titleLower.includes('path traversal')) {
+        return 'Directory traversal vulnerabilities can allow attackers to access files and directories outside the intended scope, potentially exposing sensitive configuration files, source code, or system files.';
+    } else {
+        // Generic impact based on severity
+        switch (severity) {
+            case 'Critical':
+                return 'This critical vulnerability poses an immediate and severe risk to the application and its users. Exploitation could result in complete system compromise, massive data breach, or significant business disruption.';
+            case 'High':
+                return 'This high-severity vulnerability poses a significant risk and should be addressed promptly. Exploitation could lead to unauthorized access, data theft, or substantial impact on application functionality.';
+            case 'Medium':
+                return 'This medium-severity vulnerability represents a moderate risk that should be addressed in a timely manner. While not immediately critical, it could be exploited in combination with other vulnerabilities.';
+            case 'Low':
+                return 'This low-severity vulnerability represents a minor risk but should still be addressed to maintain overall security posture. It may provide limited information to attackers or have minimal direct impact.';
+            default:
+                return 'The impact of this vulnerability should be assessed based on the specific context of your application and environment.';
+        }
+    }
+}
+
+// Helper function to generate default remediation advice
+function getDefaultRemediation(title, severity) {
+    const titleLower = title.toLowerCase();
+
+    if (titleLower.includes('sql injection')) {
+        return 'Use parameterized queries or prepared statements for all database interactions. Implement proper input validation and sanitization. Use stored procedures where appropriate. Apply the principle of least privilege for database accounts.';
+    } else if (titleLower.includes('xss') || titleLower.includes('cross-site scripting')) {
+        return 'Implement proper output encoding/escaping for all user-controlled data. Use Content Security Policy (CSP) headers. Validate and sanitize all input data. Consider using auto-escaping template engines.';
+    } else if (titleLower.includes('csrf') || titleLower.includes('cross-site request forgery')) {
+        return 'Implement anti-CSRF tokens for all state-changing operations. Use SameSite cookie attributes. Verify the Origin and Referer headers. Implement proper session management.';
+    } else if (titleLower.includes('authentication')) {
+        return 'Implement strong authentication mechanisms. Use multi-factor authentication where possible. Ensure proper session management. Implement account lockout policies and rate limiting.';
+    } else if (titleLower.includes('authorization')) {
+        return 'Implement proper access controls and authorization checks. Use role-based access control (RBAC). Apply the principle of least privilege. Regularly review and audit user permissions.';
+    } else if (titleLower.includes('file upload')) {
+        return 'Implement strict file type validation. Use file content scanning. Store uploaded files outside the web root. Implement file size limits. Use virus scanning for uploaded files.';
+    } else if (titleLower.includes('directory traversal') || titleLower.includes('path traversal')) {
+        return 'Implement proper input validation for file paths. Use whitelist-based validation. Avoid user-controlled file path construction. Use secure file access APIs that prevent directory traversal.';
+    } else {
+        return 'Review the specific vulnerability details and implement appropriate security controls. Follow secure coding best practices and conduct regular security testing.';
+    }
+}
+
+// Helper function to generate relevant references
+function getVulnerabilityReferences(title) {
+    const titleLower = title.toLowerCase();
+
+    if (titleLower.includes('sql injection')) {
+        return '- OWASP SQL Injection: https://owasp.org/www-community/attacks/SQL_Injection\n- CWE-89: https://cwe.mitre.org/data/definitions/89.html\n- OWASP SQL Injection Prevention: https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html';
+    } else if (titleLower.includes('xss') || titleLower.includes('cross-site scripting')) {
+        return '- OWASP XSS: https://owasp.org/www-community/attacks/xss/\n- CWE-79: https://cwe.mitre.org/data/definitions/79.html\n- OWASP XSS Prevention: https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html';
+    } else if (titleLower.includes('csrf') || titleLower.includes('cross-site request forgery')) {
+        return '- OWASP CSRF: https://owasp.org/www-community/attacks/csrf\n- CWE-352: https://cwe.mitre.org/data/definitions/352.html\n- OWASP CSRF Prevention: https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html';
+    } else if (titleLower.includes('authentication')) {
+        return '- OWASP Authentication: https://owasp.org/www-project-top-ten/2017/A2_2017-Broken_Authentication\n- OWASP Authentication Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html';
+    } else if (titleLower.includes('authorization')) {
+        return '- OWASP Access Control: https://owasp.org/www-project-top-ten/2017/A5_2017-Broken_Access_Control\n- OWASP Authorization Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html';
+    } else if (titleLower.includes('file upload')) {
+        return '- OWASP File Upload: https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload\n- OWASP File Upload Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html';
+    } else if (titleLower.includes('directory traversal') || titleLower.includes('path traversal')) {
+        return '- OWASP Path Traversal: https://owasp.org/www-community/attacks/Path_Traversal\n- CWE-22: https://cwe.mitre.org/data/definitions/22.html';
+    } else {
+        return '- OWASP Top 10: https://owasp.org/www-project-top-ten/\n- CWE/SANS Top 25: https://cwe.mitre.org/top25/archive/2023/2023_top25_list.html\n- OWASP Cheat Sheet Series: https://cheatsheetseries.owasp.org/';
+    }
+}
+
+// Download text report
+async function downloadTextReport(reportId) {
+    try {
+        const reportData = await apiRequest(`/reports/${reportId}`);
+        const textContent = generateTextReport(reportData);
+
+        const blob = new Blob([textContent], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${reportData.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_report.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        const notification = createNotification('Text report downloaded', 'success');
+        document.body.appendChild(notification);
+    } catch (error) {
+        console.error('Failed to download text report:', error);
+        const notification = createNotification('Failed to download report', 'error');
+        document.body.appendChild(notification);
+    }
+}
+
+// Generate pure markdown content (without HTML wrapper)
+function generateMarkdownReport(reportData) {
+    const vulnerabilities = reportData.vulnerabilities || [];
+    const scan = reportData.scan || {};
+
+    // Calculate severity counts
+    const criticalCount = vulnerabilities.filter(v => v.severity === 'Critical').length;
+    const highCount = vulnerabilities.filter(v => v.severity === 'High').length;
+    const mediumCount = vulnerabilities.filter(v => v.severity === 'Medium').length;
+    const lowCount = vulnerabilities.filter(v => v.severity === 'Low').length;
+
+    // Get unique agents used
+    const agentsUsed = [...new Set(vulnerabilities.map(v => v.discoveredBy))].filter(Boolean);
+    const primaryAgent = agentsUsed[0] || 'AI Bug Bounty Scanner';
+
+    // Format scan date
+    const scanDate = scan.started ? new Date(scan.started).toLocaleDateString() : new Date().toLocaleDateString();
+    const reportDate = new Date().toLocaleDateString();
+
+    return `# Vulnerability Report
+
+## 1. Summary
+
+- **Target:** ${scan.target || 'Unknown Target'}
+- **Scan Date:** ${scanDate}
+- **Report Generated By:** ${primaryAgent}
+- **Total Vulnerabilities Found:** ${vulnerabilities.length}
+- **Severity Breakdown:** Critical: ${criticalCount}, High: ${highCount}, Medium: ${mediumCount}, Low: ${lowCount}
+
+## 2. Vulnerability Details
+
+${vulnerabilities.length > 0 ? vulnerabilities.map((vuln, index) => `
+### [${index + 1}] ${vuln.title}
+
+- **Severity:** ${vuln.severity}
+- **CVSS Score:** ${vuln.cvss || 'N/A'}
+- **Affected URL:** ${vuln.url}
+- **Parameter/Affected Element:** ${vuln.parameter || 'N/A'}
+- **Discovered By:** ${vuln.discoveredBy}
+- **Discovery Time:** ${vuln.timestamp ? new Date(vuln.timestamp).toLocaleString() : 'N/A'}
+
+**Description:**
+${vuln.description}
+
+**Evidence / Proof of Concept:**
+${vuln.evidence || vuln.payload || 'No specific evidence provided. Manual verification recommended.'}
+
+**Impact:**
+${getVulnerabilityImpact(vuln.severity, vuln.title)}
+
+**Remediation:**
+${vuln.remediation || getDefaultRemediation(vuln.title, vuln.severity)}
+
+**References:**
+${getVulnerabilityReferences(vuln.title)}
+
+---`).join('\n') : 'No vulnerabilities were found during this scan.'}
+
+## 3. General Recommendations
+
+- Use secure coding best practices
+- Implement proper input validation and output encoding
+- Enforce security headers like Content-Security-Policy, Strict-Transport-Security, etc.
+- Conduct regular security audits and penetration tests
+- Keep systems and dependencies up to date
+- Implement Web Application Firewall (WAF) protection
+- Use HTTPS for all communications
+- Regular security training for development teams
+
+---
+
+## 4. Appendix
+
+- **Scan Configuration:** ${scan.scanType || 'Unknown'} scan performed on ${scanDate}
+- **Tools Used:** ${agentsUsed.join(', ') || 'AI Bug Bounty Scanner'}
+- **Contact Information:** For further questions or clarifications, reach out to your security team
+- **Report Generated:** ${reportDate}
+
+---
+
+*This report was automatically generated by the AI Bug Bounty Scanner. Please review all findings and perform manual verification where necessary.*`;
+}
+
+// Generate text report (plain text format)
+function generateTextReport(reportData) {
+    const vulnerabilities = reportData.vulnerabilities || [];
+    const scan = reportData.scan || {};
+
+    // Calculate severity counts
+    const criticalCount = vulnerabilities.filter(v => v.severity === 'Critical').length;
+    const highCount = vulnerabilities.filter(v => v.severity === 'High').length;
+    const mediumCount = vulnerabilities.filter(v => v.severity === 'Medium').length;
+    const lowCount = vulnerabilities.filter(v => v.severity === 'Low').length;
+
+    // Get unique agents used
+    const agentsUsed = [...new Set(vulnerabilities.map(v => v.discoveredBy))].filter(Boolean);
+    const primaryAgent = agentsUsed[0] || 'AI Bug Bounty Scanner';
+
+    // Format scan date
+    const scanDate = scan.started ? new Date(scan.started).toLocaleDateString() : new Date().toLocaleDateString();
+    const reportDate = new Date().toLocaleDateString();
+
+    return `VULNERABILITY REPORT
+${'='.repeat(50)}
+
+1. SUMMARY
+${'='.repeat(10)}
+
+Target: ${scan.target || 'Unknown Target'}
+Scan Date: ${scanDate}
+Report Generated By: ${primaryAgent}
+Total Vulnerabilities Found: ${vulnerabilities.length}
+Severity Breakdown: Critical: ${criticalCount}, High: ${highCount}, Medium: ${mediumCount}, Low: ${lowCount}
+
+2. VULNERABILITY DETAILS
+${'='.repeat(25)}
+
+${vulnerabilities.length > 0 ? vulnerabilities.map((vuln, index) => `
+[${index + 1}] ${vuln.title}
+${'-'.repeat(vuln.title.length + 4)}
+
+Severity: ${vuln.severity}
+CVSS Score: ${vuln.cvss || 'N/A'}
+Affected URL: ${vuln.url}
+Parameter/Affected Element: ${vuln.parameter || 'N/A'}
+Discovered By: ${vuln.discoveredBy}
+Discovery Time: ${vuln.timestamp ? new Date(vuln.timestamp).toLocaleString() : 'N/A'}
+
+Description:
+${vuln.description}
+
+Evidence / Proof of Concept:
+${vuln.evidence || vuln.payload || 'No specific evidence provided. Manual verification recommended.'}
+
+Impact:
+${getVulnerabilityImpact(vuln.severity, vuln.title)}
+
+Remediation:
+${vuln.remediation || getDefaultRemediation(vuln.title, vuln.severity)}
+
+References:
+${getVulnerabilityReferences(vuln.title)}
+
+${'='.repeat(80)}`).join('\n') : 'No vulnerabilities were found during this scan.'}
+
+3. GENERAL RECOMMENDATIONS
+${'='.repeat(27)}
+
+- Use secure coding best practices
+- Implement proper input validation and output encoding
+- Enforce security headers like Content-Security-Policy, Strict-Transport-Security, etc.
+- Conduct regular security audits and penetration tests
+- Keep systems and dependencies up to date
+- Implement Web Application Firewall (WAF) protection
+- Use HTTPS for all communications
+- Regular security training for development teams
+
+${'='.repeat(80)}
+
+4. APPENDIX
+${'='.repeat(11)}
+
+Scan Configuration: ${scan.scanType || 'Unknown'} scan performed on ${scanDate}
+Tools Used: ${agentsUsed.join(', ') || 'AI Bug Bounty Scanner'}
+Contact Information: For further questions or clarifications, reach out to your security team
+Report Generated: ${reportDate}
+
+${'='.repeat(80)}
+
+This report was automatically generated by the AI Bug Bounty Scanner.
+Please review all findings and perform manual verification where necessary.`;
+}
+
+// Show JSON report
+function showJsonReport(reportData) {
+    const modalContent = `
+        <div class="bg-dark-lighter rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center p-6 border-b border-gray-700">
+                <h2 class="text-xl font-bold text-white">${reportData.title} (JSON)</h2>
+                <button class="text-gray-400 hover:text-white text-2xl" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="p-6">
+                <pre class="bg-gray-900 p-4 rounded-lg text-green-400 text-sm overflow-x-auto"><code>${JSON.stringify(reportData, null, 2)}</code></pre>
+            </div>
+        </div>
+    `;
+    showModal(modalContent);
+}
+
+// Download report file (for PDF)
+function downloadReportFile(reportData) {
+    if (reportData.content) {
+        const blob = new Blob([reportData.content], { type: 'application/pdf' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${reportData.title}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    } else {
+        showReportSummary(reportData);
+    }
+}
+
+// Show report summary (fallback)
+function showReportSummary(reportData) {
+    const modalContent = `
+        <div class="bg-dark-lighter rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center p-6 border-b border-gray-700">
+                <h2 class="text-xl font-bold text-white">Report Summary</h2>
+                <button class="text-gray-400 hover:text-white text-2xl" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="p-6 space-y-4 text-white">
+                <div class="bg-gray-800 p-4 rounded-lg">
+                    <h3 class="font-semibold mb-2">${reportData.title}</h3>
+                    <div class="space-y-2 text-sm">
+                        <p><span class="text-gray-400">Generated:</span> ${new Date(reportData.generated).toLocaleString()}</p>
+                        <p><span class="text-gray-400">Format:</span> ${reportData.format}</p>
+                        <p><span class="text-gray-400">Target:</span> ${reportData.target}</p>
+                        <p><span class="text-gray-400">Vulnerabilities:</span> ${reportData.vulnerabilities}</p>
+                        <p><span class="text-gray-400">Severity:</span> <span class="px-2 py-1 rounded text-xs ${getSeverityClasses(reportData.severity)}">${reportData.severity}</span></p>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <p class="text-gray-400">Report content not available for preview.</p>
+                </div>
+            </div>
+        </div>
+    `;
+    showModal(modalContent);
 }
 
 // Real-time updates with API polling
@@ -1467,19 +2498,39 @@ function getSeverityColor(severity) {
 }
 
 // Scan Progress Modal Functions
+let currentScanId = null;
+let scanStartTime = null;
+let scanTimer = null;
+let isModalMinimized = false;
+
 function showScanProgressModal(scan) {
     const modal = document.getElementById('scan-progress-modal');
     const targetDisplay = document.getElementById('scan-target-display');
     const scanTypeDisplay = document.getElementById('scan-type-display');
     const scanAgentsDisplay = document.getElementById('scan-agents-display');
+    const minimizedIndicator = document.getElementById('minimized-scan-indicator');
+
+    // Store current scan info
+    currentScanId = scan.id;
+    scanStartTime = new Date();
+    isModalMinimized = false;
 
     // Set initial values
     targetDisplay.textContent = scan.target;
     scanTypeDisplay.textContent = scan.scanType;
     scanAgentsDisplay.textContent = scan.agents.join(', ');
 
+    // Hide minimized indicator
+    minimizedIndicator.classList.add('hidden');
+
     // Show modal
     modal.classList.remove('hidden');
+
+    // Start timer
+    startScanTimer();
+
+    // Initialize modal controls
+    initializeScanModalControls();
 
     // Update with current scan data
     updateScanProgressModal(scan);
@@ -1489,37 +2540,219 @@ function updateScanProgressModal(scan) {
     const progressFill = document.getElementById('progress-fill');
     const progressPercentage = document.getElementById('progress-percentage');
     const currentTest = document.getElementById('current-test');
+    const minimizedProgress = document.getElementById('minimized-progress');
 
-    // Update progress bar
-    const progress = scan.progress || 0;
+    // Update progress bar with proper percentage
+    // Force 100% if scan is completed, even if progress value is not exactly 100
+    let progress = scan.progress || 0;
+    if (scan.status === 'completed') {
+        progress = 100;
+    } else if (scan.status === 'failed') {
+        progress = 0;
+    }
+    
+    progress = Math.min(Math.max(progress, 0), 100);
+    
+    // Smooth progress bar animation
     progressFill.style.width = `${progress}%`;
     progressPercentage.textContent = `${progress}%`;
+    
+    // Update minimized indicator if visible
+    if (minimizedProgress) {
+        minimizedProgress.textContent = `${progress}%`;
+    }
 
-    // Update current test
+    // Update current test with proper formatting
     if (scan.current_test) {
-        currentTest.textContent = scan.current_test;
+        const showSpinner = scan.status === 'running' && progress < 100;
+        currentTest.innerHTML = `
+            <div class="flex items-center gap-2">
+                ${showSpinner ? '<div class="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full"></div>' : ''}
+                <span>${scan.current_test}</span>
+            </div>
+        `;
     } else {
         // Default messages based on status
+        let message = '';
+        let showSpinner = false;
+        
         switch (scan.status) {
             case 'pending':
-                currentTest.textContent = '⏳ Preparing scan environment...';
+                message = '⏳ Preparing scan environment...';
+                showSpinner = true;
                 break;
             case 'running':
-                currentTest.textContent = '🔍 Security scan in progress...';
+                message = '🔍 Security scan in progress...';
+                showSpinner = true;
                 break;
             case 'completed':
-                currentTest.textContent = '✅ Scan completed successfully!';
+                message = '✅ Scan completed successfully!';
+                showSpinner = false;
                 break;
             case 'failed':
-                currentTest.textContent = '❌ Scan failed. Please try again.';
+                message = '❌ Scan failed. Please try again.';
+                showSpinner = false;
                 break;
             default:
-                currentTest.textContent = 'Initializing scan...';
+                message = 'Initializing scan...';
+                showSpinner = true;
         }
+        
+        currentTest.innerHTML = `
+            <div class="flex items-center gap-2">
+                ${showSpinner ? '<div class="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full"></div>' : ''}
+                <span>${message}</span>
+            </div>
+        `;
     }
+
+    // Auto-hide modal when scan completes (if not minimized)
+    if ((scan.status === 'completed' || scan.status === 'failed') && !isModalMinimized) {
+        console.log(`🔔 Scan ${scan.status}! Auto-hiding modal in 5 seconds...`);
+        setTimeout(() => {
+            stopScanTimer();
+            hideScanProgressModal();
+            console.log(`🔔 Modal auto-hidden for scan ID: ${scan.id}`);
+        }, 5000); // Give user time to see completion
+    }
+}
+
+function minimizeScanProgressModal() {
+    const modal = document.getElementById('scan-progress-modal');
+    const minimizedIndicator = document.getElementById('minimized-scan-indicator');
+    
+    isModalMinimized = true;
+    modal.classList.add('hidden');
+    minimizedIndicator.classList.remove('hidden');
+}
+
+function maximizeScanProgressModal() {
+    const modal = document.getElementById('scan-progress-modal');
+    const minimizedIndicator = document.getElementById('minimized-scan-indicator');
+    
+    isModalMinimized = false;
+    minimizedIndicator.classList.add('hidden');
+    modal.classList.remove('hidden');
 }
 
 function hideScanProgressModal() {
     const modal = document.getElementById('scan-progress-modal');
+    const minimizedIndicator = document.getElementById('minimized-scan-indicator');
+    
     modal.classList.add('hidden');
+    minimizedIndicator.classList.add('hidden');
+    stopScanTimer();
+    isModalMinimized = false;
+    currentScanId = null;
+}
+
+function quitScan() {
+    if (!currentScanId) return;
+    
+    // Show confirmation dialog
+    if (confirm('Are you sure you want to stop the current scan? This will terminate the scanning process.')) {
+        // Call API to stop the scan
+        apiRequest(`/scans/${currentScanId}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                status: 'failed',
+                progress: 0
+            })
+        }).then(() => {
+            showNotification('Scan stopped successfully', 'info');
+            hideScanProgressModal();
+            loadScans(); // Refresh scan list
+        }).catch(error => {
+            console.error('Failed to stop scan:', error);
+            showNotification('Failed to stop scan', 'error');
+        });
+    }
+}
+
+function startScanTimer() {
+    if (scanTimer) clearInterval(scanTimer);
+    
+    scanTimer = setInterval(() => {
+        if (scanStartTime) {
+            const elapsed = new Date() - scanStartTime;
+            const minutes = Math.floor(elapsed / 60000);
+            const seconds = Math.floor((elapsed % 60000) / 1000);
+            const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            const timeDisplay = document.getElementById('scan-elapsed-time');
+            if (timeDisplay) {
+                timeDisplay.textContent = timeString;
+            }
+            
+            // Periodic sync check - query backend for latest scan status every 10 seconds
+            if (currentScanId && elapsed % 10000 < 1000) { // Every 10 seconds (with 1 second tolerance)
+                syncScanProgress();
+            }
+        }
+    }, 1000);
+}
+
+function stopScanTimer() {
+    if (scanTimer) {
+        clearInterval(scanTimer);
+        scanTimer = null;
+    }
+}
+
+// Sync scan progress with backend (fallback if Socket.IO updates are missed)
+async function syncScanProgress() {
+    if (!currentScanId) return;
+    
+    try {
+        const scan = await apiRequest(`/scans/${currentScanId}`);
+        if (scan) {
+            console.log(`🔄 Syncing scan progress: ${scan.progress}%, status: ${scan.status}`);
+            
+            // Update modal if open
+            const modal = document.getElementById('scan-progress-modal');
+            if (modal && !modal.classList.contains('hidden')) {
+                updateScanProgressModal(scan);
+            }
+            
+            // Update minimized indicator if visible
+            const minimizedIndicator = document.getElementById('minimized-scan-indicator');
+            if (minimizedIndicator && !minimizedIndicator.classList.contains('hidden')) {
+                const minimizedProgress = document.getElementById('minimized-progress');
+                if (minimizedProgress) {
+                    minimizedProgress.textContent = `${scan.progress || 0}%`;
+                }
+            }
+            
+            // Auto-cleanup if scan is completed
+            if (scan.status === 'completed' || scan.status === 'failed') {
+                if (!isModalMinimized) {
+                    setTimeout(() => {
+                        hideScanProgressModal();
+                    }, 3000);
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to sync scan progress:', error);
+    }
+}
+
+function initializeScanModalControls() {
+    // Minimize button
+    const minimizeBtn = document.getElementById('minimize-scan-btn');
+    if (minimizeBtn) {
+        minimizeBtn.onclick = minimizeScanProgressModal;
+    }
+    
+    // Quit button
+    const quitBtn = document.getElementById('quit-scan-btn');
+    if (quitBtn) {
+        quitBtn.onclick = quitScan;
+    }
+    
+    // Minimized indicator click to maximize
+    const minimizedIndicator = document.getElementById('minimized-scan-indicator');
+    if (minimizedIndicator) {
+        minimizedIndicator.onclick = maximizeScanProgressModal;
+    }
 }

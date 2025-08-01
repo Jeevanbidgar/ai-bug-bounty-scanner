@@ -5,7 +5,14 @@ Performs network-level security assessments including advanced port scanning,
 service enumeration, and network protocol testing.
 """
 
-import nmap
+# Try to import nmap, fall back to socket-based scanning if not available
+try:
+    import nmap
+    NMAP_AVAILABLE = True
+except ImportError:
+    NMAP_AVAILABLE = False
+    nmap = None
+
 import socket
 import asyncio
 import time
@@ -22,7 +29,75 @@ class NetworkAgent:
     """Real network security testing agent"""
     
     def __init__(self):
-        self.nm = nmap.PortScanner()
+        # Try to initialize nmap, fall back to socket scanning if not available
+        if NMAP_AVAILABLE:
+            try:
+                self.nm = nmap.PortScanner()
+                
+                # Check if nmap executable is accessible
+                try:
+                    # Test if nmap can be found
+                    self.nm.nmap_version()
+                    self.nmap_available = True
+                    logger.info("✅ Nmap available for advanced port scanning")
+                except Exception as path_error:
+                    # Try to set the nmap path for Windows
+                    nmap_paths = [
+                        r"C:\Program Files (x86)\Nmap",
+                        r"C:\Program Files\Nmap",
+                    ]
+                    
+                    nmap_found = False
+                    for nmap_search_path in nmap_paths:
+                        try:
+                            import os
+                            nmap_exe = os.path.join(nmap_search_path, "nmap.exe")
+                            if os.path.exists(nmap_exe):
+                                # Initialize with the directory path
+                                self.nm = nmap.PortScanner(nmap_search_path=[nmap_search_path])
+                                self.nm.nmap_version()
+                                self.nmap_available = True
+                                nmap_found = True
+                                logger.info(f"✅ Nmap found at: {nmap_exe}")
+                                break
+                        except Exception as e:
+                            logger.debug(f"Failed to initialize with path {nmap_search_path}: {e}")
+                            continue
+                    
+                    # If manual paths failed, try with PATH environment
+                    if not nmap_found:
+                        try:
+                            # Try to add Nmap to current PATH and reinitialize
+                            import os
+                            current_path = os.environ.get('PATH', '')
+                            nmap_dir = r"C:\Program Files (x86)\Nmap"
+                            if nmap_dir not in current_path:
+                                os.environ['PATH'] = current_path + os.pathsep + nmap_dir
+                            
+                            # Reinitialize with updated PATH
+                            self.nm = nmap.PortScanner()
+                            self.nm.nmap_version()
+                            self.nmap_available = True
+                            nmap_found = True
+                            logger.info(f"✅ Nmap found after PATH update")
+                        except Exception as e:
+                            logger.debug(f"Failed with PATH update: {e}")
+                    
+                    if not nmap_found:
+                        self.nm = None
+                        self.nmap_available = False
+                        logger.warning(f"⚠️ Nmap executable not accessible: {path_error}")
+                        logger.warning("⚠️ Using socket-based scanning instead")
+                        
+            except Exception as e:
+                self.nm = None
+                self.nmap_available = False
+                logger.warning(f"⚠️ Nmap initialization failed, using socket-based scanning: {e}")
+        else:
+            self.nm = None
+            self.nmap_available = False
+            logger.warning("⚠️ Nmap not installed, using socket-based scanning")
+            
         self.config = SecurityValidator.get_safe_scan_config()
         
     async def scan_target(self, target_url: str) -> Dict[str, Any]:
@@ -100,16 +175,34 @@ class NetworkAgent:
         scan_results = {
             'tcp_ports': {},
             'udp_ports': {},
-            'scan_stats': {}
+            'scan_stats': {},
+            'scan_method': 'nmap' if self.nmap_available else 'socket'
         }
         
         try:
-            # TCP scan - comprehensive but safe
-            logger.info("🔌 Scanning TCP ports...")
-            tcp_ports = '1-1000,1433,1521,3306,3389,5432,5900,8080,8443,9090'
+            if self.nmap_available:
+                # Use Nmap for advanced scanning
+                await self._nmap_port_scan(hostname, scan_results)
+            else:
+                # Fall back to socket-based scanning
+                await self._socket_port_scan(hostname, scan_results)
             
-            # Use safe nmap options
-            tcp_args = '-sS -T3 --max-retries 2 --host-timeout 60s --max-rate 50'
+        except Exception as e:
+            logger.error(f"❌ Port scan error: {e}")
+            scan_results['error'] = str(e)
+            
+        return scan_results
+    
+    async def _nmap_port_scan(self, hostname: str, scan_results: Dict[str, Any]):
+        """Perform port scanning using Nmap"""
+        try:
+            # TCP scan - fast and focused on common ports only
+            logger.info("🔌 Scanning TCP ports with Nmap...")
+            # Only scan most common ports for speed - reduced from 1000+ to ~25 ports
+            tcp_ports = '21,22,23,25,53,80,110,135,139,143,443,445,587,993,995,1433,1521,3306,3389,5432,5900,8080,8443,9090'
+            
+            # Use faster nmap options with shorter timeouts
+            tcp_args = '-sS -T4 --max-retries 1 --host-timeout 15s --max-rate 100'
             tcp_scan = self.nm.scan(hostname, tcp_ports, arguments=tcp_args)
             
             if hostname in tcp_scan['scan']:
@@ -117,81 +210,112 @@ class NetworkAgent:
                 if 'tcp' in host_info:
                     scan_results['tcp_ports'] = host_info['tcp']
             
-            # UDP scan - limited ports for safety and speed
-            logger.info("📡 Scanning UDP ports...")
-            udp_ports = '53,67,68,69,123,161,162,514,1194'
-            udp_args = '-sU -T3 --max-retries 1 --host-timeout 30s'
-            
-            try:
-                udp_scan = self.nm.scan(hostname, udp_ports, arguments=udp_args)
-                if hostname in udp_scan['scan'] and 'udp' in udp_scan['scan'][hostname]:
-                    scan_results['udp_ports'] = udp_scan['scan'][hostname]['udp']
-            except Exception as udp_error:
-                logger.warning(f"⚠️ UDP scan failed: {udp_error}")
-            
-            # Scan statistics
-            scan_results['scan_stats'] = {
-                'tcp_ports_scanned': len(tcp_ports.split(',')),
-                'tcp_open_ports': len([p for p, info in scan_results['tcp_ports'].items() if info['state'] == 'open']),
-                'udp_ports_scanned': len(udp_ports.split(',')),
-                'udp_open_ports': len([p for p, info in scan_results['udp_ports'].items() if info['state'] == 'open'])
-            }
-            
+            # Skip UDP scan for speed - UDP is much slower and often blocked by firewalls
+            # UDP scan can add 30+ seconds even with short timeouts
+            logger.info("⏩ Skipping UDP scan for faster results")
+            scan_results['udp_ports'] = {}
+                
         except Exception as e:
-            logger.error(f"❌ Port scan error: {e}")
-            # Fallback to basic socket scan
-            scan_results = await self._fallback_socket_scan(hostname)
-        
-        return scan_results
+            logger.error(f"❌ Nmap scan failed: {e}")
+            raise
     
-    async def _fallback_socket_scan(self, hostname: str) -> Dict[str, Any]:
-        """Fallback socket-based port scan"""
-        scan_results = {
-            'tcp_ports': {},
-            'udp_ports': {},
-            'scan_stats': {},
-            'method': 'socket_fallback'
-        }
+    async def _socket_port_scan(self, hostname: str, scan_results: Dict[str, Any]):
+        """Perform port scanning using Python sockets"""
+        logger.info("🔌 Scanning TCP ports with socket-based method...")
         
-        # Common ports to check
-        common_ports = [21, 22, 23, 25, 53, 80, 110, 143, 443, 993, 995, 1433, 3306, 3389, 5432, 8080, 8443]
+        # Common ports to scan when Nmap is not available - reduced set for speed
+        tcp_ports = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 587, 993, 995, 
+                    1433, 1521, 3306, 3389, 5432, 5900, 8080, 8443, 9090]
         
-        for port in common_ports:
+        tcp_results = {}
+        
+        # Resolve hostname to IP
+        try:
+            ip_address = socket.gethostbyname(hostname)
+            logger.info(f"🔍 Resolved {hostname} to {ip_address}")
+        except socket.gaierror:
+            logger.error(f"❌ Could not resolve hostname: {hostname}")
+            return
+        
+        # Scan TCP ports
+        async def scan_port(port):
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(3)
-                result = sock.connect_ex((hostname, port))
-                
-                if result == 0:
-                    scan_results['tcp_ports'][port] = {
-                        'state': 'open',
-                        'name': self._get_service_name(port),
-                        'method': 'socket'
-                    }
+                sock.settimeout(2)  # Reduced from 3 to 2 seconds for faster scanning
+                result = sock.connect_ex((ip_address, port))
                 sock.close()
                 
-                # Rate limiting
-                await asyncio.sleep(0.1)
-                
+                if result == 0:
+                    # Port is open, try to get banner
+                    banner = await self._get_service_banner(ip_address, port)
+                    return {
+                        'port': port,
+                        'state': 'open',
+                        'service': self._guess_service(port),
+                        'banner': banner
+                    }
             except Exception:
                 pass
+            return None
         
-        scan_results['scan_stats'] = {
-            'tcp_ports_scanned': len(common_ports),
-            'tcp_open_ports': len(scan_results['tcp_ports'])
-        }
+        # Scan ports concurrently but with rate limiting
+        semaphore = asyncio.Semaphore(15)  # Increased from 10 to 15 for faster scanning
         
-        return scan_results
+        async def scan_with_semaphore(port):
+            async with semaphore:
+                return await scan_port(port)
+        
+        # Create tasks for all ports
+        tasks = [scan_with_semaphore(port) for port in tcp_ports]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        for result in results:
+            if result and not isinstance(result, Exception):
+                port = result['port']
+                tcp_results[port] = {
+                    'state': result['state'],
+                    'name': result['service'],
+                    'product': result.get('banner', ''),
+                    'version': '',
+                    'extrainfo': 'Socket scan'
+                }
+        
+        scan_results['tcp_ports'] = tcp_results
+        logger.info(f"✅ Socket scan completed: found {len(tcp_results)} open ports")
     
-    def _get_service_name(self, port: int) -> str:
-        """Get service name for common ports"""
-        services = {
+    async def _get_service_banner(self, ip_address: str, port: int) -> str:
+        """Try to get service banner for an open port"""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            sock.connect((ip_address, port))
+            
+            # Send HTTP request for web services
+            if port in [80, 8080, 8443]:
+                sock.send(b"GET / HTTP/1.0\r\n\r\n")
+            # Send basic greeting for other services
+            else:
+                sock.send(b"\r\n")
+            
+            banner = sock.recv(1024).decode('utf-8', errors='ignore').strip()
+            sock.close()
+            return banner[:200]  # Limit banner length
+        except Exception:
+            return ""
+    
+    def _guess_service(self, port: int) -> str:
+        """Guess service name based on port number"""
+        common_ports = {
             21: 'ftp', 22: 'ssh', 23: 'telnet', 25: 'smtp', 53: 'dns',
-            80: 'http', 110: 'pop3', 143: 'imap', 443: 'https',
-            993: 'imaps', 995: 'pop3s', 1433: 'mssql', 3306: 'mysql',
-            3389: 'rdp', 5432: 'postgresql', 8080: 'http-alt', 8443: 'https-alt'
+            80: 'http', 110: 'pop3', 135: 'msrpc', 139: 'netbios-ssn',
+            143: 'imap', 443: 'https', 445: 'microsoft-ds', 587: 'submission',
+            993: 'imaps', 995: 'pop3s', 1433: 'ms-sql-s', 1521: 'oracle',
+            3306: 'mysql', 3389: 'ms-wbt-server', 5432: 'postgresql',
+            5900: 'vnc', 8080: 'http-proxy', 8443: 'https-alt', 9090: 'zeus-admin'
         }
-        return services.get(port, 'unknown')
+        return common_ports.get(port, f'unknown-{port}')
+
     
     async def _service_enumeration(self, hostname: str, port_scan: Dict[str, Any]) -> Dict[str, Any]:
         """Enumerate services on open ports"""
@@ -205,8 +329,8 @@ class NetworkAgent:
                     service_info = await self._enumerate_service(hostname, port, port_info)
                     services[port] = service_info
                     
-                    # Rate limiting
-                    await asyncio.sleep(0.5)
+                    # Reduced rate limiting for faster enumeration
+                    await asyncio.sleep(0.2)  # Reduced from 0.5 to 0.2 seconds
                     
                 except Exception as e:
                     logger.warning(f"⚠️ Service enumeration error for port {port}: {e}")
@@ -227,7 +351,7 @@ class NetworkAgent:
         # Try to grab banner
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(5)
+            sock.settimeout(3)  # Reduced from 5 to 3 seconds for faster banner grabbing
             sock.connect((hostname, port))
             
             # Send appropriate probe based on service
@@ -274,12 +398,12 @@ class NetworkAgent:
         }
         
         try:
-            # Use ping command
+            # Use ping command with shorter timeout
             param = '-n' if platform.system().lower() == 'windows' else '-c'
             command = ['ping', param, '1', hostname]
             
             start_time = time.time()
-            result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+            result = subprocess.run(command, capture_output=True, text=True, timeout=5)  # Reduced from 10 to 5 seconds
             end_time = time.time()
             
             if result.returncode == 0:
@@ -299,29 +423,18 @@ class NetworkAgent:
         }
         
         try:
-            # Check if port 53 is open
+            # Check if port 53 is open with shorter timeout
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(3)
+            sock.settimeout(2)  # Reduced from 3 to 2 seconds
             result = sock.connect_ex((hostname, 53))
             sock.close()
             
             if result == 0:
                 dns_result['is_dns_server'] = True
                 
-                # Try a simple DNS query
-                try:
-                    import dns.resolver
-                    resolver = dns.resolver.Resolver()
-                    resolver.nameservers = [hostname]
-                    resolver.timeout = 5
-                    
-                    # Try to resolve a common domain
-                    answers = resolver.resolve('google.com', 'A')
-                    if answers:
-                        dns_result['responds_to_queries'] = True
-                        
-                except Exception:
-                    pass
+                # Skip DNS query test for speed - just knowing port 53 is open is enough
+                # DNS query testing can add significant time and is often blocked
+                logger.debug(f"Port 53 open on {hostname}, skipping DNS query test for speed")
         
         except Exception as e:
             logger.debug(f"DNS server test failed: {e}")
@@ -348,7 +461,7 @@ class NetworkAgent:
                 context.verify_mode = ssl.CERT_NONE
                 
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(10)
+                sock.settimeout(5)  # Reduced from 10 to 5 seconds for faster SSL testing
                 
                 ssl_sock = context.wrap_socket(sock, server_hostname=hostname)
                 ssl_sock.connect((hostname, port))
@@ -369,8 +482,8 @@ class NetworkAgent:
                 
                 ssl_sock.close()
                 
-                # Rate limiting
-                await asyncio.sleep(0.5)
+                # Reduced rate limiting for faster SSL testing
+                await asyncio.sleep(0.2)  # Reduced from 0.5 to 0.2 seconds
                 
             except Exception as e:
                 logger.debug(f"SSL test failed for {hostname}:{port}: {e}")
