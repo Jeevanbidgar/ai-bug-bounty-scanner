@@ -159,9 +159,10 @@ function handleRealTimeScanProgress(data) {
     // Auto-hide modal when scan completes - give more time to see completion
     if (status === "completed" || status === "failed") {
       // Check if this was a user-cancelled scan
-      const wasCancelled = current_test && current_test.includes('cancelled by user');
+      const wasCancelled =
+        current_test && current_test.includes("cancelled by user");
       const delay = wasCancelled ? 2000 : 5000; // Shorter delay for cancelled scans
-      
+
       setTimeout(() => {
         if (!isModalMinimized) {
           hideScanProgressModal();
@@ -3582,11 +3583,11 @@ function quitScan() {
   ) {
     // Store the scan ID for reference
     const scanIdToStop = currentScanId;
-    
+
     // Immediately hide the modal and reset state to improve UX
     hideScanProgressModal();
     showNotification("Stopping scan...", "info");
-    
+
     // Call API to stop the scan
     apiRequest(`/scans/${scanIdToStop}`, {
       method: "PUT",
@@ -3598,7 +3599,7 @@ function quitScan() {
       .then(() => {
         showNotification("Scan stopped successfully", "success");
         loadScans(); // Refresh scan list
-        
+
         // Update local scan data immediately
         const scanIndex = appData.scans.findIndex((s) => s.id === scanIdToStop);
         if (scanIndex !== -1) {
@@ -3609,10 +3610,10 @@ function quitScan() {
       .catch((error) => {
         console.error("Failed to stop scan:", error);
         showNotification("Failed to stop scan", "error");
-        
+
         // If stopping failed, show the modal again
         if (currentScanId === scanIdToStop) {
-          const scan = appData.scans.find(s => s.id === scanIdToStop);
+          const scan = appData.scans.find((s) => s.id === scanIdToStop);
           if (scan) {
             showScanProgressModal(scan);
           }
