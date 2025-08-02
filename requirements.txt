@@ -17,6 +17,7 @@ requests>=2.31.0
 dnspython>=2.4.2
 python-whois==0.8.0
 cryptography>=41.0.0
+scrapy>=2.5.0
 
 # HTML parsing and web scraping
 beautifulsoup4>=4.12.2

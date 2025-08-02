@@ -158,11 +158,15 @@ function handleRealTimeScanProgress(data) {
 
     // Auto-hide modal when scan completes - give more time to see completion
     if (status === "completed" || status === "failed") {
+      // Check if this was a user-cancelled scan
+      const wasCancelled = current_test && current_test.includes('cancelled by user');
+      const delay = wasCancelled ? 2000 : 5000; // Shorter delay for cancelled scans
+      
       setTimeout(() => {
         if (!isModalMinimized) {
           hideScanProgressModal();
         }
-      }, 5000); // Increased to 5 seconds
+      }, delay);
     }
   }
 
@@ -195,9 +199,36 @@ function handleRealTimeScanProgress(data) {
   // Update activity feed with enhanced information
   if (data.agent_name) {
     const agentEmoji = getAgentEmoji(data.agent_name);
-    updateActivityFeed(
-      `${agentEmoji} ${data.agent_name}: ${current_test || "Processing..."}`
-    );
+    let message = `${agentEmoji} ${data.agent_name}: ${
+      current_test || "Processing..."
+    }`;
+
+    // Add external tool integration status based on current test
+    if (current_test) {
+      if (
+        current_test.includes("SQLMap") ||
+        current_test.includes("sqlmap") ||
+        current_test.includes("deeper analysis")
+      ) {
+        message += " 💉"; // SQLMap integration
+      }
+      if (
+        current_test.includes("ZAP") ||
+        current_test.includes("zap") ||
+        current_test.includes("OWASP")
+      ) {
+        message += " 🛡️"; // ZAP integration
+      }
+      if (
+        current_test.includes("Subfinder") ||
+        current_test.includes("subfinder") ||
+        current_test.includes("external tool integrations")
+      ) {
+        message += " 🌐"; // Subfinder integration
+      }
+    }
+
+    updateActivityFeed(message);
   }
 }
 
@@ -330,75 +361,102 @@ function getDefaultEnhancedAgents() {
     {
       name: "Recon Agent",
       status: "Active",
-      description: "Performs reconnaissance and subdomain discovery",
+      description:
+        "Network reconnaissance and subdomain discovery with professional external tool integration",
       successRate: 94,
       capabilities: [
-        "Subdomain Discovery",
-        "DNS Analysis",
-        "Port Scanning",
-        "Service Detection",
+        "Port Scanning (Nmap)",
+        "DNS Resolution & Enumeration",
+        "SSL/TLS Certificate Analysis",
+        "Service Enumeration & Banner Grabbing",
+        "Subfinder Integration (Advanced Subdomain Discovery)",
+        "OWASP ZAP Integration (Web Application Scanning)",
+        "Network Topology Mapping",
+        "Passive Vulnerability Scanning",
       ],
     },
     {
       name: "Web App Agent",
       status: "Active",
-      description: "Analyzes web applications for common vulnerabilities",
+      description:
+        "Web application security testing with Scrapy crawler and advanced SQLMap integration",
       successRate: 87,
       capabilities: [
-        "XSS Detection",
-        "SQL Injection",
-        "CSRF",
-        "Directory Traversal",
+        "Advanced Web Crawling (Scrapy)",
+        "Form & Parameter Discovery",
+        "XSS Detection (Multiple Payloads)",
+        "SQL Injection Testing (Built-in)",
+        "Enhanced SQLMap Integration (Multi-URL)",
+        "Security Header Analysis (CSP, HSTS, X-Frame-Options)",
+        "Directory Traversal Testing",
+        "Information Disclosure Detection",
+        "API Endpoint Discovery",
+        "Database Exploitation (via SQLMap)",
       ],
     },
     {
       name: "Network Agent",
       status: "Active",
-      description: "Scans network infrastructure and services",
+      description:
+        "Network-level security assessment and infrastructure analysis",
       successRate: 91,
       capabilities: [
-        "Port Scanning",
-        "Service Enumeration",
-        "Network Mapping",
-        "Protocol Analysis",
+        "Network Service Enumeration",
+        "Protocol-Specific Testing",
+        "Firewall & Filtering Detection",
+        "Network Configuration Analysis",
+        "Service Version Detection",
+        "Network Topology Mapping",
+        "Protocol Vulnerability Assessment",
       ],
     },
     {
       name: "API Agent",
       status: "Active",
-      description: "Tests REST APIs and web services for security flaws",
+      description:
+        "REST API security testing and endpoint vulnerability assessment",
       successRate: 89,
       capabilities: [
-        "API Enumeration",
-        "Authentication Bypass",
-        "Rate Limiting",
-        "Input Validation",
+        "API Endpoint Discovery",
+        "Authentication Bypass Testing",
+        "Input Validation Testing",
+        "Rate Limiting Assessment",
+        "API Documentation Analysis",
+        "Authentication Mechanism Testing",
+        "DoS Protection Assessment",
       ],
     },
     {
       name: "Report Agent",
       status: "Active",
-      description: "Generates comprehensive security reports",
+      description:
+        "Comprehensive vulnerability reporting with CVSS scoring and remediation guidance",
       successRate: 99,
       capabilities: [
-        "PDF Generation",
-        "Risk Assessment",
-        "Executive Summary",
-        "Technical Details",
+        "Vulnerability Aggregation & Analysis",
+        "Risk Assessment & CVSS Scoring",
+        "Executive Summary Generation",
+        "Technical Detail Compilation",
+        "Remediation Recommendations",
+        "Multi-format Export (PDF, JSON)",
+        "Compliance Reporting",
       ],
     },
     {
       name: "Enhanced Security Agent",
       status: "Enhanced",
       description:
-        "Advanced security testing with 15+ payload variants and WAF evasion",
+        "Advanced security testing with machine learning capabilities and WAF evasion techniques",
       successRate: 96,
       capabilities: [
-        "Advanced XSS",
-        "Time-based SQLi",
-        "WAF Evasion",
-        "SSL/TLS Analysis",
-        "Advanced Payloads",
+        "Advanced XSS Detection",
+        "Time-based SQL Injection",
+        "WAF Evasion Techniques",
+        "SSL/TLS Security Analysis",
+        "ML-Powered Vulnerability Detection",
+        "Advanced Payload Generation",
+        "Behavioral Analysis",
+        "Zero-day Detection Patterns",
       ],
       enhanced: true,
     },
@@ -406,14 +464,17 @@ function getDefaultEnhancedAgents() {
       name: "Threat Intelligence Agent",
       status: "Enhanced",
       description:
-        "Real-time threat intelligence from AbuseIPDB, Shodan, and VirusTotal",
+        "Real-time threat intelligence integration with multiple security APIs",
       successRate: 93,
       capabilities: [
-        "IP Reputation",
-        "Domain Analysis",
-        "Malware Detection",
-        "CVE Database",
-        "Device Intelligence",
+        "IP Reputation Analysis (AbuseIPDB)",
+        "Domain & URL Analysis (VirusTotal)",
+        "Internet Device Intelligence (Shodan)",
+        "Malware Detection & Analysis",
+        "CVE Database Integration",
+        "Threat Actor Intelligence",
+        "IoC (Indicators of Compromise) Analysis",
+        "Real-time Threat Feeds",
       ],
       enhanced: true,
     },
@@ -3519,8 +3580,15 @@ function quitScan() {
       "Are you sure you want to stop the current scan? This will terminate the scanning process."
     )
   ) {
+    // Store the scan ID for reference
+    const scanIdToStop = currentScanId;
+    
+    // Immediately hide the modal and reset state to improve UX
+    hideScanProgressModal();
+    showNotification("Stopping scan...", "info");
+    
     // Call API to stop the scan
-    apiRequest(`/scans/${currentScanId}`, {
+    apiRequest(`/scans/${scanIdToStop}`, {
       method: "PUT",
       body: JSON.stringify({
         status: "failed",
@@ -3528,13 +3596,27 @@ function quitScan() {
       }),
     })
       .then(() => {
-        showNotification("Scan stopped successfully", "info");
-        hideScanProgressModal();
+        showNotification("Scan stopped successfully", "success");
         loadScans(); // Refresh scan list
+        
+        // Update local scan data immediately
+        const scanIndex = appData.scans.findIndex((s) => s.id === scanIdToStop);
+        if (scanIndex !== -1) {
+          appData.scans[scanIndex].status = "failed";
+          appData.scans[scanIndex].progress = 0;
+        }
       })
       .catch((error) => {
         console.error("Failed to stop scan:", error);
         showNotification("Failed to stop scan", "error");
+        
+        // If stopping failed, show the modal again
+        if (currentScanId === scanIdToStop) {
+          const scan = appData.scans.find(s => s.id === scanIdToStop);
+          if (scan) {
+            showScanProgressModal(scan);
+          }
+        }
       });
   }
 }

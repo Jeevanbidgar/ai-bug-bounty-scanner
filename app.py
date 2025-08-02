@@ -1054,6 +1054,8 @@ def update_scan(scan_id):
     scan = Scan.query.get_or_404(scan_id)
     data = request.get_json()
     
+    old_status = scan.status
+    
     if 'status' in data:
         scan.status = data['status']
     if 'progress' in data:
@@ -1062,6 +1064,17 @@ def update_scan(scan_id):
         scan.completed = datetime.now(timezone.utc)
     
     db.session.commit()
+    
+    # Emit socket event if scan was manually stopped/cancelled
+    if data.get('status') == 'failed' and old_status in ['running', 'in_progress']:
+        emit_scan_progress(
+            scan.id, 
+            data.get('progress', 0), 
+            scan.current_test or 'Scan cancelled by user', 
+            'failed'
+        )
+        print(f"🛑 Scan {scan_id} manually stopped - emitted socket event")
+    
     return jsonify(scan.to_dict())
 
 @app.route('/api/scans/<scan_id>', methods=['DELETE'])

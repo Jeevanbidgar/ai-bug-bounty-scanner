@@ -1,4 +1,4 @@
-# Recon Agent - Advanced Network Reconnaissance and Asset Discovery
+﻿# Recon Agent - Advanced Network Reconnaissance and Asset Discovery
 """
 Enhanced reconnaissance agent with comprehensive discovery capabilities:
 - Advanced subdomain enumeration with multiple techniques
@@ -20,7 +20,6 @@ except ImportError:
 
 import socket
 import dns.resolver
-import requests
 import asyncio
 import time
 import json
@@ -28,6 +27,8 @@ import re
 import subprocess
 import os
 import threading
+
+import requests
 from urllib.parse import urlparse, urljoin, urlunparse
 from urllib.robotparser import RobotFileParser
 from typing import Dict, List, Any, Set, Optional, Tuple
@@ -39,6 +40,7 @@ import itertools
 
 from .security_validator import SecurityValidator
 from .agent_config_utils import is_test_enabled, log_test_execution
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +53,15 @@ class ReconAgent:
             try:
                 self.nm = nmap.PortScanner()
                 self.nmap_available = True
-                logger.info("✅ Nmap available for advanced port scanning")
+                logger.info("âœ… Nmap available for advanced port scanning")
             except Exception as e:
                 self.nm = None
                 self.nmap_available = False
-                logger.warning(f"⚠️ Nmap initialization failed, using socket-based scanning: {e}")
+                logger.warning(f"âš ï¸ Nmap initialization failed, using socket-based scanning: {e}")
         else:
             self.nm = None
             self.nmap_available = False
-            logger.warning("⚠️ Nmap not installed, using socket-based scanning")
+            logger.warning("âš ï¸ Nmap not installed, using socket-based scanning")
 
         self.session = requests.Session()
         self.config = SecurityValidator.get_safe_scan_config()
@@ -147,7 +149,7 @@ class ReconAgent:
             
             # Extract domain from URL
             domain = self._extract_domain(target_url)
-            logger.info(f"🔍 Starting enhanced reconnaissance scan for: {domain}")
+            logger.info(f"ðŸ” Starting enhanced reconnaissance scan for: {domain}")
             
             results = {
                 'target': target_url,
@@ -165,7 +167,7 @@ class ReconAgent:
             try:
                 # DNS enumeration if enabled
                 if is_test_enabled('recon', 'dns_enumeration'):
-                    logger.info("📡 Performing enhanced DNS enumeration...")
+                    logger.info("ðŸ“¡ Performing enhanced DNS enumeration...")
                     dns_info = await self._enhanced_dns_enumeration(domain)
                     results['dns_info'] = dns_info
                     log_test_execution('recon', 'dns_enumeration', True)
@@ -173,13 +175,13 @@ class ReconAgent:
                     results['dns_info'] = {'records': []}
                     log_test_execution('recon', 'dns_enumeration', False)
                 
-                logger.info("🔌 Performing comprehensive port scan...")
+                logger.info("ðŸ”Œ Performing comprehensive port scan...")
                 port_info = await self._comprehensive_port_scan(domain)
                 results['port_info'] = port_info
                 
                 # Subdomain enumeration if enabled
                 if is_test_enabled('recon', 'subdomain_enumeration'):
-                    logger.info("🌐 Performing advanced subdomain enumeration...")
+                    logger.info("ðŸŒ Performing advanced subdomain enumeration...")
                     subdomains = await self._advanced_subdomain_enumeration(domain)
                     results['subdomains'] = list(subdomains)
                     log_test_execution('recon', 'subdomain_enumeration', True)
@@ -187,27 +189,31 @@ class ReconAgent:
                     results['subdomains'] = []
                     log_test_execution('recon', 'subdomain_enumeration', False)
                 
-                logger.info("�️ Performing web crawling and endpoint discovery...")
+                logger.info("ï¿½ï¸ Performing web crawling and endpoint discovery...")
                 web_discovery = await self._web_discovery(target_url)
                 results['web_discovery'] = web_discovery
                 
-                logger.info("📁 Performing directory and file brute-forcing...")
+                logger.info("ðŸ“ Performing directory and file brute-forcing...")
                 directory_discovery = await self._directory_bruteforce(target_url)
                 results['directory_discovery'] = directory_discovery
                 
-                logger.info("🔗 Performing API endpoint discovery...")
+                logger.info("ðŸ”— Performing API endpoint discovery...")
                 api_discovery = await self._api_discovery(target_url)
                 results['api_discovery'] = api_discovery
                 
-                logger.info("🔧 Performing advanced technology detection...")
+                logger.info("ðŸ”§ Performing advanced technology detection...")
                 tech_info = await self._advanced_technology_detection(target_url)
                 results['technologies'] = tech_info
                 
-                logger.info("�️ Checking for security misconfigurations...")
+                logger.info("ï¿½ï¸ Checking for security misconfigurations...")
                 security_checks = await self._security_misconfiguration_checks(target_url)
                 results['security_checks'] = security_checks
-                
-                logger.info("�🔍 Analyzing comprehensive findings...")
+
+                logger.info(" Running external tool integrations...")
+                external_integrations = await self.run_external_tool_integrations(target_url, domain)
+                results['external_integrations'] = external_integrations
+
+                logger.info(" Analyzing comprehensive findings...")
                 vulnerabilities = self._analyze_enhanced_findings(results)
                 results['vulnerabilities'] = vulnerabilities
                 
@@ -221,22 +227,22 @@ class ReconAgent:
                     'total_vulnerabilities': len(vulnerabilities)
                 }
                 
-                logger.info(f"✅ Enhanced reconnaissance completed:")
-                logger.info(f"   📊 {len(self.subdomains_found)} subdomains discovered")
-                logger.info(f"   🔗 {len(self.discovered_endpoints)} endpoints found")
-                logger.info(f"   📁 {len(self.discovered_directories)} directories found")
-                logger.info(f"   📄 {len(self.discovered_files)} files discovered")
-                logger.info(f"   🔌 {len(self.discovered_apis)} API endpoints found")
-                logger.info(f"   ⚠️ {len(vulnerabilities)} potential security issues identified")
+                logger.info(f"âœ… Enhanced reconnaissance completed:")
+                logger.info(f"   ðŸ“Š {len(self.subdomains_found)} subdomains discovered")
+                logger.info(f"   ðŸ”— {len(self.discovered_endpoints)} endpoints found")
+                logger.info(f"   ðŸ“ {len(self.discovered_directories)} directories found")
+                logger.info(f"   ðŸ“„ {len(self.discovered_files)} files discovered")
+                logger.info(f"   ðŸ”Œ {len(self.discovered_apis)} API endpoints found")
+                logger.info(f"   âš ï¸ {len(vulnerabilities)} potential security issues identified")
                 
             except Exception as scan_error:
-                logger.error(f"❌ Enhanced scan error: {scan_error}")
+                logger.error(f"âŒ Enhanced scan error: {scan_error}")
                 results['error'] = str(scan_error)
             
             return results
             
         except Exception as e:
-            logger.error(f"❌ Enhanced reconnaissance scan failed: {e}")
+            logger.error(f"âŒ Enhanced reconnaissance scan failed: {e}")
             raise
     
     def _clear_discovery_cache(self):
@@ -381,7 +387,7 @@ class ReconAgent:
                 common_ports = '21,22,23,25,53,80,110,143,443,993,995,8080,8443,3389,5432,3306,1433,6379,27017'
                 extended_ports = '1-1000,8000-8999,9000-9999'
 
-                logger.info(f"🔌 Scanning ports for {domain} using nmap")
+                logger.info(f"ðŸ”Œ Scanning ports for {domain} using nmap")
 
                 # Scan common ports first
                 scan_args = '-sS -T3 --max-retries 2 --host-timeout 60s --max-rate 50 -sV'
@@ -405,7 +411,7 @@ class ReconAgent:
 
                 # If common ports found open services, scan extended range
                 if port_info['open_ports']:
-                    logger.info(f"🔌 Found {len(port_info['open_ports'])} open ports, scanning extended range...")
+                    logger.info(f"ðŸ”Œ Found {len(port_info['open_ports'])} open ports, scanning extended range...")
                     extended_scan = self.nm.scan(domain, extended_ports, arguments='-sS -T2 --max-retries 1')
                     
                     if domain in extended_scan['scan'] and 'tcp' in extended_scan['scan'][domain]:
@@ -424,10 +430,10 @@ class ReconAgent:
                 return port_info
 
             except Exception as e:
-                logger.warning(f"⚠️ Nmap comprehensive scan failed, falling back to socket check: {e}")
+                logger.warning(f"âš ï¸ Nmap comprehensive scan failed, falling back to socket check: {e}")
 
         # Fallback to enhanced socket-based scanning
-        logger.info(f"🔌 Scanning ports for {domain} using enhanced socket method")
+        logger.info(f"ðŸ”Œ Scanning ports for {domain} using enhanced socket method")
         
         # Extended port list for socket scanning
         critical_ports = [21, 22, 23, 25, 53, 80, 110, 143, 443, 993, 995, 3389, 8080, 8443]
@@ -498,7 +504,7 @@ class ReconAgent:
     
     async def _advanced_subdomain_enumeration(self, domain: str) -> Set[str]:
         """Advanced subdomain enumeration with multiple techniques"""
-        logger.info(f"🌐 Starting advanced subdomain enumeration for {domain}")
+        logger.info(f"ðŸŒ Starting advanced subdomain enumeration for {domain}")
         
         # Use dictionary-based enumeration
         dict_subdomains = await self._dictionary_subdomain_enum(domain)
@@ -516,7 +522,7 @@ class ReconAgent:
         reverse_subdomains = await self._reverse_dns_enum(domain)
         self.subdomains_found.update(reverse_subdomains)
         
-        logger.info(f"✅ Found {len(self.subdomains_found)} unique subdomains")
+        logger.info(f"âœ… Found {len(self.subdomains_found)} unique subdomains")
         return self.subdomains_found
     
     async def _dictionary_subdomain_enum(self, domain: str) -> Set[str]:
@@ -535,7 +541,7 @@ class ReconAgent:
                 try:
                     if future.result():
                         subdomains.add(subdomain)
-                        logger.info(f"✅ Found subdomain: {subdomain}")
+                        logger.info(f"âœ… Found subdomain: {subdomain}")
                 except Exception:
                     pass
         
@@ -569,7 +575,7 @@ class ReconAgent:
                                 # Validate the subdomain exists
                                 if self._check_subdomain(name):
                                     subdomains.add(name)
-                                    logger.info(f"✅ Found CT subdomain: {name}")
+                                    logger.info(f"âœ… Found CT subdomain: {name}")
                                     
                                     # Limit to prevent overwhelming
                                     if len(subdomains) > 100:
@@ -579,7 +585,7 @@ class ReconAgent:
                             break
                             
         except Exception as e:
-            logger.warning(f"⚠️ Certificate transparency lookup failed: {e}")
+            logger.warning(f"âš ï¸ Certificate transparency lookup failed: {e}")
         
         return subdomains
     
@@ -609,7 +615,7 @@ class ReconAgent:
                 try:
                     if future.result():
                         subdomains.add(subdomain)
-                        logger.info(f"✅ Found permutation subdomain: {subdomain}")
+                        logger.info(f"âœ… Found permutation subdomain: {subdomain}")
                 except Exception:
                     pass
         
@@ -636,7 +642,7 @@ class ReconAgent:
                             hostname = socket.gethostbyaddr(check_ip)[0]
                             if domain in hostname:
                                 subdomains.add(hostname)
-                                logger.info(f"✅ Found reverse DNS subdomain: {hostname}")
+                                logger.info(f"âœ… Found reverse DNS subdomain: {hostname}")
                         except socket.herror:
                             pass
                         
@@ -647,7 +653,7 @@ class ReconAgent:
                     pass
         
         except Exception as e:
-            logger.warning(f"⚠️ Reverse DNS enumeration failed: {e}")
+            logger.warning(f"âš ï¸ Reverse DNS enumeration failed: {e}")
         
         return subdomains
     
@@ -722,10 +728,10 @@ class ReconAgent:
                         ua = line.split(':', 1)[1].strip()
                         robots_info['user_agents'].append(ua)
                 
-                logger.info(f"✅ Analyzed robots.txt: {len(robots_info['disallowed_paths'])} disallowed paths found")
+                logger.info(f"âœ… Analyzed robots.txt: {len(robots_info['disallowed_paths'])} disallowed paths found")
                 
         except Exception as e:
-            logger.warning(f"⚠️ Could not analyze robots.txt: {e}")
+            logger.warning(f"âš ï¸ Could not analyze robots.txt: {e}")
         
         return robots_info
     
@@ -771,7 +777,7 @@ class ReconAgent:
                                             break
                             
                         except Exception as parse_error:
-                            logger.warning(f"⚠️ Could not parse sitemap XML: {parse_error}")
+                            logger.warning(f"âš ï¸ Could not parse sitemap XML: {parse_error}")
                     
                     # Parse text sitemap
                     else:
@@ -782,11 +788,11 @@ class ReconAgent:
                                 self.discovered_endpoints.add(url)
                     
                     sitemap_info['total_urls'] = len(sitemap_info['urls_found'])
-                    logger.info(f"✅ Analyzed sitemap: {sitemap_info['total_urls']} URLs found")
+                    logger.info(f"âœ… Analyzed sitemap: {sitemap_info['total_urls']} URLs found")
                     break
                     
             except Exception as e:
-                logger.warning(f"⚠️ Could not analyze sitemap {sitemap_path}: {e}")
+                logger.warning(f"âš ï¸ Could not analyze sitemap {sitemap_path}: {e}")
         
         return sitemap_info
     
@@ -875,7 +881,7 @@ class ReconAgent:
                     await asyncio.sleep(1)
                 
             except Exception as e:
-                logger.warning(f"⚠️ Error crawling {current_url}: {e}")
+                logger.warning(f"âš ï¸ Error crawling {current_url}: {e}")
         
         # Remove duplicates
         crawl_results['js_files'] = list(set(crawl_results['js_files']))
@@ -883,7 +889,7 @@ class ReconAgent:
         crawl_results['external_links'] = list(set(crawl_results['external_links']))
         crawl_results['email_addresses'] = list(set(crawl_results['email_addresses']))
         
-        logger.info(f"✅ Web crawling completed: {pages_crawled} pages crawled")
+        logger.info(f"âœ… Web crawling completed: {pages_crawled} pages crawled")
         return crawl_results
     
     async def _directory_bruteforce(self, target_url: str) -> Dict[str, Any]:
@@ -897,12 +903,12 @@ class ReconAgent:
         }
         
         # Directory brute-forcing
-        logger.info("📁 Starting directory brute-force...")
+        logger.info("ðŸ“ Starting directory brute-force...")
         dir_results = await self._bruteforce_directories(target_url)
         directory_discovery.update(dir_results)
         
         # File brute-forcing
-        logger.info("📄 Starting file brute-force...")
+        logger.info("ðŸ“„ Starting file brute-force...")
         file_results = await self._bruteforce_files(target_url)
         directory_discovery['files_found'].extend(file_results['files_found'])
         directory_discovery['interesting_files'].extend(file_results['interesting_files'])
@@ -944,7 +950,7 @@ class ReconAgent:
                         # Update response code statistics
                         results['response_codes'][status_code] = results['response_codes'].get(status_code, 0) + 1
                         
-                        logger.info(f"✅ Found directory: {full_url} ({status_code})")
+                        logger.info(f"âœ… Found directory: {full_url} ({status_code})")
                         
                 except Exception:
                     pass
@@ -1010,7 +1016,7 @@ class ReconAgent:
                         if is_interesting:
                             results['interesting_files'].append(file_info)
                         
-                        logger.info(f"✅ Found file: {full_url} ({status_code})" + 
+                        logger.info(f"âœ… Found file: {full_url} ({status_code})" + 
                                   (" - INTERESTING!" if is_interesting else ""))
                         
                 except Exception:
@@ -1113,7 +1119,7 @@ class ReconAgent:
                         self.discovered_apis.add(full_url)
                         self.discovered_endpoints.add(full_url)
                         
-                        logger.info(f"✅ Found API endpoint: {full_url} ({status_code})")
+                        logger.info(f"âœ… Found API endpoint: {full_url} ({status_code})")
                         
                         # Check if it's API documentation
                         if any(doc_keyword in endpoint.lower() for doc_keyword in ['swagger', 'docs', 'documentation']):
@@ -1183,7 +1189,7 @@ class ReconAgent:
                     })
                     
                     self.discovered_endpoints.add(full_url)
-                    logger.info(f"✅ Found API documentation: {full_url}")
+                    logger.info(f"âœ… Found API documentation: {full_url}")
                     
             except Exception:
                 pass
@@ -1223,7 +1229,7 @@ class ReconAgent:
                     
                     self.discovered_apis.add(full_url)
                     self.discovered_endpoints.add(full_url)
-                    logger.info(f"✅ Found GraphQL endpoint: {full_url}")
+                    logger.info(f"âœ… Found GraphQL endpoint: {full_url}")
                     
             except Exception:
                 pass
@@ -1363,7 +1369,7 @@ class ReconAgent:
                 tech_info['ssl_info'] = await self._analyze_ssl_certificate(url)
                 
         except Exception as e:
-            logger.warning(f"⚠️ Advanced technology detection error: {e}")
+            logger.warning(f"âš ï¸ Advanced technology detection error: {e}")
         
         # Remove duplicates
         tech_info['technologies'] = list(set(tech_info['technologies']))
@@ -1405,7 +1411,7 @@ class ReconAgent:
                     ssl_info['signature_algorithm'] = cert.get('signatureAlgorithm', 'unknown')
                     
         except Exception as e:
-            logger.warning(f"⚠️ SSL certificate analysis failed: {e}")
+            logger.warning(f"âš ï¸ SSL certificate analysis failed: {e}")
         
         return ssl_info
     
@@ -1493,7 +1499,7 @@ class ReconAgent:
                     security_checks['missing_security_headers'].append(header)
             
         except Exception as e:
-            logger.warning(f"⚠️ Security misconfiguration checks failed: {e}")
+            logger.warning(f"âš ï¸ Security misconfiguration checks failed: {e}")
         
         return security_checks
     
@@ -2010,7 +2016,7 @@ class ReconAgent:
             
             if result.returncode == 0:
                 integration_result['tool_available'] = True
-                logger.info("✅ Amass detected, attempting integration...")
+                logger.info("âœ… Amass detected, attempting integration...")
                 
                 # Run amass enum with safe parameters
                 amass_cmd = [
@@ -2030,7 +2036,7 @@ class ReconAgent:
                     # Add to discovered subdomains
                     self.subdomains_found.update(subdomains)
                     
-                    logger.info(f"✅ Amass integration successful: {len(subdomains)} subdomains found")
+                    logger.info(f"âœ… Amass integration successful: {len(subdomains)} subdomains found")
                 else:
                     integration_result['error'] = result.stderr
                     
@@ -2054,7 +2060,7 @@ class ReconAgent:
         
         try:
             # Check if subfinder is available
-            result = subprocess.run(['subfinder', '-version'], 
+            result = subprocess.run([Config.SUBFINDER_PATH, '-version'], 
                                   capture_output=True, text=True, timeout=10)
             
             if result.returncode == 0:
@@ -2063,7 +2069,7 @@ class ReconAgent:
                 
                 # Run subfinder with safe parameters
                 subfinder_cmd = [
-                    'subfinder', '-d', domain, '-silent', '-timeout', '10'
+                    Config.SUBFINDER_PATH, '-d', domain, '-silent', '-timeout', '10'
                 ]
                 
                 result = subprocess.run(subfinder_cmd, capture_output=True, 
@@ -2078,7 +2084,7 @@ class ReconAgent:
                     # Add to discovered subdomains
                     self.subdomains_found.update(subdomains)
                     
-                    logger.info(f"✅ Subfinder integration successful: {len(subdomains)} subdomains found")
+                    logger.info(f"âœ… Subfinder integration successful: {len(subdomains)} subdomains found")
                 else:
                     integration_result['error'] = result.stderr
                     
@@ -2107,7 +2113,7 @@ class ReconAgent:
             
             if result.returncode == 0:
                 integration_result['tool_available'] = True
-                logger.info("✅ Nuclei detected, attempting integration...")
+                logger.info("âœ… Nuclei detected, attempting integration...")
                 
                 # Run nuclei with safe templates
                 nuclei_cmd = [
@@ -2125,7 +2131,7 @@ class ReconAgent:
                             integration_result['vulnerabilities_found'].append(line.strip())
                     
                     integration_result['execution_successful'] = True
-                    logger.info(f"✅ Nuclei integration successful: {len(integration_result['vulnerabilities_found'])} findings")
+                    logger.info(f"âœ… Nuclei integration successful: {len(integration_result['vulnerabilities_found'])} findings")
                 else:
                     integration_result['error'] = result.stderr
                     
@@ -2138,18 +2144,136 @@ class ReconAgent:
         
         return integration_result
     
+    async def integrate_with_zap(self, target_url: str) -> Dict[str, Any]:
+        """Integration with OWASP ZAP for automated web application security scanning"""
+        integration_result = {
+            'tool_available': False,
+            'scan_id': None,
+            'vulnerabilities_found': [],
+            'scan_status': None,
+            'execution_successful': False,
+            'error': None
+        }
+        
+        try:
+            # Check if ZAP is running and API is accessible
+            zap_url = Config.ZAP_API_URL
+            zap_key = Config.ZAP_API_KEY
+            
+            # Test ZAP connection
+            response = requests.get(f"{zap_url}/JSON/core/view/version/", 
+                                  params={'apikey': zap_key}, timeout=10)
+            
+            if response.status_code == 200:
+                integration_result['tool_available'] = True
+                zap_version = response.json().get('version', 'Unknown')
+                logger.info(f"✅ OWASP ZAP detected (v{zap_version}), attempting integration...")
+                
+                # Start a spider scan
+                spider_response = requests.get(f"{zap_url}/JSON/spider/action/scan/",
+                                             params={'apikey': zap_key, 'url': target_url}, 
+                                             timeout=30)
+                
+                if spider_response.status_code == 200:
+                    scan_id = spider_response.json().get('scan')
+                    integration_result['scan_id'] = scan_id
+                    
+                    # Wait for spider to complete (with timeout)
+                    max_wait = 120  # 2 minutes max
+                    wait_time = 0
+                    
+                    while wait_time < max_wait:
+                        status_response = requests.get(f"{zap_url}/JSON/spider/view/status/",
+                                                     params={'apikey': zap_key, 'scanId': scan_id},
+                                                     timeout=10)
+                        
+                        if status_response.status_code == 200:
+                            status = status_response.json().get('status', '0')
+                            if status == '100':  # Complete
+                                break
+                        
+                        await asyncio.sleep(5)
+                        wait_time += 5
+                    
+                    # Start active scan
+                    active_scan_response = requests.get(f"{zap_url}/JSON/ascan/action/scan/",
+                                                       params={'apikey': zap_key, 'url': target_url},
+                                                       timeout=30)
+                    
+                    if active_scan_response.status_code == 200:
+                        active_scan_id = active_scan_response.json().get('scan')
+                        
+                        # Wait for active scan to progress (limited time)
+                        max_scan_wait = 300  # 5 minutes max
+                        scan_wait_time = 0
+                        
+                        while scan_wait_time < max_scan_wait:
+                            scan_status_response = requests.get(f"{zap_url}/JSON/ascan/view/status/",
+                                                               params={'apikey': zap_key, 'scanId': active_scan_id},
+                                                               timeout=10)
+                            
+                            if scan_status_response.status_code == 200:
+                                scan_status = scan_status_response.json().get('status', '0')
+                                integration_result['scan_status'] = f"{scan_status}%"
+                                
+                                # Stop after reasonable progress or completion
+                                if int(scan_status) >= 25 or scan_status == '100':
+                                    break
+                            
+                            await asyncio.sleep(10)
+                            scan_wait_time += 10
+                        
+                        # Get scan results
+                        alerts_response = requests.get(f"{zap_url}/JSON/core/view/alerts/",
+                                                     params={'apikey': zap_key, 'baseurl': target_url},
+                                                     timeout=30)
+                        
+                        if alerts_response.status_code == 200:
+                            alerts = alerts_response.json().get('alerts', [])
+                            
+                            for alert in alerts:
+                                vulnerability = {
+                                    'name': alert.get('name', 'Unknown'),
+                                    'risk': alert.get('risk', 'Unknown'),
+                                    'confidence': alert.get('confidence', 'Unknown'),
+                                    'description': alert.get('description', ''),
+                                    'url': alert.get('url', ''),
+                                    'param': alert.get('param', ''),
+                                    'solution': alert.get('solution', '')
+                                }
+                                integration_result['vulnerabilities_found'].append(vulnerability)
+                            
+                            integration_result['execution_successful'] = True
+                            logger.info(f"✅ ZAP integration successful: {len(alerts)} findings, scan {integration_result['scan_status']} complete")
+                        else:
+                            integration_result['error'] = f"Failed to retrieve ZAP alerts: {alerts_response.status_code}"
+                    else:
+                        integration_result['error'] = f"Failed to start ZAP active scan: {active_scan_response.status_code}"
+                else:
+                    integration_result['error'] = f"Failed to start ZAP spider scan: {spider_response.status_code}"
+            else:
+                integration_result['error'] = f"ZAP API not accessible: {response.status_code}"
+                
+        except requests.exceptions.RequestException as e:
+            integration_result['error'] = f'ZAP connection failed: {str(e)}'
+        except Exception as e:
+            integration_result['error'] = f'ZAP integration error: {str(e)}'
+        
+        return integration_result
+
     async def run_external_tool_integrations(self, target_url: str, domain: str) -> Dict[str, Any]:
         """Run all available external tool integrations"""
         integrations = {
             'amass_integration': None,
             'subfinder_integration': None,
             'nuclei_integration': None,
+            'zap_integration': None,
             'total_external_subdomains': 0,
             'total_external_vulnerabilities': 0
         }
         
         # Run external tool integrations if available
-        logger.info("🔧 Checking for external tool integrations...")
+        logger.info("ðŸ”§ Checking for external tool integrations...")
         
         # Amass integration
         try:
@@ -2158,7 +2282,7 @@ class ReconAgent:
             if amass_result['execution_successful']:
                 integrations['total_external_subdomains'] += len(amass_result['subdomains_found'])
         except Exception as e:
-            logger.warning(f"⚠️ Amass integration failed: {e}")
+            logger.warning(f"âš ï¸ Amass integration failed: {e}")
         
         # Subfinder integration
         try:
@@ -2167,7 +2291,7 @@ class ReconAgent:
             if subfinder_result['execution_successful']:
                 integrations['total_external_subdomains'] += len(subfinder_result['subdomains_found'])
         except Exception as e:
-            logger.warning(f"⚠️ Subfinder integration failed: {e}")
+            logger.warning(f"âš ï¸ Subfinder integration failed: {e}")
         
         # Nuclei integration
         try:
@@ -2176,13 +2300,23 @@ class ReconAgent:
             if nuclei_result['execution_successful']:
                 integrations['total_external_vulnerabilities'] += len(nuclei_result['vulnerabilities_found'])
         except Exception as e:
-            logger.warning(f"⚠️ Nuclei integration failed: {e}")
+            logger.warning(f"âš ï¸ Nuclei integration failed: {e}")
         
+        # OWASP ZAP integration
+        try:
+            zap_result = await self.integrate_with_zap(target_url)
+            integrations['zap_integration'] = zap_result
+            if zap_result['execution_successful']:
+                integrations['total_external_vulnerabilities'] += len(zap_result['vulnerabilities_found'])
+        except Exception as e:
+            logger.warning(f" ZAP integration failed: {e}")
         if integrations['total_external_subdomains'] > 0 or integrations['total_external_vulnerabilities'] > 0:
-            logger.info(f"✅ External tool integrations completed:")
-            logger.info(f"   🌐 {integrations['total_external_subdomains']} additional subdomains from external tools")
-            logger.info(f"   🔍 {integrations['total_external_vulnerabilities']} additional findings from external tools")
+            logger.info(f"âœ… External tool integrations completed:")
+            logger.info(f"   ðŸŒ {integrations['total_external_subdomains']} additional subdomains from external tools")
+            logger.info(f"   ðŸ” {integrations['total_external_vulnerabilities']} additional findings from external tools")
         else:
-            logger.info("ℹ️ No external tools available or no additional findings from external tools")
+            logger.info("â„¹ï¸ No external tools available or no additional findings from external tools")
         
         return integrations
+
+

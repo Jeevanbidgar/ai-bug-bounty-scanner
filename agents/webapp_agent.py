@@ -2,6 +2,7 @@
 """
 Real web application security testing agent.
 Performs actual web vulnerability scanning including XSS, SQL injection, and other OWASP Top 10 issues.
+Enhanced with Scrapy web crawler for comprehensive URL discovery and SQLMap integration.
 """
 
 import requests
@@ -13,18 +14,22 @@ from bs4 import BeautifulSoup
 from typing import Dict, List, Any, Tuple
 import logging
 import re
+import subprocess
+from config import Config
 
 from .security_validator import SecurityValidator
 from .agent_config_utils import is_test_enabled, log_test_execution
+from .scrapy_crawler import ScrapyCrawlerIntegration
 
 logger = logging.getLogger(__name__)
 
 class WebAppAgent:
-    """Real web application security testing agent"""
+    """Real web application security testing agent with Scrapy crawler integration"""
     
     def __init__(self):
         self.session = requests.Session()
         self.config = SecurityValidator.get_safe_scan_config()
+        self.scrapy_crawler = ScrapyCrawlerIntegration()
         
         # Configure session with safe defaults
         self.session.headers.update({
@@ -79,12 +84,15 @@ class WebAppAgent:
             }
             
             try:
-                # Crawl and discover forms/endpoints
+                # Enhanced crawling with Scrapy
                 if progress_callback:
-                    progress_callback(10, "🕷️ Crawling web application and discovering endpoints...")
-                logger.info("🕷️ Crawling web application...")
-                crawl_data = await self._crawl_website(target_url)
+                    progress_callback(10, "🕷️ Starting advanced web crawling with Scrapy...")
+                logger.info("🕷️ Starting enhanced web crawling with Scrapy...")
+                crawl_data = await self._enhanced_crawl_website(target_url)
                 results['crawl_data'] = crawl_data
+                results['urls_discovered'] = len(crawl_data.get('urls', []))
+                results['forms_discovered'] = len(crawl_data.get('forms', []))
+                results['parameters_discovered'] = len(crawl_data.get('parameters', []))
 
                 # Test for XSS vulnerabilities (both reflected and stored)
                 if is_test_enabled('webapp', 'xss_reflected') or is_test_enabled('webapp', 'xss_stored'):
@@ -101,13 +109,25 @@ class WebAppAgent:
                     log_test_execution('webapp', 'xss_reflected', False)
                     log_test_execution('webapp', 'xss_stored', False)
 
-                # Test for SQL injection
+                # Enhanced SQLMap Integration with crawled URLs
                 if is_test_enabled('webapp', 'sql_injection'):
                     if progress_callback:
                         progress_callback(50, "💉 Testing for SQL injection vulnerabilities...")
                     logger.info("💉 Testing for SQL injection...")
                     sql_vulns = await self._test_sql_injection(target_url, crawl_data)
                     results['vulnerabilities'].extend(sql_vulns)
+
+                    # Enhanced SQLMap Integration with discovered URLs
+                    if progress_callback:
+                        progress_callback(60, "💉 Running SQLMap on discovered URLs and forms...")
+                    logger.info("💉 Running enhanced SQLMap analysis on crawled URLs...")
+                    sqlmap_results = await self.integrate_with_sqlmap_enhanced(target_url, crawl_data)
+                    if sqlmap_results.get('execution_successful'):
+                        results['vulnerabilities'].extend(sqlmap_results.get('vulnerabilities_found', []))
+                        results['sqlmap_tested_urls'] = len(sqlmap_results.get('tested_urls', []))
+                    else:
+                        logger.warning(f"⚠️ Enhanced SQLMap integration failed: {sqlmap_results.get('error')}")
+                    
                     results['executed_tests'].append('sql_injection')
                     log_test_execution('webapp', 'sql_injection', True)
                 else:
@@ -167,8 +187,57 @@ class WebAppAgent:
             except Exception as scan_error:
                 logger.error(f"❌ Web app scan error: {scan_error}")
                 results['error'] = str(scan_error)
+        except Exception as e:
+            logger.error(f"❌ Web application scan failed: {e}")
+               
+        return results
+    
+    async def _enhanced_crawl_website(self, base_url: str) -> Dict[str, Any]:
+        """
+        Enhanced web crawling using Scrapy for comprehensive URL discovery
+        
+        Args:
+            base_url: Base URL to crawl
             
-            return results
+        Returns:
+            Dict containing crawled URLs, forms, parameters, and endpoints
+        """
+        try:
+            logger.info(f"🕷️ Starting Scrapy-powered crawl of {base_url}")
+            
+            # Use Scrapy for advanced crawling
+            scrapy_results = await self.scrapy_crawler.crawl_website(
+                target_url=base_url,
+                max_pages=self.config.get('max_pages', 50),
+                max_depth=self.config.get('max_depth', 3)
+            )
+            
+            # Fallback to basic crawling if Scrapy fails
+            if scrapy_results.get('error') or not scrapy_results.get('urls'):
+                logger.warning("Scrapy crawling failed, falling back to basic crawling")
+                return await self._crawl_website(base_url)
+            
+            # Enhance the results with additional processing
+            enhanced_results = {
+                'urls': scrapy_results.get('urls', []),
+                'forms': scrapy_results.get('forms', []),
+                'parameters': scrapy_results.get('parameters', []),
+                'endpoints': scrapy_results.get('endpoints', []),
+                'pages_crawled': scrapy_results.get('pages_crawled', 0),
+                'crawler_used': 'Scrapy',
+                'testable_urls': self.scrapy_crawler.get_testable_urls(scrapy_results)
+            }
+            
+            logger.info(f"✅ Enhanced crawling completed: {len(enhanced_results['urls'])} URLs, "
+                       f"{len(enhanced_results['forms'])} forms, "
+                       f"{len(enhanced_results['testable_urls'])} testable URLs")
+            
+            return enhanced_results
+            
+        except Exception as e:
+            logger.error(f"Enhanced crawling failed: {e}")
+            # Fallback to basic crawling
+            return await self._crawl_website(base_url)
             
         except Exception as e:
             logger.error(f"❌ Web application scan failed: {e}")
@@ -566,3 +635,256 @@ class WebAppAgent:
             logger.warning(f"⚠️ Information disclosure testing error: {e}")
         
         return vulnerabilities
+
+    async def integrate_with_sqlmap(self, target_url: str) -> Dict[str, Any]:
+        """Integration with SQLMap for automated SQL injection testing."""
+        integration_result = {
+            'tool_available': False,
+            'vulnerabilities_found': [],
+            'execution_successful': False,
+            'error': None
+        }
+
+        if not Config.SQLMAP_PATH:
+            integration_result['error'] = 'SQLMap path not configured.'
+            return integration_result
+
+        try:
+            # Check if sqlmap is available
+            result = subprocess.run([Config.SQLMAP_PATH, '--version'],
+                                  capture_output=True, text=True, timeout=20)
+
+            if result.returncode == 0:
+                integration_result['tool_available'] = True
+                logger.info("✅ SQLMap detected, attempting integration...")
+
+                # Run sqlmap with safe, non-intrusive parameters
+                sqlmap_cmd = [
+                    Config.SQLMAP_PATH, '-u', target_url, '--batch',
+                    '--level=1', '--risk=1', '--disable-coloring'
+                ]
+
+                # For crawling and finding forms
+                if '--forms' not in ' '.join(sqlmap_cmd):
+                    sqlmap_cmd.append('--forms')
+
+                result = subprocess.run(sqlmap_cmd, capture_output=True,
+                                      text=True, timeout=600)  # 10 minute timeout
+
+                if result.returncode == 0:
+                    integration_result['execution_successful'] = True
+                    # Basic parsing of sqlmap output
+                    if "the back-end DBMS is" in result.stdout or "might be injectable" in result.stdout:
+                        vulnerability = {
+                            'title': 'Potential SQL Injection via SQLMap',
+                            'severity': 'Critical',
+                            'cvss': 9.8,
+                            'description': 'SQLMap identified a potential SQL injection vulnerability. Further manual investigation is required.',
+                            'url': target_url,
+                            'parameter': 'N/A (Identified by SQLMap)',
+                            'remediation': 'Use parameterized queries and prepared statements. Validate and sanitize all user input.',
+                            'discovered_by': 'SQLMap Integration'
+                        }
+                        integration_result['vulnerabilities_found'].append(vulnerability)
+
+                    logger.info(f"✅ SQLMap integration successful: {len(integration_result['vulnerabilities_found'])} potential findings.")
+                else:
+                    integration_result['error'] = result.stderr or "SQLMap execution failed with non-zero return code."
+
+        except subprocess.TimeoutExpired:
+            integration_result['error'] = 'SQLMap execution timed out.'
+        except FileNotFoundError:
+            integration_result['error'] = 'SQLMap executable not found at the specified path.'
+        except Exception as e:
+            integration_result['error'] = f'SQLMap integration error: {str(e)}'
+
+        return integration_result
+
+    async def integrate_with_sqlmap_enhanced(self, target_url: str, crawl_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Enhanced SQLMap integration using crawled URLs, forms, and parameters
+        
+        Args:
+            target_url: Base target URL
+            crawl_data: Results from enhanced crawling
+            
+        Returns:
+            Dict containing SQLMap results and vulnerabilities found
+        """
+        integration_result = {
+            'tool_available': False,
+            'vulnerabilities_found': [],
+            'execution_successful': False,
+            'tested_urls': [],
+            'error': None
+        }
+
+        if not Config.SQLMAP_PATH:
+            integration_result['error'] = 'SQLMap path not configured.'
+            return integration_result
+
+        try:
+            # Check if SQLMap is available
+            result = subprocess.run([Config.SQLMAP_PATH, '--version'],
+                                  capture_output=True, text=True, timeout=20)
+
+            if result.returncode != 0:
+                integration_result['error'] = 'SQLMap not available or not working.'
+                return integration_result
+
+            integration_result['tool_available'] = True
+            logger.info("✅ SQLMap detected, starting enhanced testing...")
+
+            # Get testable URLs from crawl data
+            testable_urls = crawl_data.get('testable_urls', [])
+            if not testable_urls:
+                testable_urls = [target_url]  # Fallback to main URL
+            
+            # Limit number of URLs to test (to avoid excessive testing time)
+            max_urls_to_test = 10
+            urls_to_test = testable_urls[:max_urls_to_test]
+            
+            vulnerabilities_found = 0
+            
+            for test_url in urls_to_test:
+                try:
+                    logger.info(f"🔍 Testing URL with SQLMap: {test_url}")
+                    integration_result['tested_urls'].append(test_url)
+                    
+                    # Basic SQLMap command with safe parameters
+                    sqlmap_cmd = [
+                        Config.SQLMAP_PATH,
+                        '-u', test_url,
+                        '--batch',                    # Non-interactive mode
+                        '--level=1',                 # Test level (1-5, 1 is safest)
+                        '--risk=1',                  # Risk level (1-3, 1 is safest)
+                        '--disable-coloring',        # Disable colored output
+                        '--threads=2',               # Use 2 threads for faster testing
+                        '--timeout=30',              # 30 second timeout per request
+                        '--retries=1',               # Retry once on failure
+                        '--technique=BEUS',          # Use Boolean, Error, Union, Stacked techniques
+                        '--tamper=space2comment',    # Basic tamper script
+                        '--random-agent',            # Use random user agent
+                        '--delay=1'                  # 1 second delay between requests
+                    ]
+                    
+                    # Add form testing if forms were found
+                    forms = crawl_data.get('forms', [])
+                    form_for_url = next((f for f in forms if f.get('action') == test_url), None)
+                    if form_for_url:
+                        sqlmap_cmd.append('--forms')
+                        logger.info(f"📝 Testing forms for URL: {test_url}")
+                    
+                    # Run SQLMap with timeout
+                    result = subprocess.run(
+                        sqlmap_cmd, 
+                        capture_output=True,
+                        text=True, 
+                        timeout=300  # 5 minute timeout per URL
+                    )
+                    
+                    # Parse SQLMap output for vulnerabilities
+                    if result.returncode == 0 and result.stdout:
+                        vulnerability_found = self._parse_sqlmap_output(result.stdout, test_url)
+                        if vulnerability_found:
+                            integration_result['vulnerabilities_found'].append(vulnerability_found)
+                            vulnerabilities_found += 1
+                            logger.info(f"🚨 SQLMap found vulnerability in: {test_url}")
+                    
+                    # Rate limiting between URL tests
+                    await asyncio.sleep(2)
+                    
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"⏰ SQLMap timeout for URL: {test_url}")
+                    continue
+                except Exception as url_error:
+                    logger.warning(f"⚠️ SQLMap error for URL {test_url}: {url_error}")
+                    continue
+            
+            integration_result['execution_successful'] = True
+            logger.info(f"✅ Enhanced SQLMap testing completed: {vulnerabilities_found} vulnerabilities found across {len(urls_to_test)} URLs")
+
+        except FileNotFoundError:
+            integration_result['error'] = 'SQLMap executable not found at the specified path.'
+        except Exception as e:
+            integration_result['error'] = f'Enhanced SQLMap integration error: {str(e)}'
+
+        return integration_result
+    
+    def _parse_sqlmap_output(self, sqlmap_output: str, test_url: str) -> Dict[str, Any]:
+        """
+        Parse SQLMap output to extract vulnerability information
+        
+        Args:
+            sqlmap_output: Raw SQLMap output
+            test_url: URL that was tested
+            
+        Returns:
+            Vulnerability dict if found, None otherwise
+        """
+        try:
+            # Look for SQLMap indicators of successful injection
+            vulnerability_indicators = [
+                "the back-end DBMS is",
+                "might be injectable",
+                "sqlmap identified the following injection point",
+                "parameter appears to be",
+                "payload successfully",
+                "injectable parameter"
+            ]
+            
+            # Check if any vulnerability indicators are present
+            output_lower = sqlmap_output.lower()
+            vulnerability_detected = any(indicator in output_lower for indicator in vulnerability_indicators)
+            
+            if vulnerability_detected:
+                # Extract additional details
+                severity = "High"
+                parameter = "Unknown"
+                injection_type = "Unknown"
+                
+                # Try to extract parameter name
+                parameter_match = re.search(r"parameter '([^']+)' is vulnerable", sqlmap_output, re.IGNORECASE)
+                if parameter_match:
+                    parameter = parameter_match.group(1)
+                
+                # Try to extract injection type
+                if "boolean-based blind" in output_lower:
+                    injection_type = "Boolean-based blind"
+                elif "time-based blind" in output_lower:
+                    injection_type = "Time-based blind"
+                elif "union query" in output_lower:
+                    injection_type = "UNION query"
+                elif "error-based" in output_lower:
+                    injection_type = "Error-based"
+                
+                # Try to extract database type
+                database_type = "Unknown"
+                if "mysql" in output_lower:
+                    database_type = "MySQL"
+                elif "postgresql" in output_lower:
+                    database_type = "PostgreSQL"
+                elif "oracle" in output_lower:
+                    database_type = "Oracle"
+                elif "microsoft sql server" in output_lower:
+                    database_type = "Microsoft SQL Server"
+                
+                return {
+                    'title': f'SQL Injection Vulnerability - {injection_type}',
+                    'severity': severity,
+                    'cvss': 8.5,  # High severity for SQL injection
+                    'description': f'SQLMap identified a {injection_type} SQL injection vulnerability in parameter "{parameter}". Database type: {database_type}',
+                    'url': test_url,
+                    'parameter': parameter,
+                    'injection_type': injection_type,
+                    'database_type': database_type,
+                    'evidence': sqlmap_output[:500] + "..." if len(sqlmap_output) > 500 else sqlmap_output,
+                    'remediation': 'Use parameterized queries/prepared statements, implement proper input validation, and apply principle of least privilege to database connections.',
+                    'discovered_by': 'SQLMap Enhanced Integration',
+                    'tool_output': sqlmap_output
+                }
+            
+        except Exception as e:
+            logger.warning(f"Error parsing SQLMap output: {e}")
+        
+        return None
