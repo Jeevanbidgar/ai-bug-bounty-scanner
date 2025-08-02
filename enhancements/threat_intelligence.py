@@ -27,9 +27,9 @@ class ThreatIntelligenceAgent:
         }
         
         self.api_keys = {
-            'abuseipdb': os.getenv('ABUSEIPDB_API_KEY', '3f0fa7f9204bd618d24f7b2be233382f0a37cc16ef41c36976b3ee87611c844ecc8b3c2fbe3a3ba3'),
-            'shodan': os.getenv('SHODAN_API_KEY', 'gB4ThIkHfWApnpDawWLGnq9Tc7TqvuDw'),
-            'virustotal': os.getenv('VIRUSTOTAL_API_KEY', 'a9f4b3641ade0460ce11d4e9c81f066959a97bc62a3f155efb4ccf10b8efda2d')
+            'abuseipdb': os.getenv('ABUSEIPDB_API_KEY'),
+            'shodan': os.getenv('SHODAN_API_KEY'),
+            'virustotal': os.getenv('VIRUSTOTAL_API_KEY')
         }
         
         self.threat_cache = {}

@@ -1,0 +1,19 @@
+# docker-compose.override.yml - Enhanced configuration for AI Bug Bounty Scanner v2.0
+version: '3.8'
+
+services:
+  # Override main app service
+  web:
+    environment:
+      - NUCLEI_PATH=/usr/local/bin/nuclei
+      - SUBLIST3R_PATH=/usr/local/bin/sublist3r
+      - AMASS_PATH=/usr/local/bin/amass
+      - SQLMAP_PATH=/usr/local/bin/sqlmap
+
+  # Override celery worker
+  celery-worker:
+    environment:
+      - NUCLEI_PATH=/usr/local/bin/nuclei
+      - SUBLIST3R_PATH=/usr/local/bin/sublist3r
+      - AMASS_PATH=/usr/local/bin/amass
+      - SQLMAP_PATH=/usr/local/bin/sqlmap
