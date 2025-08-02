@@ -2,6 +2,8 @@
 """
 Real security report generation agent.
 Aggregates findings from all security agents and generates comprehensive security reports.
+Integrates vulnerability filtering to focus on high-impact, exploitable findings.
+Enhanced with advanced reporting capabilities when available.
 """
 
 import json
@@ -9,13 +11,22 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, List, Any
 import logging
+from .vulnerability_filter import filter_vulnerabilities, get_scan_mode_info
+
+# Try to import advanced reporting
+try:
+    from enhancements.advanced_reporting import AdvancedReportingAgent
+    ADVANCED_REPORTING_AVAILABLE = True
+except ImportError:
+    ADVANCED_REPORTING_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
 class ReportAgent:
-    """Real security report generation agent"""
+    """Real security report generation agent with vulnerability filtering and advanced reporting"""
     
-    def __init__(self):
+    def __init__(self, scan_mode: str = 'focused'):
+        self.scan_mode = scan_mode  # focused, critical_only, comprehensive, bug_bounty, etc.
         self.severity_scores = {
             'Critical': 10,
             'High': 7,
@@ -31,6 +42,18 @@ class ReportAgent:
             'Low': (0.1, 3.9),
             'None': (0.0, 0.0)
         }
+        
+        # Initialize advanced reporting if available
+        self.advanced_reporting = None
+        if ADVANCED_REPORTING_AVAILABLE:
+            try:
+                self.advanced_reporting = AdvancedReportingAgent()
+                logger.info("📊 Advanced reporting features enabled")
+            except Exception as e:
+                logger.warning(f"⚠️ Advanced reporting initialization failed: {e}")
+                self.advanced_reporting = None
+        else:
+            logger.info("📋 Using basic reporting mode")
     
     async def generate_report(self, scan_results: List[Dict[str, Any]], target_url: str, progress_callback=None) -> Dict[str, Any]:
         """
@@ -108,7 +131,7 @@ class ReportAgent:
             raise
     
     def _aggregate_vulnerabilities(self, scan_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Aggregate vulnerabilities from all scan results"""
+        """Aggregate vulnerabilities from all scan results with filtering"""
         all_vulnerabilities = []
         
         for scan_result in scan_results:
@@ -125,14 +148,22 @@ class ReportAgent:
                 
                 all_vulnerabilities.append(vuln)
         
+        # Apply vulnerability filtering based on scan mode
+        logger.info(f"📊 Filtering vulnerabilities for {self.scan_mode} mode...")
+        filtered_vulnerabilities = filter_vulnerabilities(all_vulnerabilities, self.scan_mode)
+        
+        if len(filtered_vulnerabilities) != len(all_vulnerabilities):
+            excluded_count = len(all_vulnerabilities) - len(filtered_vulnerabilities)
+            logger.info(f"🔕 Excluded {excluded_count} low-impact vulnerabilities")
+        
         # Sort by severity and CVSS score
-        all_vulnerabilities.sort(
+        filtered_vulnerabilities.sort(
             key=lambda x: (self.severity_scores.get(x.get('severity', 'Low'), 1), 
                           x.get('cvss', 0.0)), 
             reverse=True
         )
         
-        return all_vulnerabilities
+        return filtered_vulnerabilities
     
     def _generate_executive_summary(self, vulnerabilities: List[Dict[str, Any]], target_url: str) -> Dict[str, Any]:
         """Generate executive summary"""
@@ -522,4 +553,233 @@ class ReportAgent:
                 'Manual verification recommended for critical findings',
                 'Some tests may produce false positives'
             ]
+        }
+
+    # Enhanced Reporting Methods with Advanced Analytics
+    
+    async def generate_executive_dashboard(self, scan_results: List[Dict[str, Any]], target_url: str) -> Dict[str, Any]:
+        """Generate executive dashboard with advanced analytics"""
+        try:
+            if self.advanced_reporting:
+                logger.info("📊 Generating advanced executive dashboard...")
+                
+                # Convert scan results to format expected by advanced reporting
+                formatted_scans = []
+                for result in scan_results:
+                    formatted_scan = {
+                        'target': target_url,
+                        'vulnerabilities': len(result.get('vulnerabilities', [])),
+                        'critical': sum(1 for v in result.get('vulnerabilities', []) if v.get('severity') == 'Critical'),
+                        'high': sum(1 for v in result.get('vulnerabilities', []) if v.get('severity') == 'High'),
+                        'medium': sum(1 for v in result.get('vulnerabilities', []) if v.get('severity') == 'Medium'),
+                        'low': sum(1 for v in result.get('vulnerabilities', []) if v.get('severity') == 'Low'),
+                        'status': 'completed',
+                        'scan_type': result.get('scan_type', 'unknown')
+                    }
+                    formatted_scans.append(formatted_scan)
+                
+                # Generate advanced dashboard
+                dashboard = await self.advanced_reporting.generate_executive_dashboard(formatted_scans)
+                
+                # Add basic report data as fallback
+                basic_report = await self.generate_report(scan_results, target_url)
+                dashboard['basic_summary'] = basic_report['executive_summary']
+                
+                return dashboard
+            else:
+                logger.info("📋 Generating basic executive summary...")
+                # Fallback to basic reporting
+                basic_report = await self.generate_report(scan_results, target_url)
+                return {
+                    'type': 'basic_dashboard',
+                    'executive_summary': basic_report['executive_summary'],
+                    'vulnerability_summary': basic_report['vulnerability_summary'],
+                    'risk_assessment': basic_report['risk_assessment']
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Executive dashboard generation failed: {e}")
+            # Fallback to basic reporting
+            basic_report = await self.generate_report(scan_results, target_url)
+            return {
+                'type': 'fallback_dashboard',
+                'executive_summary': basic_report['executive_summary'],
+                'error': str(e)
+            }
+    
+    async def generate_technical_report(self, scan_results: List[Dict[str, Any]], target_url: str) -> Dict[str, Any]:
+        """Generate detailed technical report with advanced analytics"""
+        try:
+            if self.advanced_reporting:
+                logger.info("🔬 Generating advanced technical report...")
+                
+                # Get basic report first
+                basic_report = await self.generate_report(scan_results, target_url)
+                
+                # Format vulnerabilities for advanced reporting
+                vulnerabilities = basic_report['detailed_findings']
+                formatted_vulns = []
+                for vuln in vulnerabilities:
+                    formatted_vuln = {
+                        'title': vuln.get('title', 'Unknown'),
+                        'severity': vuln.get('severity', 'Low'),
+                        'cvss': vuln.get('cvss', 0.0),
+                        'description': vuln.get('description', ''),
+                        'url': vuln.get('url', target_url),
+                        'discoveredBy': vuln.get('discovered_by', 'Unknown'),
+                        'timestamp': vuln.get('scan_timestamp', time.time())
+                    }
+                    formatted_vulns.append(formatted_vuln)
+                
+                # Generate advanced technical report
+                advanced_report = await self.advanced_reporting.generate_technical_report(
+                    [{'target': target_url, 'vulnerabilities': len(vulnerabilities)}], 
+                    formatted_vulns
+                )
+                
+                # Merge with basic report
+                technical_report = {
+                    'type': 'enhanced_technical',
+                    'basic_findings': basic_report,
+                    'advanced_analytics': advanced_report,
+                    'target': target_url,
+                    'generated_at': datetime.now(timezone.utc).isoformat()
+                }
+                
+                return technical_report
+            else:
+                logger.info("📄 Generating basic technical report...")
+                # Use basic reporting
+                basic_report = await self.generate_report(scan_results, target_url)
+                return {
+                    'type': 'basic_technical',
+                    'report': basic_report,
+                    'target': target_url,
+                    'generated_at': datetime.now(timezone.utc).isoformat()
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Technical report generation failed: {e}")
+            # Fallback to basic reporting
+            basic_report = await self.generate_report(scan_results, target_url)
+            return {
+                'type': 'fallback_technical',
+                'report': basic_report,
+                'error': str(e)
+            }
+    
+    async def generate_compliance_report(self, scan_results: List[Dict[str, Any]], target_url: str, framework: str = 'OWASP') -> Dict[str, Any]:
+        """Generate compliance report for specific framework"""
+        try:
+            if self.advanced_reporting:
+                logger.info(f"📋 Generating {framework} compliance report...")
+                
+                # Format scan data for advanced reporting
+                formatted_scans = [{
+                    'target': target_url,
+                    'vulnerabilities': sum(len(result.get('vulnerabilities', [])) for result in scan_results),
+                    'status': 'completed'
+                }]
+                
+                # Generate compliance report
+                compliance_report = await self.advanced_reporting.generate_compliance_report(formatted_scans, framework)
+                
+                # Add basic compliance data
+                basic_report = await self.generate_report(scan_results, target_url)
+                compliance_report['basic_compliance'] = basic_report['compliance_status']
+                
+                return compliance_report
+            else:
+                logger.info(f"📋 Generating basic {framework} compliance assessment...")
+                # Use basic compliance assessment
+                basic_report = await self.generate_report(scan_results, target_url)
+                return {
+                    'type': 'basic_compliance',
+                    'framework': framework,
+                    'compliance_status': basic_report['compliance_status'],
+                    'target': target_url
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Compliance report generation failed: {e}")
+            # Fallback to basic compliance
+            basic_report = await self.generate_report(scan_results, target_url)
+            return {
+                'type': 'fallback_compliance',
+                'framework': framework,
+                'compliance_status': basic_report['compliance_status'],
+                'error': str(e)
+            }
+    
+    async def export_report_pdf(self, scan_results: List[Dict[str, Any]], target_url: str, report_type: str = 'executive') -> bytes:
+        """Export report as PDF"""
+        try:
+            if self.advanced_reporting:
+                logger.info(f"📄 Exporting {report_type} report as PDF...")
+                
+                # Generate the appropriate report
+                if report_type == 'executive':
+                    report_data = await self.generate_executive_dashboard(scan_results, target_url)
+                elif report_type == 'technical':
+                    report_data = await self.generate_technical_report(scan_results, target_url)
+                else:
+                    report_data = await self.generate_report(scan_results, target_url)
+                
+                # Export to PDF using advanced reporting
+                pdf_data = await self.advanced_reporting.export_report_to_pdf(report_data, report_type)
+                return pdf_data
+            else:
+                logger.warning("📄 PDF export requires advanced reporting features")
+                raise NotImplementedError("PDF export requires advanced reporting features")
+                
+        except Exception as e:
+            logger.error(f"❌ PDF export failed: {e}")
+            raise
+    
+    async def export_vulnerabilities_excel(self, scan_results: List[Dict[str, Any]], target_url: str) -> bytes:
+        """Export vulnerabilities to Excel format"""
+        try:
+            if self.advanced_reporting:
+                logger.info("📊 Exporting vulnerabilities to Excel...")
+                
+                # Get all vulnerabilities
+                all_vulnerabilities = self._aggregate_vulnerabilities(scan_results)
+                
+                # Format for Excel export
+                formatted_vulns = []
+                for vuln in all_vulnerabilities:
+                    formatted_vuln = {
+                        'title': vuln.get('title', 'Unknown'),
+                        'severity': vuln.get('severity', 'Low'),
+                        'cvss': vuln.get('cvss', 0.0),
+                        'description': vuln.get('description', ''),
+                        'url': vuln.get('url', target_url),
+                        'discoveredBy': vuln.get('discovered_by', 'Unknown'),
+                        'timestamp': datetime.fromtimestamp(vuln.get('scan_timestamp', time.time())).isoformat()
+                    }
+                    formatted_vulns.append(formatted_vuln)
+                
+                # Export to Excel
+                excel_data = await self.advanced_reporting.export_to_excel(formatted_vulns)
+                return excel_data
+            else:
+                logger.warning("📊 Excel export requires advanced reporting features")
+                raise NotImplementedError("Excel export requires advanced reporting features")
+                
+        except Exception as e:
+            logger.error(f"❌ Excel export failed: {e}")
+            raise
+    
+    def get_reporting_capabilities(self) -> Dict[str, bool]:
+        """Get available reporting capabilities"""
+        return {
+            'basic_reports': True,
+            'executive_dashboard': ADVANCED_REPORTING_AVAILABLE and self.advanced_reporting is not None,
+            'technical_reports': True,
+            'compliance_reports': ADVANCED_REPORTING_AVAILABLE and self.advanced_reporting is not None,
+            'pdf_export': ADVANCED_REPORTING_AVAILABLE and self.advanced_reporting is not None,
+            'excel_export': ADVANCED_REPORTING_AVAILABLE and self.advanced_reporting is not None,
+            'advanced_analytics': ADVANCED_REPORTING_AVAILABLE and self.advanced_reporting is not None,
+            'trend_analysis': ADVANCED_REPORTING_AVAILABLE and self.advanced_reporting is not None,
+            'risk_visualization': ADVANCED_REPORTING_AVAILABLE and self.advanced_reporting is not None
         }

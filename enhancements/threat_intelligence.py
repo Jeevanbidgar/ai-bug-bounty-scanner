@@ -12,14 +12,18 @@ from typing import Dict, List, Any, Optional
 import logging
 import hashlib
 import os
+from config import get_config
+
+# Get configuration
+Config = get_config()
 
 class ThreatIntelligenceAgent:
     """Threat intelligence integration for real-time security updates"""
     
     def __init__(self):
         self.threat_feeds = {
-            'cve_database': 'https://cve.circl.lu/api/last/30',  # Free CVE API
-            'malware_domains': 'https://urlhaus-api.abuse.ch/v1/urls/recent/',
+            'cve_database': f'{Config.CVE_API_URL}/last/30',  # CVE API from config
+            'malware_domains': f'{Config.URLHAUS_API_URL}/urls/recent/',
             'ip_reputation': 'https://api.abuseipdb.com/api/v2/check',
             'shodan_api': 'https://api.shodan.io/shodan/host/search',
             'virustotal_domain': 'https://www.virustotal.com/vtapi/v2/domain/report',
@@ -27,13 +31,13 @@ class ThreatIntelligenceAgent:
         }
         
         self.api_keys = {
-            'abuseipdb': os.getenv('ABUSEIPDB_API_KEY', '3f0fa7f9204bd618d24f7b2be233382f0a37cc16ef41c36976b3ee87611c844ecc8b3c2fbe3a3ba3'),
-            'shodan': os.getenv('SHODAN_API_KEY', 'gB4ThIkHfWApnpDawWLGnq9Tc7TqvuDw'),
-            'virustotal': os.getenv('VIRUSTOTAL_API_KEY', 'a9f4b3641ade0460ce11d4e9c81f066959a97bc62a3f155efb4ccf10b8efda2d')
+            'abuseipdb': Config.ABUSEIPDB_API_KEY,
+            'shodan': Config.SHODAN_API_KEY,
+            'virustotal': Config.VIRUSTOTAL_API_KEY
         }
         
         self.threat_cache = {}
-        self.cache_duration = 3600  # 1 hour cache
+        self.cache_duration = Config.THREAT_INTEL_CACHE_DURATION
         
     async def analyze_target_reputation(self, target_url: str) -> Dict:
         """Analyze target reputation using multiple threat intelligence sources"""

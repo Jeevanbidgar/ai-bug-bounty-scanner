@@ -1,17 +1,48 @@
 # AI Bug Bounty Scanner Backend
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from datetime import datetime, timezone
 import uuid
 import json
-from typing import Dict, List, Any
-import os
+import time
 import asyncio
 import threading
 import logging
+from typing import Dict, List, Any
+import os
+from dotenv import load_dotenv
+from config import get_config
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Get configuration
+Config = get_config()
+
+# Configure logging
+log_level = getattr(logging, Config.LOG_LEVEL.upper())
+os.makedirs(os.path.dirname(Config.LOG_FILE) if os.path.dirname(Config.LOG_FILE) else 'logs', exist_ok=True)
+
+# Create handlers with UTF-8 encoding for Windows compatibility
+file_handler = logging.FileHandler(Config.LOG_FILE, encoding='utf-8')
+console_handler = logging.StreamHandler()
+
+# Set formatting
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# Configure root logger
+logging.basicConfig(
+    level=log_level,
+    handlers=[file_handler, console_handler]
+)
+
+logger = logging.getLogger(__name__)
+logger.info("AI Bug Bounty Scanner starting up...")
 
 # Import real scanning agents
 from agents import SecurityValidator, ReconAgent, WebAppAgent, NetworkAgent, APIAgent, ReportAgent
@@ -20,6 +51,7 @@ from agents import SecurityValidator, ReconAgent, WebAppAgent, NetworkAgent, API
 try:
     from enhancements.threat_intelligence import ThreatIntelligenceAgent
     from enhancements.enhanced_security_agent import EnhancedSecurityAgent
+    from enhancements.advanced_reporting import AdvancedReportingAgent
     ENHANCEMENTS_AVAILABLE = True
     
     # Test threat intelligence initialization
@@ -30,6 +62,10 @@ try:
         print("✅ Threat intelligence features available")
     else:
         print("⚠️  Limited threat intelligence (no API keys)")
+    
+    # Initialize advanced reporting
+    advanced_reporting = AdvancedReportingAgent()
+    print("📊 Advanced reporting features available")
         
 except ImportError as e:
     ENHANCEMENTS_AVAILABLE = False
@@ -38,16 +74,24 @@ except ImportError as e:
 
 # Initialize Flask app
 app = Flask(__name__)
-import os
-basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(basedir, "instance", "bug_bounty_scanner.db")}'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
+
+# Load configuration from config class
+app.config.from_object(Config)
 
 # Initialize extensions
 db = SQLAlchemy(app)
-CORS(app)  # Enable CORS for frontend connection
-socketio = SocketIO(app, cors_allowed_origins="*")  # Enable real-time communication
+
+# CORS configuration from config
+CORS(app, origins=Config.CORS_ORIGINS)
+
+# SocketIO configuration from config
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins=Config.SOCKETIO_CORS_ALLOWED_ORIGINS,
+    async_mode=Config.SOCKETIO_ASYNC_MODE,
+    ping_timeout=Config.SOCKETIO_PING_TIMEOUT,
+    ping_interval=Config.SOCKETIO_PING_INTERVAL
+)
 
 # Database Models
 class Scan(db.Model):
@@ -182,7 +226,733 @@ class Report(db.Model):
             'severity': severity
         }
 
+# Agent Configuration Management
+import json
+from pathlib import Path
+
+# Agent configurations storage
+AGENT_CONFIG_DIR = Path("instance/agent_configs")
+AGENT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+# Default test configurations for each agent
+AGENT_TEST_CONFIGURATIONS = {
+    'webapp': {
+        'available_tests': [
+            {
+                'id': 'xss_reflected',
+                'name': 'Reflected XSS',
+                'description': 'Test for reflected cross-site scripting vulnerabilities',
+                'severity': 'high',
+                'category': 'Client-Side Injection'
+            },
+            {
+                'id': 'xss_stored',
+                'name': 'Stored XSS',
+                'description': 'Test for stored cross-site scripting vulnerabilities',
+                'severity': 'high',
+                'category': 'Client-Side Injection'
+            },
+            {
+                'id': 'sql_injection',
+                'name': 'SQL Injection',
+                'description': 'Test for SQL injection vulnerabilities in forms and parameters',
+                'severity': 'critical',
+                'category': 'Critical Remote Execution'
+            },
+            {
+                'id': 'path_traversal',
+                'name': 'Path Traversal',
+                'description': 'Test for directory traversal vulnerabilities',
+                'severity': 'high',
+                'category': 'Access Control Bypasses'
+            },
+            {
+                'id': 'csrf',
+                'name': 'CSRF Protection',
+                'description': 'Check for missing CSRF protection on forms',
+                'severity': 'medium',
+                'category': 'Access Control Bypasses'
+            },
+            {
+                'id': 'open_redirect',
+                'name': 'Open Redirect',
+                'description': 'Test for open redirect vulnerabilities',
+                'severity': 'medium',
+                'category': 'Access Control Bypasses'
+            },
+            {
+                'id': 'clickjacking',
+                'name': 'Clickjacking',
+                'description': 'Check for missing X-Frame-Options header',
+                'severity': 'medium',
+                'category': 'Client-Side Injection'
+            },
+            {
+                'id': 'file_upload',
+                'name': 'File Upload Bypass',
+                'description': 'Test file upload functionality for security bypasses',
+                'severity': 'high',
+                'category': 'Critical Remote Execution'
+            },
+            {
+                'id': 'session_fixation',
+                'name': 'Session Fixation',
+                'description': 'Test for session fixation vulnerabilities',
+                'severity': 'medium',
+                'category': 'Access Control Bypasses'
+            },
+            {
+                'id': 'weak_authentication',
+                'name': 'Weak Authentication',
+                'description': 'Test for weak authentication mechanisms',
+                'severity': 'medium',
+                'category': 'Access Control Bypasses'
+            }
+        ]
+    },
+    'api': {
+        'available_tests': [
+            {
+                'id': 'bola',
+                'name': 'BOLA/IDOR',
+                'description': 'Test for Broken Object Level Authorization vulnerabilities',
+                'severity': 'critical',
+                'category': 'Access Control Bypasses'
+            },
+            {
+                'id': 'broken_auth',
+                'name': 'Broken Authentication',
+                'description': 'Test for authentication bypass vulnerabilities',
+                'severity': 'critical',
+                'category': 'Access Control Bypasses'
+            },
+            {
+                'id': 'excessive_data',
+                'name': 'Excessive Data Exposure',
+                'description': 'Check for APIs returning excessive sensitive data',
+                'severity': 'medium',
+                'category': 'Access Control Bypasses'
+            },
+            {
+                'id': 'rate_limiting',
+                'name': 'Rate Limiting',
+                'description': 'Test for missing or weak rate limiting',
+                'severity': 'medium',
+                'category': 'Access Control Bypasses'
+            },
+            {
+                'id': 'function_level_auth',
+                'name': 'Function Level Authorization',
+                'description': 'Test for broken function level authorization',
+                'severity': 'high',
+                'category': 'Access Control Bypasses'
+            },
+            {
+                'id': 'mass_assignment',
+                'name': 'Mass Assignment',
+                'description': 'Test for mass assignment vulnerabilities',
+                'severity': 'medium',
+                'category': 'Access Control Bypasses'
+            },
+            {
+                'id': 'security_misconfiguration',
+                'name': 'Security Misconfiguration',
+                'description': 'Check for security misconfigurations',
+                'severity': 'medium',
+                'category': 'Cryptographic Failures'
+            },
+            {
+                'id': 'injection',
+                'name': 'Injection Attacks',
+                'description': 'Test for various injection vulnerabilities',
+                'severity': 'critical',
+                'category': 'Critical Remote Execution'
+            },
+            {
+                'id': 'improper_assets',
+                'name': 'Improper Assets Management',
+                'description': 'Check for improper API assets management',
+                'severity': 'medium',
+                'category': 'Access Control Bypasses'
+            },
+            {
+                'id': 'insufficient_logging',
+                'name': 'Insufficient Logging',
+                'description': 'Check for insufficient logging and monitoring',
+                'severity': 'low',
+                'category': 'Cryptographic Failures'
+            }
+        ]
+    },
+    'network': {
+        'available_tests': [
+            {
+                'id': 'port_scan',
+                'name': 'Port Scanning',
+                'description': 'Scan for open ports and services',
+                'severity': 'info',
+                'category': 'Network Discovery'
+            },
+            {
+                'id': 'service_detection',
+                'name': 'Service Detection',
+                'description': 'Detect running services and versions',
+                'severity': 'info',
+                'category': 'Network Discovery'
+            },
+            {
+                'id': 'ssl_tls_scan',
+                'name': 'SSL/TLS Configuration',
+                'description': 'Check SSL/TLS configuration and vulnerabilities',
+                'severity': 'high',
+                'category': 'Cryptographic Failures'
+            },
+            {
+                'id': 'weak_ciphers',
+                'name': 'Weak Ciphers',
+                'description': 'Check for weak encryption ciphers',
+                'severity': 'medium',
+                'category': 'Cryptographic Failures'
+            },
+            {
+                'id': 'certificate_validation',
+                'name': 'Certificate Validation',
+                'description': 'Validate SSL certificates',
+                'severity': 'medium',
+                'category': 'Cryptographic Failures'
+            },
+            {
+                'id': 'network_services',
+                'name': 'Network Services',
+                'description': 'Test network services for vulnerabilities',
+                'severity': 'medium',
+                'category': 'Network Security'
+            },
+            {
+                'id': 'dns_enumeration',
+                'name': 'DNS Enumeration',
+                'description': 'Enumerate DNS records and subdomains',
+                'severity': 'info',
+                'category': 'Network Discovery'
+            },
+            {
+                'id': 'firewall_detection',
+                'name': 'Firewall Detection',
+                'description': 'Detect firewall and filtering mechanisms',
+                'severity': 'info',
+                'category': 'Network Security'
+            }
+        ]
+    },
+    'recon': {
+        'available_tests': [
+            {
+                'id': 'subdomain_enumeration',
+                'name': 'Subdomain Enumeration',
+                'description': 'Discover subdomains using multiple techniques',
+                'severity': 'info',
+                'category': 'Information Gathering'
+            },
+            {
+                'id': 'dns_enumeration',
+                'name': 'DNS Enumeration',
+                'description': 'Enumerate DNS records and configurations',
+                'severity': 'info',
+                'category': 'Information Gathering'
+            },
+            {
+                'id': 'whois_lookup',
+                'name': 'WHOIS Lookup',
+                'description': 'Gather domain registration information',
+                'severity': 'info',
+                'category': 'Information Gathering'
+            },
+            {
+                'id': 'email_harvesting',
+                'name': 'Email Harvesting',
+                'description': 'Collect email addresses related to the target',
+                'severity': 'info',
+                'category': 'Information Gathering'
+            },
+            {
+                'id': 'social_media_osint',
+                'name': 'Social Media OSINT',
+                'description': 'Gather information from social media platforms',
+                'severity': 'info',
+                'category': 'Information Gathering'
+            },
+            {
+                'id': 'technology_detection',
+                'name': 'Technology Detection',
+                'description': 'Identify technologies used by the target',
+                'severity': 'info',
+                'category': 'Information Gathering'
+            },
+            {
+                'id': 'directory_enumeration',
+                'name': 'Directory Enumeration',
+                'description': 'Discover hidden directories and files',
+                'severity': 'medium',
+                'category': 'Information Gathering'
+            },
+            {
+                'id': 'metadata_extraction',
+                'name': 'Metadata Extraction',
+                'description': 'Extract metadata from documents and files',
+                'severity': 'info',
+                'category': 'Information Gathering'
+            }
+        ]
+    }
+}
+
+def get_agent_config_file(agent_name):
+    """Get the configuration file path for an agent"""
+    return AGENT_CONFIG_DIR / f"{agent_name}_config.json"
+
+def load_agent_config(agent_name):
+    """Load agent configuration from file or return defaults"""
+    config_file = get_agent_config_file(agent_name)
+    
+    if config_file.exists():
+        try:
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            config = {}
+    else:
+        config = {}
+    
+    # Get default configuration for this agent
+    default_config = AGENT_TEST_CONFIGURATIONS.get(agent_name, {'available_tests': []})
+    
+    # If no enabled_tests in config, enable all by default
+    if 'enabled_tests' not in config:
+        config['enabled_tests'] = [test['id'] for test in default_config['available_tests']]
+    
+    # Merge with defaults
+    config['available_tests'] = default_config['available_tests']
+    
+    return config
+
+def save_agent_config(agent_name, config):
+    """Save agent configuration to file"""
+    config_file = get_agent_config_file(agent_name)
+    
+    try:
+        with open(config_file, 'w') as f:
+            json.dump(config, f, indent=2)
+        return True
+    except IOError:
+        return False
+
 # API Routes
+
+@app.route('/api/agents/<agent_name>/config', methods=['GET'])
+def get_agent_configuration(agent_name):
+    """Get configuration for a specific agent"""
+    try:
+        # Validate agent name
+        valid_agents = ['webapp', 'api', 'network', 'recon']
+        if agent_name not in valid_agents:
+            return jsonify({
+                'error': f'Invalid agent name. Must be one of: {", ".join(valid_agents)}'
+            }), 400
+        
+        config = load_agent_config(agent_name)
+        
+        return jsonify(config)
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to load agent configuration: {str(e)}'
+        }), 500
+
+@app.route('/api/agents/<agent_name>/config', methods=['POST'])
+def update_agent_configuration(agent_name):
+    """Update configuration for a specific agent"""
+    try:
+        # Validate agent name
+        valid_agents = ['webapp', 'api', 'network', 'recon']
+        if agent_name not in valid_agents:
+            return jsonify({
+                'error': f'Invalid agent name. Must be one of: {", ".join(valid_agents)}'
+            }), 400
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        # Load current config
+        current_config = load_agent_config(agent_name)
+        
+        # Update enabled tests
+        if 'enabled_tests' in data:
+            # Validate that all enabled tests are available
+            available_test_ids = [test['id'] for test in current_config['available_tests']]
+            invalid_tests = [test_id for test_id in data['enabled_tests'] if test_id not in available_test_ids]
+            
+            if invalid_tests:
+                return jsonify({
+                    'error': f'Invalid test IDs: {", ".join(invalid_tests)}'
+                }), 400
+            
+            current_config['enabled_tests'] = data['enabled_tests']
+        
+        # Save configuration
+        if save_agent_config(agent_name, current_config):
+            return jsonify({
+                'success': True,
+                'message': f'Configuration updated for {agent_name} agent',
+                'enabled_tests_count': len(current_config['enabled_tests'])
+            })
+        else:
+            return jsonify({
+                'error': 'Failed to save configuration'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to update agent configuration: {str(e)}'
+        }), 500
+
+@app.route('/api/agents/config/summary', methods=['GET'])
+def get_all_agents_config_summary():
+    """Get a summary of all agent configurations"""
+    try:
+        valid_agents = ['webapp', 'api', 'network', 'recon']
+        summary = {}
+        
+        for agent_name in valid_agents:
+            config = load_agent_config(agent_name)
+            summary[agent_name] = {
+                'total_tests': len(config['available_tests']),
+                'enabled_tests': len(config['enabled_tests']),
+                'disabled_tests': len(config['available_tests']) - len(config['enabled_tests'])
+            }
+        
+        return jsonify(summary)
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to load agent configurations: {str(e)}'
+        }), 500
+
+# Advanced Reporting API Endpoints (moved further down)
+# Duplicate function removed - see line ~804 for implementation
+
+@app.route('/api/reports/enhanced/dashboard/<scan_id>', methods=['GET'])
+def get_enhanced_dashboard_for_scan(scan_id):
+    """Get enhanced executive dashboard for specific scan using integrated ReportAgent"""
+    try:
+        scan = Scan.query.get_or_404(scan_id)
+        
+        # Create enhanced report agent
+        report_agent = ReportAgent(scan_mode='focused')
+        
+        # Mock scan results format (in real implementation, these would come from actual scan data)
+        scan_results = [{
+            'scan_type': scan.scan_type,
+            'vulnerabilities': [vuln.to_dict() for vuln in scan.vulnerabilities],
+            'timestamp': scan.started.timestamp() if scan.started else time.time(),
+            'target': scan.target
+        }]
+        
+        # Generate enhanced dashboard
+        dashboard = asyncio.run(report_agent.generate_executive_dashboard(scan_results, scan.target))
+        
+        return jsonify(dashboard)
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to generate enhanced dashboard: {str(e)}'
+        }), 500
+
+@app.route('/api/reports/enhanced/technical/<scan_id>', methods=['GET'])
+def get_enhanced_technical_report_for_scan(scan_id):
+    """Get enhanced technical report for specific scan"""
+    try:
+        scan = Scan.query.get_or_404(scan_id)
+        
+        # Create enhanced report agent
+        report_agent = ReportAgent(scan_mode='comprehensive')
+        
+        # Format scan results
+        scan_results = [{
+            'scan_type': scan.scan_type,
+            'vulnerabilities': [vuln.to_dict() for vuln in scan.vulnerabilities],
+            'timestamp': scan.started.timestamp() if scan.started else time.time(),
+            'target': scan.target
+        }]
+        
+        # Generate enhanced technical report
+        technical_report = asyncio.run(report_agent.generate_technical_report(scan_results, scan.target))
+        
+        return jsonify(technical_report)
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to generate enhanced technical report: {str(e)}'
+        }), 500
+
+@app.route('/api/reports/enhanced/compliance/<scan_id>/<framework>', methods=['GET'])
+def get_enhanced_compliance_report(scan_id, framework):
+    """Get enhanced compliance report for specific scan and framework"""
+    try:
+        valid_frameworks = ['OWASP', 'NIST', 'ISO27001']
+        if framework not in valid_frameworks:
+            return jsonify({
+                'error': f'Invalid framework. Must be one of: {", ".join(valid_frameworks)}'
+            }), 400
+        
+        scan = Scan.query.get_or_404(scan_id)
+        
+        # Create enhanced report agent
+        report_agent = ReportAgent(scan_mode='comprehensive')
+        
+        # Format scan results
+        scan_results = [{
+            'scan_type': scan.scan_type,
+            'vulnerabilities': [vuln.to_dict() for vuln in scan.vulnerabilities],
+            'timestamp': scan.started.timestamp() if scan.started else time.time(),
+            'target': scan.target
+        }]
+        
+        # Generate compliance report
+        compliance_report = asyncio.run(report_agent.generate_compliance_report(scan_results, scan.target, framework))
+        
+        return jsonify(compliance_report)
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to generate compliance report: {str(e)}'
+        }), 500
+
+@app.route('/api/reports/enhanced/export/pdf/<scan_id>', methods=['POST'])
+def export_enhanced_report_pdf(scan_id):
+    """Export enhanced report as PDF for specific scan"""
+    try:
+        scan = Scan.query.get_or_404(scan_id)
+        data = request.get_json() or {}
+        report_type = data.get('report_type', 'executive')
+        
+        # Create enhanced report agent
+        report_agent = ReportAgent(scan_mode='comprehensive')
+        
+        # Format scan results
+        scan_results = [{
+            'scan_type': scan.scan_type,
+            'vulnerabilities': [vuln.to_dict() for vuln in scan.vulnerabilities],
+            'timestamp': scan.started.timestamp() if scan.started else time.time(),
+            'target': scan.target
+        }]
+        
+        # Export to PDF
+        pdf_data = asyncio.run(report_agent.export_report_pdf(scan_results, scan.target, report_type))
+        
+        return Response(
+            pdf_data,
+            mimetype='application/pdf',
+            headers={'Content-Disposition': f'attachment; filename=security_report_{scan.target}_{report_type}.pdf'}
+        )
+        
+    except NotImplementedError:
+        return jsonify({
+            'error': 'PDF export requires advanced reporting features to be enabled'
+        }), 501
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to export PDF: {str(e)}'
+        }), 500
+
+@app.route('/api/reports/enhanced/export/excel/<scan_id>', methods=['GET'])
+def export_enhanced_vulnerabilities_excel(scan_id):
+    """Export vulnerabilities to Excel for specific scan"""
+    try:
+        scan = Scan.query.get_or_404(scan_id)
+        
+        # Create enhanced report agent
+        report_agent = ReportAgent(scan_mode='comprehensive')
+        
+        # Format scan results
+        scan_results = [{
+            'scan_type': scan.scan_type,
+            'vulnerabilities': [vuln.to_dict() for vuln in scan.vulnerabilities],
+            'timestamp': scan.started.timestamp() if scan.started else time.time(),
+            'target': scan.target
+        }]
+        
+        # Export to Excel
+        excel_data = asyncio.run(report_agent.export_vulnerabilities_excel(scan_results, scan.target))
+        
+        return Response(
+            excel_data,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={'Content-Disposition': f'attachment; filename=vulnerabilities_{scan.target}.xlsx'}
+        )
+        
+    except NotImplementedError:
+        return jsonify({
+            'error': 'Excel export requires advanced reporting features to be enabled'
+        }), 501
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to export Excel: {str(e)}'
+        }), 500
+
+@app.route('/api/reports/capabilities', methods=['GET'])
+def get_reporting_capabilities():
+    """Get available reporting capabilities"""
+    try:
+        # Create report agent to check capabilities
+        report_agent = ReportAgent()
+        capabilities = report_agent.get_reporting_capabilities()
+        
+        return jsonify({
+            'capabilities': capabilities,
+            'enhanced_features_available': ENHANCEMENTS_AVAILABLE,
+            'version': 'integrated_v1.0'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to get capabilities: {str(e)}'
+        }), 500
+
+@app.route('/api/reports/advanced/dashboard', methods=['GET'])
+def get_advanced_dashboard():
+    """Get advanced executive dashboard"""
+    try:
+        if not ENHANCEMENTS_AVAILABLE:
+            return jsonify({'error': 'Advanced reporting not available'}), 501
+        
+        # Get scan data
+        scans = Scan.query.all()
+        scan_data = [scan.to_dict() for scan in scans]
+        
+        # Generate dashboard using advanced reporting
+        dashboard_data = asyncio.run(advanced_reporting.generate_executive_dashboard(scan_data))
+        
+        return jsonify(dashboard_data)
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to generate dashboard: {str(e)}'
+        }), 500
+
+@app.route('/api/reports/advanced/technical', methods=['GET'])
+def get_advanced_technical_report():
+    """Get advanced technical report"""
+    try:
+        if not ENHANCEMENTS_AVAILABLE:
+            return jsonify({'error': 'Advanced reporting not available'}), 501
+        
+        # Get scan and vulnerability data
+        scans = Scan.query.all()
+        vulnerabilities = Vulnerability.query.all()
+        
+        scan_data = [scan.to_dict() for scan in scans]
+        vuln_data = [vuln.to_dict() for vuln in vulnerabilities]
+        
+        # Generate technical report
+        report_data = asyncio.run(advanced_reporting.generate_technical_report(scan_data, vuln_data))
+        
+        return jsonify(report_data)
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to generate technical report: {str(e)}'
+        }), 500
+
+@app.route('/api/reports/advanced/compliance/<framework>', methods=['GET'])
+def get_compliance_report(framework):
+    """Get compliance report for specific framework"""
+    try:
+        if not ENHANCEMENTS_AVAILABLE:
+            return jsonify({'error': 'Advanced reporting not available'}), 501
+        
+        valid_frameworks = ['OWASP', 'NIST', 'ISO27001']
+        if framework not in valid_frameworks:
+            return jsonify({
+                'error': f'Invalid framework. Must be one of: {", ".join(valid_frameworks)}'
+            }), 400
+        
+        # Get scan data
+        scans = Scan.query.all()
+        scan_data = [scan.to_dict() for scan in scans]
+        
+        # Generate compliance report
+        report_data = asyncio.run(advanced_reporting.generate_compliance_report(scan_data, framework))
+        
+        return jsonify(report_data)
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to generate compliance report: {str(e)}'
+        }), 500
+
+@app.route('/api/reports/advanced/export/pdf', methods=['POST'])
+def export_advanced_report_pdf():
+    """Export advanced report as PDF"""
+    try:
+        if not ENHANCEMENTS_AVAILABLE:
+            return jsonify({'error': 'Advanced reporting not available'}), 501
+        
+        data = request.get_json()
+        report_type = data.get('report_type', 'executive')
+        
+        # Get the appropriate report data
+        if report_type == 'executive':
+            scans = Scan.query.all()
+            scan_data = [scan.to_dict() for scan in scans]
+            report_data = asyncio.run(advanced_reporting.generate_executive_dashboard(scan_data))
+        elif report_type == 'technical':
+            scans = Scan.query.all()
+            vulnerabilities = Vulnerability.query.all()
+            scan_data = [scan.to_dict() for scan in scans]
+            vuln_data = [vuln.to_dict() for vuln in vulnerabilities]
+            report_data = asyncio.run(advanced_reporting.generate_technical_report(scan_data, vuln_data))
+        else:
+            return jsonify({'error': 'Invalid report type'}), 400
+        
+        # Export to PDF
+        pdf_data = asyncio.run(advanced_reporting.export_report_to_pdf(report_data, report_type))
+        
+        return Response(
+            pdf_data,
+            mimetype='application/pdf',
+            headers={'Content-Disposition': f'attachment; filename=security_report_{report_type}.pdf'}
+        )
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to export PDF: {str(e)}'
+        }), 500
+
+@app.route('/api/reports/advanced/export/excel', methods=['GET'])
+def export_vulnerabilities_excel():
+    """Export vulnerabilities to Excel"""
+    try:
+        if not ENHANCEMENTS_AVAILABLE:
+            return jsonify({'error': 'Advanced reporting not available'}), 501
+        
+        # Get vulnerabilities
+        vulnerabilities = Vulnerability.query.all()
+        vuln_data = [vuln.to_dict() for vuln in vulnerabilities]
+        
+        # Export to Excel
+        excel_data = asyncio.run(advanced_reporting.export_to_excel(vuln_data))
+        
+        return Response(
+            excel_data,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={'Content-Disposition': 'attachment; filename=vulnerabilities_report.xlsx'}
+        )
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to export Excel: {str(e)}'
+        }), 500
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
@@ -827,29 +1597,38 @@ def init_db():
 
     # Get database path from URI
     db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+    logger.info(f"Initializing database with URI: {db_uri}")
+    
     if db_uri.startswith('sqlite:///'):
         db_path = db_uri.replace('sqlite:///', '')
+        
+        # Convert to absolute path if not already
+        if not os.path.isabs(db_path):
+            db_path = os.path.abspath(db_path)
+            
         db_dir = os.path.dirname(db_path)
+        logger.info(f"Database path: {db_path}")
+        logger.info(f"Database directory: {db_dir}")
 
         # Create database directory if it doesn't exist
         if db_dir and not os.path.exists(db_dir):
             os.makedirs(db_dir, exist_ok=True)
-            print(f"✅ Created database directory: {db_dir}")
+            logger.info(f"Created database directory: {db_dir}")
         elif db_dir:
-            print(f"📁 Database directory exists: {db_dir}")
+            logger.info(f"Database directory exists: {db_dir}")
 
         # Check if database file exists
         db_exists = os.path.exists(db_path)
         if not db_exists:
-            print(f"�️ Creating new database: {db_path}")
+            logger.info(f"Creating new database: {db_path}")
         else:
-            print(f"🗄️ Using existing database: {db_path}")
+            logger.info(f"Using existing database: {db_path}")
     else:
-        print("🗄️ Using non-SQLite database")
+        logger.info("Using non-SQLite database")
 
     # Create all tables
     db.create_all()
-    print("✅ Database tables created/verified successfully")
+    logger.info("Database tables created/verified successfully")
 
     # Create security agents if they don't exist
     if Agent.query.count() == 0:
@@ -1017,4 +1796,10 @@ def static_files(filename):
     return send_from_directory('.', filename)
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    # Get configuration from config class
+    logger.info(f"🌐 Starting server on {Config.HOST}:{Config.PORT}")
+    logger.info(f"🔧 Debug mode: {Config.DEBUG}")
+    logger.info(f"📊 Database: {app.config['SQLALCHEMY_DATABASE_URI']}")
+    logger.info(f"🔐 CORS origins: {Config.CORS_ORIGINS}")
+    
+    socketio.run(app, debug=Config.DEBUG, host=Config.HOST, port=Config.PORT)

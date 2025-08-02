@@ -15,6 +15,7 @@ import logging
 import re
 
 from .security_validator import SecurityValidator
+from .agent_config_utils import is_test_enabled, log_test_execution
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,9 @@ class WebAppAgent:
                 'target': target_url,
                 'timestamp': time.time(),
                 'scan_type': 'web_application',
-                'vulnerabilities': []
+                'vulnerabilities': [],
+                'executed_tests': [],
+                'skipped_tests': []
             }
             
             try:
@@ -83,33 +86,72 @@ class WebAppAgent:
                 crawl_data = await self._crawl_website(target_url)
                 results['crawl_data'] = crawl_data
 
-                # Test for XSS vulnerabilities
-                if progress_callback:
-                    progress_callback(30, "🔍 Testing for Cross-Site Scripting (XSS) vulnerabilities...")
-                logger.info("🔍 Testing for XSS vulnerabilities...")
-                xss_vulns = await self._test_xss_vulnerabilities(target_url, crawl_data)
-                results['vulnerabilities'].extend(xss_vulns)
+                # Test for XSS vulnerabilities (both reflected and stored)
+                if is_test_enabled('webapp', 'xss_reflected') or is_test_enabled('webapp', 'xss_stored'):
+                    if progress_callback:
+                        progress_callback(30, "🔍 Testing for Cross-Site Scripting (XSS) vulnerabilities...")
+                    logger.info("🔍 Testing for XSS vulnerabilities...")
+                    xss_vulns = await self._test_xss_vulnerabilities(target_url, crawl_data)
+                    results['vulnerabilities'].extend(xss_vulns)
+                    results['executed_tests'].extend(['xss_reflected', 'xss_stored'])
+                    log_test_execution('webapp', 'xss_reflected', True)
+                    log_test_execution('webapp', 'xss_stored', True)
+                else:
+                    results['skipped_tests'].extend(['xss_reflected', 'xss_stored'])
+                    log_test_execution('webapp', 'xss_reflected', False)
+                    log_test_execution('webapp', 'xss_stored', False)
 
                 # Test for SQL injection
-                if progress_callback:
-                    progress_callback(50, "💉 Testing for SQL injection vulnerabilities...")
-                logger.info("💉 Testing for SQL injection...")
-                sql_vulns = await self._test_sql_injection(target_url, crawl_data)
-                results['vulnerabilities'].extend(sql_vulns)
+                if is_test_enabled('webapp', 'sql_injection'):
+                    if progress_callback:
+                        progress_callback(50, "💉 Testing for SQL injection vulnerabilities...")
+                    logger.info("💉 Testing for SQL injection...")
+                    sql_vulns = await self._test_sql_injection(target_url, crawl_data)
+                    results['vulnerabilities'].extend(sql_vulns)
+                    results['executed_tests'].append('sql_injection')
+                    log_test_execution('webapp', 'sql_injection', True)
+                else:
+                    results['skipped_tests'].append('sql_injection')
+                    log_test_execution('webapp', 'sql_injection', False)
 
-                # Test for security headers
-                if progress_callback:
-                    progress_callback(70, "🛡️ Checking security headers and configurations...")
-                logger.info("🛡️ Checking security headers...")
-                header_vulns = await self._check_security_headers(target_url)
-                results['vulnerabilities'].extend(header_vulns)
+                # Test for security headers and clickjacking
+                if is_test_enabled('webapp', 'clickjacking'):
+                    if progress_callback:
+                        progress_callback(70, "🛡️ Checking security headers and configurations...")
+                    logger.info("🛡️ Checking security headers...")
+                    header_vulns = await self._check_security_headers(target_url)
+                    results['vulnerabilities'].extend(header_vulns)
+                    results['executed_tests'].append('clickjacking')
+                    log_test_execution('webapp', 'clickjacking', True)
+                else:
+                    results['skipped_tests'].append('clickjacking')
+                    log_test_execution('webapp', 'clickjacking', False)
 
                 # Test for directory traversal
-                if progress_callback:
-                    progress_callback(85, "📁 Testing for directory traversal vulnerabilities...")
-                logger.info("📁 Testing for directory traversal...")
-                dir_vulns = await self._test_directory_traversal(target_url)
-                results['vulnerabilities'].extend(dir_vulns)
+                if is_test_enabled('webapp', 'path_traversal'):
+                    if progress_callback:
+                        progress_callback(85, "📁 Testing for directory traversal vulnerabilities...")
+                    logger.info("📁 Testing for directory traversal...")
+                    dir_vulns = await self._test_directory_traversal(target_url)
+                    results['vulnerabilities'].extend(dir_vulns)
+                    results['executed_tests'].append('path_traversal')
+                    log_test_execution('webapp', 'path_traversal', True)
+                else:
+                    results['skipped_tests'].append('path_traversal')
+                    log_test_execution('webapp', 'path_traversal', False)
+
+                # Test for CSRF protection
+                if is_test_enabled('webapp', 'csrf'):
+                    if progress_callback:
+                        progress_callback(90, "🔐 Testing for CSRF protection...")
+                    logger.info("🔐 Testing for CSRF protection...")
+                    csrf_vulns = await self._test_csrf_protection(target_url, crawl_data)
+                    results['vulnerabilities'].extend(csrf_vulns)
+                    results['executed_tests'].append('csrf')
+                    log_test_execution('webapp', 'csrf', True)
+                else:
+                    results['skipped_tests'].append('csrf')
+                    log_test_execution('webapp', 'csrf', False)
 
                 # Test for information disclosure
                 if progress_callback:
@@ -328,34 +370,57 @@ class WebAppAgent:
         return vulnerabilities
     
     async def _check_security_headers(self, target_url: str) -> List[Dict[str, Any]]:
-        """Check for missing security headers"""
+        """Check for exploitable security header issues only"""
         vulnerabilities = []
         
         try:
             response = self.session.get(target_url, timeout=10)
             headers = response.headers
             
-            # Check for missing security headers
-            security_headers = {
-                'X-Frame-Options': 'Clickjacking protection missing',
-                'X-Content-Type-Options': 'MIME type sniffing protection missing',
-                'X-XSS-Protection': 'XSS protection header missing',
-                'Strict-Transport-Security': 'HTTPS enforcement missing',
-                'Content-Security-Policy': 'Content Security Policy missing'
-            }
-            
-            for header, description in security_headers.items():
-                if header not in headers:
+            # Only check for security headers with demonstrated exploit potential
+            # Check for missing X-Frame-Options only if page has sensitive forms/actions
+            if 'X-Frame-Options' not in headers:
+                # Check if page has forms or sensitive content
+                soup = BeautifulSoup(response.text, 'html.parser')
+                forms = soup.find_all('form')
+                sensitive_keywords = ['login', 'password', 'admin', 'account', 'payment']
+                
+                has_sensitive_content = (
+                    forms or 
+                    any(keyword in response.text.lower() for keyword in sensitive_keywords)
+                )
+                
+                if has_sensitive_content:
                     vulnerabilities.append({
-                        'title': f'Missing Security Header: {header}',
+                        'title': 'Missing X-Frame-Options on Sensitive Page',
                         'severity': 'Medium',
-                        'cvss': 4.0,
-                        'description': description,
+                        'cvss': 5.0,
+                        'description': 'Page with sensitive content lacks clickjacking protection',
                         'url': target_url,
-                        'parameter': 'http_headers',
-                        'remediation': f'Implement {header} header for enhanced security',
+                        'parameter': 'x_frame_options',
+                        'remediation': 'Implement X-Frame-Options header to prevent clickjacking attacks',
                         'discovered_by': 'Web App Agent'
                     })
+            
+            # Only check HSTS if site is HTTPS but allows HTTP fallback
+            if target_url.startswith('https://') and 'Strict-Transport-Security' not in headers:
+                # Test if HTTP version is accessible
+                http_url = target_url.replace('https://', 'http://')
+                try:
+                    http_response = self.session.get(http_url, timeout=5, allow_redirects=False)
+                    if http_response.status_code == 200:
+                        vulnerabilities.append({
+                            'title': 'Missing HSTS with HTTP Fallback Available',
+                            'severity': 'Medium',
+                            'cvss': 5.0,
+                            'description': 'HTTPS site lacks HSTS header and HTTP version is accessible',
+                            'url': target_url,
+                            'parameter': 'hsts_missing',
+                            'remediation': 'Implement HSTS header and redirect HTTP to HTTPS',
+                            'discovered_by': 'Web App Agent'
+                        })
+                except:
+                    pass  # HTTP not accessible, HSTS less critical
         
         except Exception as e:
             logger.warning(f"⚠️ Security headers check error: {e}")
@@ -412,6 +477,50 @@ class WebAppAgent:
         
         except Exception as e:
             logger.warning(f"⚠️ Directory traversal testing error: {e}")
+        
+        return vulnerabilities
+    
+    async def _test_csrf_protection(self, target_url: str, crawl_data: Dict) -> List[Dict[str, Any]]:
+        """Test for CSRF protection on forms"""
+        vulnerabilities = []
+        
+        try:
+            forms = crawl_data.get('forms', [])
+            
+            for form in forms:
+                try:
+                    # Check if form has CSRF token
+                    csrf_protected = False
+                    
+                    # Look for common CSRF token field names
+                    csrf_field_names = ['csrf_token', '_token', 'authenticity_token', '_csrf', 'csrfmiddlewaretoken']
+                    
+                    for field in form.get('fields', []):
+                        field_name = field.get('name', '').lower()
+                        if any(csrf_name in field_name for csrf_name in csrf_field_names):
+                            csrf_protected = True
+                            break
+                    
+                    # Check for forms that modify data without CSRF protection
+                    if not csrf_protected and form.get('method', '').upper() in ['POST', 'PUT', 'DELETE']:
+                        vulnerabilities.append({
+                            'type': 'Missing CSRF Protection',
+                            'severity': 'Medium',
+                            'description': f"Form at {form.get('action', 'unknown')} lacks CSRF protection",
+                            'evidence': f"Form method: {form.get('method', 'unknown')}, Action: {form.get('action', 'unknown')}",
+                            'recommendation': 'Implement CSRF tokens for all state-changing operations',
+                            'cwe': 'CWE-352',
+                            'owasp': 'A01:2021 - Broken Access Control'
+                        })
+                        
+                        logger.info(f"🔍 Found form without CSRF protection: {form.get('action', 'unknown')}")
+                
+                except Exception as e:
+                    logger.warning(f"⚠️ CSRF test error for form: {e}")
+                    continue
+        
+        except Exception as e:
+            logger.warning(f"⚠️ CSRF testing error: {e}")
         
         return vulnerabilities
     

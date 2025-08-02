@@ -22,6 +22,7 @@ import subprocess
 import platform
 
 from .security_validator import SecurityValidator
+from .agent_config_utils import is_test_enabled, log_test_execution
 
 logger = logging.getLogger(__name__)
 
@@ -127,25 +128,45 @@ class NetworkAgent:
             }
             
             try:
-                # Comprehensive port scan
-                logger.info("🔌 Performing comprehensive port scan...")
-                port_scan_results = await self._comprehensive_port_scan(hostname)
-                results['port_scan'] = port_scan_results
-                
-                # Service enumeration
-                logger.info("🔍 Performing service enumeration...")
-                service_results = await self._service_enumeration(hostname, port_scan_results)
-                results['services'] = service_results
-                
-                # Network protocol testing
-                logger.info("📡 Testing network protocols...")
-                protocol_results = await self._test_network_protocols(hostname)
-                results['protocols'] = protocol_results
-                
-                # SSL/TLS testing
-                logger.info("🔒 Testing SSL/TLS configuration...")
-                ssl_results = await self._test_ssl_configuration(hostname)
-                results['ssl_tls'] = ssl_results
+                # Port scan if enabled
+                if is_test_enabled('network', 'port_scan'):
+                    logger.info("🔌 Performing comprehensive port scan...")
+                    port_scan_results = await self._comprehensive_port_scan(hostname)
+                    results['port_scan'] = port_scan_results
+                    log_test_execution('network', 'port_scan', True)
+                else:
+                    results['port_scan'] = {'open_ports': []}
+                    log_test_execution('network', 'port_scan', False)
+
+                # Service detection if enabled
+                if is_test_enabled('network', 'service_detection'):
+                    logger.info("🔍 Performing service enumeration...")
+                    service_results = await self._service_enumeration(hostname, results['port_scan'])
+                    results['services'] = service_results
+                    log_test_execution('network', 'service_detection', True)
+                else:
+                    results['services'] = {'detected_services': []}
+                    log_test_execution('network', 'service_detection', False)
+
+                # Network protocol testing if enabled
+                if is_test_enabled('network', 'network_services'):
+                    logger.info("📡 Testing network protocols...")
+                    protocol_results = await self._test_network_protocols(hostname)
+                    results['protocols'] = protocol_results
+                    log_test_execution('network', 'network_services', True)
+                else:
+                    results['protocols'] = {'tested_protocols': []}
+                    log_test_execution('network', 'network_services', False)
+
+                # SSL/TLS testing if enabled
+                if is_test_enabled('network', 'ssl_tls_scan'):
+                    logger.info("🔒 Testing SSL/TLS configuration...")
+                    ssl_results = await self._test_ssl_configuration(hostname)
+                    results['ssl_tls'] = ssl_results
+                    log_test_execution('network', 'ssl_tls_scan', True)
+                else:
+                    results['ssl_tls'] = {'ssl_enabled': False}
+                    log_test_execution('network', 'ssl_tls_scan', False)
                 
                 # Analyze findings
                 logger.info("🔍 Analyzing network findings...")
@@ -587,17 +608,42 @@ class NetworkAgent:
             cert_info = ssl_results.get('certificate_info', {})
             
             for port, cert_data in cert_info.items():
-                # Check certificate expiration (basic check)
+                # Only report SSL certificate issues if they're exploitable
                 if 'not_after' in cert_data:
-                    vulnerabilities.append({
-                        'title': f'SSL Certificate Information Disclosure on Port {port}',
-                        'severity': 'Low',
-                        'cvss': 1.0,
-                        'description': f'SSL certificate details exposed',
-                        'url': f"{scan_results['target']}:{port}",
-                        'parameter': 'ssl_certificate',
-                        'remediation': 'Ensure SSL certificate is properly configured and up to date',
-                        'discovered_by': 'Network Agent'
-                    })
+                    # Check for expired or soon-to-expire certificates only
+                    from datetime import datetime, timezone
+                    try:
+                        expiry_str = cert_data['not_after']
+                        # Parse SSL date format: 'Jan  1 00:00:00 2025 GMT'
+                        expiry_date = datetime.strptime(expiry_str, '%b %d %H:%M:%S %Y %Z')
+                        expiry_date = expiry_date.replace(tzinfo=timezone.utc)
+                        current_date = datetime.now(timezone.utc)
+                        
+                        days_until_expiry = (expiry_date - current_date).days
+                        
+                        if days_until_expiry < 0:  # Certificate expired
+                            vulnerabilities.append({
+                                'title': f'Expired SSL Certificate on Port {port}',
+                                'severity': 'High',
+                                'cvss': 7.0,
+                                'description': f'SSL certificate expired {abs(days_until_expiry)} days ago',
+                                'url': f"{scan_results['target']}:{port}",
+                                'parameter': 'ssl_expired',
+                                'remediation': 'Renew SSL certificate immediately',
+                                'discovered_by': 'Network Agent'
+                            })
+                        elif days_until_expiry < 30:  # Certificate expires soon
+                            vulnerabilities.append({
+                                'title': f'SSL Certificate Expires Soon on Port {port}',
+                                'severity': 'Medium',
+                                'cvss': 5.0,
+                                'description': f'SSL certificate expires in {days_until_expiry} days',
+                                'url': f"{scan_results['target']}:{port}",
+                                'parameter': 'ssl_expiring',
+                                'remediation': 'Renew SSL certificate before expiration',
+                                'discovered_by': 'Network Agent'
+                            })
+                    except (ValueError, KeyError):
+                        pass  # Skip if we can't parse the date
         
         return vulnerabilities

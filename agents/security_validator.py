@@ -1,12 +1,15 @@
 # Security Validator - Target Validation and Safety Checks
 """
 Validates targets to prevent scanning unauthorized systems and implements safety measures.
+Also validates vulnerability findings to ensure quality and compliance.
 """
 
 import socket
 import ipaddress
 from urllib.parse import urlparse
+from typing import List, Dict, Any
 import logging
+from .vulnerability_filter import should_exclude_vulnerability
 
 logger = logging.getLogger(__name__)
 
@@ -191,3 +194,60 @@ class SecurityValidator:
             scan_type: Type of scan being performed
         """
         logger.info(f"SCAN_AUDIT: {scan_type} scan initiated against {target_url} by {user_ip}")
+    
+    @staticmethod
+    def validate_vulnerability_findings(vulnerabilities: List[Dict[str, Any]], 
+                                      scan_mode: str = 'bug_bounty') -> List[Dict[str, Any]]:
+        """
+        Validate vulnerability findings to ensure quality and compliance
+        
+        Args:
+            vulnerabilities: List of vulnerability findings
+            scan_mode: Scan mode for filtering criteria
+            
+        Returns:
+            List of validated vulnerabilities
+        """
+        validated = []
+        
+        for vuln in vulnerabilities:
+            # Check if vulnerability meets quality standards
+            if SecurityValidator._is_valid_vulnerability(vuln):
+                # Check if vulnerability should be included based on scan mode
+                if not should_exclude_vulnerability(vuln, scan_mode):
+                    validated.append(vuln)
+                else:
+                    logger.debug(f"🔕 Excluded low-impact vulnerability: {vuln.get('title', 'Unknown')}")
+            else:
+                logger.warning(f"⚠️ Invalid vulnerability format: {vuln.get('title', 'Unknown')}")
+        
+        return validated
+    
+    @staticmethod
+    def _is_valid_vulnerability(vuln: Dict[str, Any]) -> bool:
+        """
+        Check if vulnerability has required fields and valid format
+        
+        Args:
+            vuln: Vulnerability dictionary
+            
+        Returns:
+            bool: True if vulnerability is valid
+        """
+        required_fields = ['title', 'description', 'severity']
+        
+        # Check required fields
+        for field in required_fields:
+            if field not in vuln or not vuln[field]:
+                return False
+        
+        # Validate severity
+        valid_severities = ['Critical', 'High', 'Medium', 'Low', 'Info']
+        if vuln['severity'] not in valid_severities:
+            return False
+        
+        # Check for minimum description length
+        if len(vuln['description']) < 10:
+            return False
+        
+        return True
