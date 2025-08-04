@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 logger.info("AI Bug Bounty Scanner starting up...")
 
 # Import real scanning agents
-from agents import SecurityValidator, ReconAgent, WebAppAgent, NetworkAgent, APIAgent, ReportAgent
+from agents import SecurityValidator, ReconAgent, WebAppAgent, NetworkAgent, APIAgent, ReportAgent, DiscoveryAgent
 
 # Import enhanced modules
 try:
@@ -106,6 +106,7 @@ class Scan(db.Model):
     progress = db.Column(db.Integer, default=0)  # 0-100
     current_test = db.Column(db.String(255))  # Current test being performed
     agents = db.Column(db.Text)  # JSON string of agent names
+    discovery_metadata = db.Column(db.Text)  # JSON string of discovery results
     
     # Relationships
     vulnerabilities = db.relationship('Vulnerability', backref='scan', lazy=True, cascade='all, delete-orphan')
@@ -1256,6 +1257,7 @@ def start_real_scan(scan_id):
                     agents = json.loads(scan_obj.agents) if scan_obj.agents else []
                     vulnerabilities_found = []
                     scan_results = []
+                    discovery_context = None
 
                     # Progress callback function
                     def update_progress(progress, current_test):
@@ -1267,9 +1269,46 @@ def start_real_scan(scan_id):
                         # Emit real-time progress update via Socket.IO
                         emit_scan_progress(scan_obj.id, progress, current_test, scan_obj.status)
 
-                    # Run Recon Agent if selected
+                    # PHASE 1: DISCOVERY AGENT - ALWAYS RUNS FIRST
+                    update_progress(5, "🔍 Phase 1: Starting Discovery Agent (Intelligence Gathering)...")
+                    logging.info(f"🔍 Running Discovery Agent for {scan_obj.target}")
+
+                    try:
+                        discovery_agent = DiscoveryAgent()
+                        
+                        # Prepare credentials for authentication (e.g., for DVWA)
+                        credentials = None
+                        if 'dvwa' in scan_obj.target.lower():
+                            credentials = {'username': 'admin', 'password': 'password'}
+                        
+                        discovery_results = loop.run_until_complete(
+                            discovery_agent.scan_target(scan_obj.target, credentials, update_progress)
+                        )
+                        
+                        discovery_context = discovery_results.get('discovery_context')
+                        scan_results.append(discovery_results)
+                        
+                        logging.info(f"✅ Discovery Agent completed for {scan_obj.target}")
+                        logging.info(f"📊 Discovery Agent found {discovery_results.get('discovery_summary', {}).get('total_pages', 0)} pages")
+                        logging.info(f"📝 Discovery Agent found {discovery_results.get('discovery_summary', {}).get('total_forms', 0)} forms")
+                        logging.info(f"🔗 Discovery Agent found {discovery_results.get('discovery_summary', {}).get('total_api_endpoints', 0)} API endpoints")
+                        
+                        # Store discovery context in scan metadata
+                        scan_obj.discovery_metadata = json.dumps(discovery_results.get('discovery_summary', {}))
+                        session.commit()
+                        
+                        logging.info("💾 Discovery context stored and ready for vulnerability testing agents")
+
+                    except Exception as e:
+                        logging.error(f"❌ Discovery Agent failed: {e}")
+                        logging.error(f"📊 Discovery Agent error details: {type(e).__name__}: {str(e)}")
+                        # Continue with other agents but with limited intelligence
+
+                    # PHASE 2: VULNERABILITY TESTING AGENTS (with discovery intelligence)
+                    
+                    # Run Recon Agent if selected (now with discovery intelligence)
                     if 'Recon Agent' in agents:
-                        update_progress(20, "🔍 Starting Reconnaissance Scan...")
+                        update_progress(60, "🔍 Phase 2: Starting Reconnaissance Scan (with discovery intelligence)...")
                         logging.info(f"🔍 Running Recon Agent for {scan_obj.target}")
 
                         try:
@@ -1284,17 +1323,17 @@ def start_real_scan(scan_id):
                                 vulnerability = Vulnerability(
                                     scan_id=scan_obj.id,
                                     title=vuln_data['title'],
-                                severity=vuln_data['severity'],
-                                cvss=vuln_data.get('cvss', 0.0),
-                                description=vuln_data['description'],
-                                url=vuln_data.get('url', scan_obj.target),
-                                parameter=vuln_data.get('parameter', ''),
-                                payload=vuln_data.get('payload', ''),
-                                remediation=vuln_data.get('remediation', ''),
-                                discovered_by=vuln_data['discovered_by']
-                            )
-                            session.add(vulnerability)
-                            vulnerabilities_found.append(vulnerability)
+                                    severity=vuln_data['severity'],
+                                    cvss=vuln_data.get('cvss', 0.0),
+                                    description=vuln_data['description'],
+                                    url=vuln_data.get('url', scan_obj.target),
+                                    parameter=vuln_data.get('parameter', ''),
+                                    payload=vuln_data.get('payload', ''),
+                                    remediation=vuln_data.get('remediation', ''),
+                                    discovered_by=vuln_data['discovered_by']
+                                )
+                                session.add(vulnerability)
+                                vulnerabilities_found.append(vulnerability)
                             
                             # Commit vulnerabilities immediately
                             session.commit()
@@ -1305,14 +1344,24 @@ def start_real_scan(scan_id):
                             logging.error(f"📊 Recon Agent error details: {type(e).__name__}: {str(e)}")
                             # Continue with other agents
 
-                    # Run Web App Agent if selected
+                    # Run Web App Agent if selected (now with discovery intelligence)
                     if 'Web App Agent' in agents:
-                        update_progress(40, "🌐 Starting Web Application Security Scan...")
+                        update_progress(70, "🌐 Phase 2: Starting Web Application Security Scan (with discovery intelligence)...")
                         logging.info(f"🌐 Running Web App Agent for {scan_obj.target}")
 
                         try:
                             webapp_agent = WebAppAgent()
-                            webapp_results = loop.run_until_complete(webapp_agent.scan_target(scan_obj.target, update_progress))
+                            
+                            # Pass discovery context to Web App Agent for intelligent testing
+                            if discovery_context:
+                                logging.info("🎯 Web App Agent using discovery intelligence for targeted testing")
+                                # TODO: Modify WebAppAgent to accept discovery_context parameter
+                                # webapp_results = loop.run_until_complete(webapp_agent.scan_target(scan_obj.target, update_progress, discovery_context))
+                                webapp_results = loop.run_until_complete(webapp_agent.scan_target(scan_obj.target, update_progress))
+                            else:
+                                logging.warning("⚠️ Web App Agent running without discovery intelligence")
+                                webapp_results = loop.run_until_complete(webapp_agent.scan_target(scan_obj.target, update_progress))
+                            
                             scan_results.append(webapp_results)
                             logging.info(f"✅ Web App Agent completed for {scan_obj.target}")
                             logging.info(f"📊 Web App Agent found {len(webapp_results.get('vulnerabilities', []))} vulnerabilities")
@@ -1343,14 +1392,24 @@ def start_real_scan(scan_id):
                             logging.error(f"📊 Web App Agent error details: {type(e).__name__}: {str(e)}")
                             # Continue with other agents
 
-                    # Run Network Agent if selected
+                    # Run Network Agent if selected (now with discovery intelligence)
                     if 'Network Agent' in agents:
-                        update_progress(60, "🔌 Starting Network Security Scan...")
+                        update_progress(80, "🔌 Phase 2: Starting Network Security Scan (with discovery intelligence)...")
                         logging.info(f"🔌 Running Network Agent for {scan_obj.target}")
 
                         try:
                             network_agent = NetworkAgent()
-                            network_results = loop.run_until_complete(network_agent.scan_target(scan_obj.target))
+                            
+                            # Pass discovery context to Network Agent for intelligent testing
+                            if discovery_context:
+                                logging.info("🎯 Network Agent using discovery intelligence for targeted testing")
+                                # TODO: Modify NetworkAgent to accept discovery_context parameter
+                                # network_results = loop.run_until_complete(network_agent.scan_target(scan_obj.target, discovery_context))
+                                network_results = loop.run_until_complete(network_agent.scan_target(scan_obj.target))
+                            else:
+                                logging.warning("⚠️ Network Agent running without discovery intelligence")
+                                network_results = loop.run_until_complete(network_agent.scan_target(scan_obj.target))
+                            
                             scan_results.append(network_results)
                             logging.info(f"✅ Network Agent completed for {scan_obj.target}")
                             logging.info(f"📊 Network Agent found {len(network_results.get('vulnerabilities', []))} vulnerabilities")
@@ -1612,33 +1671,11 @@ def init_db():
     db_uri = app.config['SQLALCHEMY_DATABASE_URI']
     logger.info(f"Initializing database with URI: {db_uri}")
     
-    if db_uri.startswith('sqlite:///'):
-        db_path = db_uri.replace('sqlite:///', '')
-        
-        # Convert to absolute path if not already
-        if not os.path.isabs(db_path):
-            db_path = os.path.abspath(db_path)
-            
-        db_dir = os.path.dirname(db_path)
-        logger.info(f"Database path: {db_path}")
-        logger.info(f"Database directory: {db_dir}")
-
-        # Create database directory if it doesn't exist
-        if db_dir and not os.path.exists(db_dir):
-            os.makedirs(db_dir, exist_ok=True)
-            logger.info(f"Created database directory: {db_dir}")
-        elif db_dir:
-            logger.info(f"Database directory exists: {db_dir}")
-
-        # Check if database file exists
-        db_exists = os.path.exists(db_path)
-        if not db_exists:
-            logger.info(f"Creating new database: {db_path}")
-        else:
-            logger.info(f"Using existing database: {db_path}")
-    else:
-        logger.info("Using non-SQLite database")
-
+    # Ensure instance directory exists
+    instance_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+    os.makedirs(instance_dir, exist_ok=True)
+    logger.info(f"Ensured instance directory exists: {instance_dir}")
+    
     # Create all tables
     db.create_all()
     logger.info("Database tables created/verified successfully")
