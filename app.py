@@ -1671,33 +1671,11 @@ def init_db():
     db_uri = app.config['SQLALCHEMY_DATABASE_URI']
     logger.info(f"Initializing database with URI: {db_uri}")
     
-    if db_uri.startswith('sqlite:///'):
-        db_path = db_uri.replace('sqlite:///', '')
-        
-        # Convert to absolute path if not already
-        if not os.path.isabs(db_path):
-            db_path = os.path.abspath(db_path)
-            
-        db_dir = os.path.dirname(db_path)
-        logger.info(f"Database path: {db_path}")
-        logger.info(f"Database directory: {db_dir}")
-
-        # Create database directory if it doesn't exist
-        if db_dir and not os.path.exists(db_dir):
-            os.makedirs(db_dir, exist_ok=True)
-            logger.info(f"Created database directory: {db_dir}")
-        elif db_dir:
-            logger.info(f"Database directory exists: {db_dir}")
-
-        # Check if database file exists
-        db_exists = os.path.exists(db_path)
-        if not db_exists:
-            logger.info(f"Creating new database: {db_path}")
-        else:
-            logger.info(f"Using existing database: {db_path}")
-    else:
-        logger.info("Using non-SQLite database")
-
+    # Ensure instance directory exists
+    instance_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+    os.makedirs(instance_dir, exist_ok=True)
+    logger.info(f"Ensured instance directory exists: {instance_dir}")
+    
     # Create all tables
     db.create_all()
     logger.info("Database tables created/verified successfully")
