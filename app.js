@@ -339,147 +339,14 @@ async function loadScans() {
 async function loadAgents() {
   try {
     const agents = await apiRequest("/agents");
-
-    // If no agents from API, use enhanced default agents
-    if (!agents || agents.length === 0) {
-      appData.agents = getDefaultEnhancedAgents();
-    } else {
-      appData.agents = agents;
-    }
-
+    appData.agents = agents || [];
     renderAgents();
   } catch (error) {
     console.error("Failed to load agents:", error);
-    // Fallback to default enhanced agents
-    appData.agents = getDefaultEnhancedAgents();
+    showErrorNotification("Failed to load agent data from the server.");
+    appData.agents = [];
     renderAgents();
   }
-}
-
-// Default enhanced agents configuration
-function getDefaultEnhancedAgents() {
-  return [
-    {
-      name: "Recon Agent",
-      status: "Active",
-      description:
-        "Network reconnaissance and subdomain discovery with professional external tool integration",
-      successRate: 94,
-      capabilities: [
-        "Port Scanning (Nmap)",
-        "DNS Resolution & Enumeration",
-        "SSL/TLS Certificate Analysis",
-        "Service Enumeration & Banner Grabbing",
-        "Subfinder Integration (Advanced Subdomain Discovery)",
-        "OWASP ZAP Integration (Web Application Scanning)",
-        "Network Topology Mapping",
-        "Passive Vulnerability Scanning",
-      ],
-    },
-    {
-      name: "Web App Agent",
-      status: "Active",
-      description:
-        "Web application security testing with Scrapy crawler and advanced SQLMap integration",
-      successRate: 87,
-      capabilities: [
-        "Advanced Web Crawling (Scrapy)",
-        "Form & Parameter Discovery",
-        "XSS Detection (Multiple Payloads)",
-        "SQL Injection Testing (Built-in)",
-        "Enhanced SQLMap Integration (Multi-URL)",
-        "Security Header Analysis (CSP, HSTS, X-Frame-Options)",
-        "Directory Traversal Testing",
-        "Information Disclosure Detection",
-        "API Endpoint Discovery",
-        "Database Exploitation (via SQLMap)",
-      ],
-    },
-    {
-      name: "Network Agent",
-      status: "Active",
-      description:
-        "Network-level security assessment and infrastructure analysis",
-      successRate: 91,
-      capabilities: [
-        "Network Service Enumeration",
-        "Protocol-Specific Testing",
-        "Firewall & Filtering Detection",
-        "Network Configuration Analysis",
-        "Service Version Detection",
-        "Network Topology Mapping",
-        "Protocol Vulnerability Assessment",
-      ],
-    },
-    {
-      name: "API Agent",
-      status: "Active",
-      description:
-        "REST API security testing and endpoint vulnerability assessment",
-      successRate: 89,
-      capabilities: [
-        "API Endpoint Discovery",
-        "Authentication Bypass Testing",
-        "Input Validation Testing",
-        "Rate Limiting Assessment",
-        "API Documentation Analysis",
-        "Authentication Mechanism Testing",
-        "DoS Protection Assessment",
-      ],
-    },
-    {
-      name: "Report Agent",
-      status: "Active",
-      description:
-        "Comprehensive vulnerability reporting with CVSS scoring and remediation guidance",
-      successRate: 99,
-      capabilities: [
-        "Vulnerability Aggregation & Analysis",
-        "Risk Assessment & CVSS Scoring",
-        "Executive Summary Generation",
-        "Technical Detail Compilation",
-        "Remediation Recommendations",
-        "Multi-format Export (PDF, JSON)",
-        "Compliance Reporting",
-      ],
-    },
-    {
-      name: "Enhanced Security Agent",
-      status: "Enhanced",
-      description:
-        "Advanced security testing with machine learning capabilities and WAF evasion techniques",
-      successRate: 96,
-      capabilities: [
-        "Advanced XSS Detection",
-        "Time-based SQL Injection",
-        "WAF Evasion Techniques",
-        "SSL/TLS Security Analysis",
-        "ML-Powered Vulnerability Detection",
-        "Advanced Payload Generation",
-        "Behavioral Analysis",
-        "Zero-day Detection Patterns",
-      ],
-      enhanced: true,
-    },
-    {
-      name: "Threat Intelligence Agent",
-      status: "Enhanced",
-      description:
-        "Real-time threat intelligence integration with multiple security APIs",
-      successRate: 93,
-      capabilities: [
-        "IP Reputation Analysis (AbuseIPDB)",
-        "Domain & URL Analysis (VirusTotal)",
-        "Internet Device Intelligence (Shodan)",
-        "Malware Detection & Analysis",
-        "CVE Database Integration",
-        "Threat Actor Intelligence",
-        "IoC (Indicators of Compromise) Analysis",
-        "Real-time Threat Feeds",
-      ],
-      enhanced: true,
-    },
-  ];
 }
 
 async function loadVulnerabilities() {
@@ -1119,19 +986,16 @@ function renderAgents() {
     return;
   }
 
+  if (!appData.agents || appData.agents.length === 0) {
+    agentsGrid.innerHTML = '<p class="text-gray-400 col-span-full text-center">No agents available. The backend may be offline or misconfigured.</p>';
+    return;
+  }
+
   const agentsHTML = appData.agents
     .map((agent) => {
-      const isEnhanced =
-        agent.enhanced ||
-        agent.name.includes("Enhanced") ||
-        agent.name.includes("Threat Intelligence");
-      const statusColor =
-        agent.status === "Enhanced" ? "text-primary" : "text-green-400";
-      const statusDot =
-        agent.status === "Enhanced" ? "bg-primary" : "bg-green-500";
-      const borderClass = isEnhanced
-        ? "border-primary border-opacity-50 bg-gradient-to-br from-primary/5 to-secondary/5"
-        : "border-gray-700";
+      const statusColor = "text-green-400";
+      const statusDot = "bg-green-500";
+      const borderClass = "border-gray-700";
 
       return `
         <div class="bg-dark-lighter border ${borderClass} rounded-xl p-6 hover:border-primary transition-colors">
@@ -1140,11 +1004,6 @@ function renderAgents() {
                     <h3 class="text-lg font-semibold text-white">${
                       agent.name
                     }</h3>
-                    ${
-                      isEnhanced
-                        ? '<span class="px-2 py-1 bg-primary bg-opacity-20 text-primary text-xs rounded-full">ENHANCED</span>'
-                        : ""
-                    }
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="w-2 h-2 ${statusDot} rounded-full animate-pulse"></div>
@@ -1154,15 +1013,11 @@ function renderAgents() {
             <p class="text-gray-300 text-sm mb-4">${agent.description}</p>
             <div class="grid grid-cols-2 gap-4 mb-4">
                 <div class="text-center">
-                    <p class="text-2xl font-bold ${
-                      isEnhanced ? "text-primary" : "text-accent"
-                    }">${agent.successRate}%</p>
+                    <p class="text-2xl font-bold text-accent">${agent.successRate}%</p>
                     <p class="text-xs text-gray-400">Success Rate</p>
                 </div>
                 <div class="text-center">
-                    <p class="text-2xl font-bold ${
-                      isEnhanced ? "text-secondary" : "text-accent"
-                    }">24/7</p>
+                    <p class="text-2xl font-bold text-secondary">24/7</p>
                     <p class="text-xs text-gray-400">Uptime</p>
                 </div>
             </div>
@@ -1172,48 +1027,15 @@ function renderAgents() {
                     ${agent.capabilities
                       .map(
                         (cap) => `
-                        <span class="px-2 py-1 ${
-                          isEnhanced
-                            ? "bg-primary bg-opacity-20 text-primary"
-                            : "bg-gray-800 text-gray-300"
-                        } text-xs rounded-md">${cap}</span>
+                        <span class="px-2 py-1 bg-gray-800 text-gray-300 text-xs rounded-md">${cap}</span>
                     `
                       )
                       .join("")}
                 </div>
             </div>
-            ${
-              isEnhanced
-                ? `
-            <div class="mb-4 p-3 bg-primary bg-opacity-10 border border-primary border-opacity-30 rounded-lg">
-                <div class="flex items-center gap-2 text-primary text-xs font-medium">
-                    <div class="w-2 h-2 bg-primary rounded-full"></div>
-                    <span>Enhanced features active</span>
-                </div>
-            </div>
-            `
-                : ""
-            }
-            ${
-              isConfigurableAgent(agent.name)
-                ? `
-            <button class="w-full px-4 py-2 border ${
-              isEnhanced
-                ? "border-primary text-primary hover:bg-primary"
-                : "border-gray-600 text-gray-300 hover:bg-gray-600"
-            } rounded-lg hover:text-white transition-colors"
-                    onclick="configureAgent('${agent.name}')">
-                ${
-                  isEnhanced ? "⚡ Configure Enhanced Agent" : "Configure Agent"
-                }
-            </button>
-            `
-                : `
             <div class="w-full px-4 py-2 border border-gray-800 text-gray-500 rounded-lg text-center">
                 No Configuration Available
             </div>
-            `
-            }
         </div>
     `;
     })
@@ -1513,48 +1335,18 @@ const SCAN_MODE_CONFIG = {
     agents: [
       "Recon Agent",
       "Web App Agent",
-      "Network Agent",
-      "API Agent",
       "Report Agent",
     ],
     description: "Comprehensive security assessment using all core agents",
     duration: "1-2 hours",
     priorities: [
       "Web Application Security",
-      "Network Security",
-      "API Security",
       "Asset Discovery",
     ],
     cvss_threshold: 3.0,
-    estimated_findings: "15-40 vulnerabilities across all categories",
+    estimated_findings: "10-30 vulnerabilities",
     readonly: true,
     agentInfo: "Complete security assessment with all core security agents",
-  },
-  "Enhanced Scan": {
-    name: "� Enhanced Scan",
-    agents: [
-      "Recon Agent",
-      "Web App Agent",
-      "Network Agent",
-      "API Agent",
-      "Enhanced Security Agent",
-      "Threat Intelligence Agent",
-      "Report Agent",
-    ],
-    description:
-      "Advanced security assessment with ML-powered vulnerability detection and threat intelligence",
-    duration: "2-3 hours",
-    priorities: [
-      "Advanced Vulnerability Detection",
-      "Threat Intelligence Analysis",
-      "ML-Powered Security Testing",
-      "Comprehensive Coverage",
-    ],
-    cvss_threshold: 2.0,
-    estimated_findings: "25-60 vulnerabilities with advanced analysis",
-    readonly: true,
-    agentInfo:
-      "Advanced testing with AI agents, threat intelligence, and enhanced detection",
   },
   "Custom Scan": {
     name: "🎯 Custom Scan",

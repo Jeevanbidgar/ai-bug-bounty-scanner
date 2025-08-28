@@ -1,8 +1,6 @@
 # Web Application Agent - Web Security Testing
 """
-Real web application security testing agent.
-Performs actual web vulnerability scanning including XSS, SQL injection, and other OWASP Top 10 issues.
-Enhanced with Scrapy web crawler for comprehensive URL discovery and SQLMap integration.
+Performs web vulnerability scanning including XSS, SQL injection, and other OWASP Top 10 issues.
 """
 
 import requests
@@ -14,22 +12,18 @@ from bs4 import BeautifulSoup
 from typing import Dict, List, Any, Tuple
 import logging
 import re
-import subprocess
-from config import Config
 
 from .security_validator import SecurityValidator
 from .agent_config_utils import is_test_enabled, log_test_execution
-from .scrapy_crawler import ScrapyCrawlerIntegration
 
 logger = logging.getLogger(__name__)
 
 class WebAppAgent:
-    """Real web application security testing agent with Scrapy crawler integration"""
+    """Web application security testing agent"""
     
     def __init__(self):
         self.session = requests.Session()
         self.config = SecurityValidator.get_safe_scan_config()
-        self.scrapy_crawler = ScrapyCrawlerIntegration()
         
         # Configure session with safe defaults
         self.session.headers.update({
@@ -84,11 +78,11 @@ class WebAppAgent:
             }
             
             try:
-                # Enhanced crawling with Scrapy
+                # Crawling
                 if progress_callback:
-                    progress_callback(10, "🕷️ Starting advanced web crawling with Scrapy...")
-                logger.info("🕷️ Starting enhanced web crawling with Scrapy...")
-                crawl_data = await self._enhanced_crawl_website(target_url)
+                    progress_callback(10, "🕷️ Starting web crawling...")
+                logger.info("🕷️ Starting web crawling...")
+                crawl_data = await self._crawl_website(target_url)
                 results['crawl_data'] = crawl_data
                 results['urls_discovered'] = len(crawl_data.get('urls', []))
                 results['forms_discovered'] = len(crawl_data.get('forms', []))
@@ -109,25 +103,13 @@ class WebAppAgent:
                     log_test_execution('webapp', 'xss_reflected', False)
                     log_test_execution('webapp', 'xss_stored', False)
 
-                # Enhanced SQLMap Integration with crawled URLs
+                # Test for SQL injection
                 if is_test_enabled('webapp', 'sql_injection'):
                     if progress_callback:
                         progress_callback(50, "💉 Testing for SQL injection vulnerabilities...")
                     logger.info("💉 Testing for SQL injection...")
                     sql_vulns = await self._test_sql_injection(target_url, crawl_data)
                     results['vulnerabilities'].extend(sql_vulns)
-
-                    # Enhanced SQLMap Integration with discovered URLs
-                    if progress_callback:
-                        progress_callback(60, "💉 Running SQLMap on discovered URLs and forms...")
-                    logger.info("💉 Running enhanced SQLMap analysis on crawled URLs...")
-                    sqlmap_results = await self.integrate_with_sqlmap_enhanced(target_url, crawl_data)
-                    if sqlmap_results.get('execution_successful'):
-                        results['vulnerabilities'].extend(sqlmap_results.get('vulnerabilities_found', []))
-                        results['sqlmap_tested_urls'] = len(sqlmap_results.get('tested_urls', []))
-                    else:
-                        logger.warning(f"⚠️ Enhanced SQLMap integration failed: {sqlmap_results.get('error')}")
-                    
                     results['executed_tests'].append('sql_injection')
                     log_test_execution('webapp', 'sql_injection', True)
                 else:
@@ -191,57 +173,6 @@ class WebAppAgent:
             logger.error(f"❌ Web application scan failed: {e}")
                
         return results
-    
-    async def _enhanced_crawl_website(self, base_url: str) -> Dict[str, Any]:
-        """
-        Enhanced web crawling using Scrapy for comprehensive URL discovery
-        
-        Args:
-            base_url: Base URL to crawl
-            
-        Returns:
-            Dict containing crawled URLs, forms, parameters, and endpoints
-        """
-        try:
-            logger.info(f"🕷️ Starting Scrapy-powered crawl of {base_url}")
-            
-            # Use Scrapy for advanced crawling
-            scrapy_results = await self.scrapy_crawler.crawl_website(
-                target_url=base_url,
-                max_pages=self.config.get('max_pages', 50),
-                max_depth=self.config.get('max_depth', 3)
-            )
-            
-            # Fallback to basic crawling if Scrapy fails
-            if scrapy_results.get('error') or not scrapy_results.get('urls'):
-                logger.warning("Scrapy crawling failed, falling back to basic crawling")
-                return await self._crawl_website(base_url)
-            
-            # Enhance the results with additional processing
-            enhanced_results = {
-                'urls': scrapy_results.get('urls', []),
-                'forms': scrapy_results.get('forms', []),
-                'parameters': scrapy_results.get('parameters', []),
-                'endpoints': scrapy_results.get('endpoints', []),
-                'pages_crawled': scrapy_results.get('pages_crawled', 0),
-                'crawler_used': 'Scrapy',
-                'testable_urls': self.scrapy_crawler.get_testable_urls(scrapy_results)
-            }
-            
-            logger.info(f"✅ Enhanced crawling completed: {len(enhanced_results['urls'])} URLs, "
-                       f"{len(enhanced_results['forms'])} forms, "
-                       f"{len(enhanced_results['testable_urls'])} testable URLs")
-            
-            return enhanced_results
-            
-        except Exception as e:
-            logger.error(f"Enhanced crawling failed: {e}")
-            # Fallback to basic crawling
-            return await self._crawl_website(base_url)
-            
-        except Exception as e:
-            logger.error(f"❌ Web application scan failed: {e}")
-            raise
     
     async def _crawl_website(self, base_url: str) -> Dict[str, Any]:
         """Crawl website to discover forms and endpoints"""

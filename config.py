@@ -48,33 +48,6 @@ class Config:
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
     ALLOWED_EXTENSIONS = os.getenv('ALLOWED_EXTENSIONS', 'txt,pdf,png,jpg,jpeg,gif,csv,json,xml').split(',')
     
-    # External API Keys
-    ABUSEIPDB_API_KEY = os.getenv('ABUSEIPDB_API_KEY', '')
-    SHODAN_API_KEY = os.getenv('SHODAN_API_KEY', '')
-    VIRUSTOTAL_API_KEY = os.getenv('VIRUSTOTAL_API_KEY', '')
-    
-    # Security Tools Configuration
-    NMAP_PATH = os.getenv('NMAP_PATH', 'nmap')
-    NMAP_TIMEOUT = int(os.getenv('NMAP_TIMEOUT', '300'))
-    NMAP_MAX_THREADS = int(os.getenv('NMAP_MAX_THREADS', '10'))
-    
-    NIKTO_PATH = os.getenv('NIKTO_PATH', 'nikto')
-    NIKTO_TIMEOUT = int(os.getenv('NIKTO_TIMEOUT', '600'))
-    
-    SQLMAP_PATH = os.getenv('SQLMAP_PATH', 'sqlmap')
-    SQLMAP_TIMEOUT = int(os.getenv('SQLMAP_TIMEOUT', '900'))
-    
-    BURP_API_URL = os.getenv('BURP_API_URL', 'http://127.0.0.1:1337')
-    BURP_API_KEY = os.getenv('BURP_API_KEY', '')
-    
-    ZAP_API_URL = os.getenv('ZAP_API_URL', 'http://127.0.0.1:8080')
-    ZAP_API_KEY = os.getenv('ZAP_API_KEY', '')
-    
-    SUBFINDER_PATH = os.getenv('SUBFINDER_PATH', 'subfinder')
-    SUBFINDER_TIMEOUT = int(os.getenv('SUBFINDER_TIMEOUT', '300'))
-    
-    GOBUSTER_PATH = os.getenv('GOBUSTER_PATH', 'gobuster')
-    GOBUSTER_TIMEOUT = int(os.getenv('GOBUSTER_TIMEOUT', '600'))
     
     # Scanning Configuration
     MAX_CONCURRENT_SCANS = int(os.getenv('MAX_CONCURRENT_SCANS', '5'))
@@ -130,10 +103,6 @@ class Config:
     ENABLE_PROFILER = os.getenv('ENABLE_PROFILER', 'False').lower() == 'true'
     ENABLE_DEBUG_TOOLBAR = os.getenv('ENABLE_DEBUG_TOOLBAR', 'False').lower() == 'true'
     
-    # AI/ML Configuration
-    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-    HUGGINGFACE_API_KEY = os.getenv('HUGGINGFACE_API_KEY', '')
-    
     # Backup Configuration
     BACKUP_ENABLED = os.getenv('BACKUP_ENABLED', 'True').lower() == 'true'
     BACKUP_INTERVAL_HOURS = int(os.getenv('BACKUP_INTERVAL_HOURS', '24'))
@@ -179,14 +148,6 @@ class Config:
     VULN_DB_UPDATE_INTERVAL = int(os.getenv('VULN_DB_UPDATE_INTERVAL', '86400'))
     VULN_DB_AUTO_UPDATE = os.getenv('VULN_DB_AUTO_UPDATE', 'True').lower() == 'true'
     
-    # Feature Flags
-    ENABLE_ADVANCED_SCANNING = os.getenv('ENABLE_ADVANCED_SCANNING', 'True').lower() == 'true'
-    ENABLE_THREAT_INTELLIGENCE = os.getenv('ENABLE_THREAT_INTELLIGENCE', 'True').lower() == 'true'
-    ENABLE_AUTOMATED_REPORTING = os.getenv('ENABLE_AUTOMATED_REPORTING', 'True').lower() == 'true'
-    ENABLE_REAL_TIME_MONITORING = os.getenv('ENABLE_REAL_TIME_MONITORING', 'True').lower() == 'true'
-    ENABLE_API_FUZZING = os.getenv('ENABLE_API_FUZZING', 'True').lower() == 'true'
-    ENABLE_SOCIAL_ENGINEERING_CHECKS = os.getenv('ENABLE_SOCIAL_ENGINEERING_CHECKS', 'False').lower() == 'true'
-
 class DevelopmentConfig(Config):
     """Development configuration"""
     DEBUG = True

@@ -10,13 +10,16 @@ Enhanced reconnaissance agent with comprehensive discovery capabilities:
 - Integration-ready for external tools (amass, subfinder, etc.)
 """
 
-# Optional nmap import
-try:
-    import nmap
-    NMAP_AVAILABLE = True
-except ImportError:
-    NMAP_AVAILABLE = False
-    nmap = None
+# Recon Agent - Network Reconnaissance and Asset Discovery
+"""
+Reconnaissance agent with discovery capabilities:
+- Subdomain enumeration
+- Web crawling and endpoint discovery
+- Directory and file brute-forcing
+- API endpoint discovery
+- DNS wildcard detection
+- Technology fingerprinting
+"""
 
 import socket
 import dns.resolver
@@ -24,7 +27,6 @@ import asyncio
 import time
 import json
 import re
-import subprocess
 import os
 import threading
 
@@ -40,29 +42,13 @@ import itertools
 
 from .security_validator import SecurityValidator
 from .agent_config_utils import is_test_enabled, log_test_execution
-from config import Config
 
 logger = logging.getLogger(__name__)
 
 class ReconAgent:
-    """Advanced reconnaissance agent with comprehensive discovery capabilities"""
+    """Reconnaissance agent with discovery capabilities"""
     
     def __init__(self):
-        # Try to initialize nmap, fall back to socket scanning if not available
-        if NMAP_AVAILABLE:
-            try:
-                self.nm = nmap.PortScanner()
-                self.nmap_available = True
-                logger.info("âœ… Nmap available for advanced port scanning")
-            except Exception as e:
-                self.nm = None
-                self.nmap_available = False
-                logger.warning(f"âš ï¸ Nmap initialization failed, using socket-based scanning: {e}")
-        else:
-            self.nm = None
-            self.nmap_available = False
-            logger.warning("âš ï¸ Nmap not installed, using socket-based scanning")
-
         self.session = requests.Session()
         self.config = SecurityValidator.get_safe_scan_config()
 
@@ -135,7 +121,7 @@ class ReconAgent:
         
     async def scan_target(self, target_url: str) -> Dict[str, Any]:
         """
-        Enhanced main scanning function for comprehensive reconnaissance
+        Main scanning function for comprehensive reconnaissance
         
         Args:
             target_url: Target URL to scan
@@ -149,13 +135,13 @@ class ReconAgent:
             
             # Extract domain from URL
             domain = self._extract_domain(target_url)
-            logger.info(f"ðŸ” Starting enhanced reconnaissance scan for: {domain}")
+            logger.info(f"ðŸ” Starting reconnaissance scan for: {domain}")
             
             results = {
                 'target': target_url,
                 'domain': domain,
                 'timestamp': time.time(),
-                'scan_type': 'enhanced_reconnaissance',
+                'scan_type': 'reconnaissance',
                 'vulnerabilities': [],
                 'discovery_stats': {}
             }
@@ -167,7 +153,7 @@ class ReconAgent:
             try:
                 # DNS enumeration if enabled
                 if is_test_enabled('recon', 'dns_enumeration'):
-                    logger.info("ðŸ“¡ Performing enhanced DNS enumeration...")
+                    logger.info("ðŸ“¡ Performing DNS enumeration...")
                     dns_info = await self._enhanced_dns_enumeration(domain)
                     results['dns_info'] = dns_info
                     log_test_execution('recon', 'dns_enumeration', True)
@@ -175,13 +161,13 @@ class ReconAgent:
                     results['dns_info'] = {'records': []}
                     log_test_execution('recon', 'dns_enumeration', False)
                 
-                logger.info("ðŸ”Œ Performing comprehensive port scan...")
+                logger.info("ðŸ”Œ Performing port scan...")
                 port_info = await self._comprehensive_port_scan(domain)
                 results['port_info'] = port_info
                 
                 # Subdomain enumeration if enabled
                 if is_test_enabled('recon', 'subdomain_enumeration'):
-                    logger.info("ðŸŒ Performing advanced subdomain enumeration...")
+                    logger.info("ðŸŒ Performing subdomain enumeration...")
                     subdomains = await self._advanced_subdomain_enumeration(domain)
                     results['subdomains'] = list(subdomains)
                     log_test_execution('recon', 'subdomain_enumeration', True)
@@ -201,7 +187,7 @@ class ReconAgent:
                 api_discovery = await self._api_discovery(target_url)
                 results['api_discovery'] = api_discovery
                 
-                logger.info("ðŸ”§ Performing advanced technology detection...")
+                logger.info("ðŸ”§ Performing technology detection...")
                 tech_info = await self._advanced_technology_detection(target_url)
                 results['technologies'] = tech_info
                 
@@ -209,11 +195,7 @@ class ReconAgent:
                 security_checks = await self._security_misconfiguration_checks(target_url)
                 results['security_checks'] = security_checks
 
-                logger.info(" Running external tool integrations...")
-                external_integrations = await self.run_external_tool_integrations(target_url, domain)
-                results['external_integrations'] = external_integrations
-
-                logger.info(" Analyzing comprehensive findings...")
+                logger.info(" Analyzing findings...")
                 vulnerabilities = self._analyze_enhanced_findings(results)
                 results['vulnerabilities'] = vulnerabilities
                 
@@ -227,7 +209,7 @@ class ReconAgent:
                     'total_vulnerabilities': len(vulnerabilities)
                 }
                 
-                logger.info(f"âœ… Enhanced reconnaissance completed:")
+                logger.info(f"âœ… Reconnaissance completed:")
                 logger.info(f"   ðŸ“Š {len(self.subdomains_found)} subdomains discovered")
                 logger.info(f"   ðŸ”— {len(self.discovered_endpoints)} endpoints found")
                 logger.info(f"   ðŸ“ {len(self.discovered_directories)} directories found")
@@ -236,13 +218,13 @@ class ReconAgent:
                 logger.info(f"   âš ï¸ {len(vulnerabilities)} potential security issues identified")
                 
             except Exception as scan_error:
-                logger.error(f"âŒ Enhanced scan error: {scan_error}")
+                logger.error(f"âŒ Scan error: {scan_error}")
                 results['error'] = str(scan_error)
             
             return results
             
         except Exception as e:
-            logger.error(f"âŒ Enhanced reconnaissance scan failed: {e}")
+            logger.error(f"âŒ Reconnaissance scan failed: {e}")
             raise
     
     def _clear_discovery_cache(self):
@@ -373,7 +355,7 @@ class ReconAgent:
         port_info = {
             'open_ports': [],
             'services': {},
-            'scan_method': 'socket_fallback' if not self.nmap_available else 'nmap',
+            'scan_method': 'socket',
             'port_ranges': {
                 'common': [],
                 'extended': [],
@@ -381,59 +363,7 @@ class ReconAgent:
             }
         }
 
-        if self.nmap_available:
-            try:
-                # Comprehensive port ranges
-                common_ports = '21,22,23,25,53,80,110,143,443,993,995,8080,8443,3389,5432,3306,1433,6379,27017'
-                extended_ports = '1-1000,8000-8999,9000-9999'
-
-                logger.info(f"ðŸ”Œ Scanning ports for {domain} using nmap")
-
-                # Scan common ports first
-                scan_args = '-sS -T3 --max-retries 2 --host-timeout 60s --max-rate 50 -sV'
-                common_scan = self.nm.scan(domain, common_ports, arguments=scan_args)
-                
-                if domain in common_scan['scan']:
-                    host_info = common_scan['scan'][domain]
-                    if 'tcp' in host_info:
-                        for port, port_detail in host_info['tcp'].items():
-                            if port_detail['state'] == 'open':
-                                port_info['open_ports'].append(port)
-                                port_info['port_ranges']['common'].append(port)
-                                port_info['services'][port] = {
-                                    'service': port_detail.get('name', 'unknown'),
-                                    'version': port_detail.get('version', 'unknown'),
-                                    'product': port_detail.get('product', 'unknown'),
-                                    'extrainfo': port_detail.get('extrainfo', ''),
-                                    'state': port_detail['state'],
-                                    'reason': port_detail.get('reason', 'unknown')
-                                }
-
-                # If common ports found open services, scan extended range
-                if port_info['open_ports']:
-                    logger.info(f"ðŸ”Œ Found {len(port_info['open_ports'])} open ports, scanning extended range...")
-                    extended_scan = self.nm.scan(domain, extended_ports, arguments='-sS -T2 --max-retries 1')
-                    
-                    if domain in extended_scan['scan'] and 'tcp' in extended_scan['scan'][domain]:
-                        for port, port_detail in extended_scan['scan'][domain]['tcp'].items():
-                            if port_detail['state'] == 'open' and port not in port_info['open_ports']:
-                                port_info['open_ports'].append(port)
-                                port_info['port_ranges']['extended'].append(port)
-                                port_info['services'][port] = {
-                                    'service': port_detail.get('name', 'unknown'),
-                                    'version': port_detail.get('version', 'unknown'),
-                                    'product': port_detail.get('product', 'unknown'),
-                                    'state': port_detail['state']
-                                }
-
-                port_info['port_ranges']['all_scanned'] = port_info['open_ports']
-                return port_info
-
-            except Exception as e:
-                logger.warning(f"âš ï¸ Nmap comprehensive scan failed, falling back to socket check: {e}")
-
-        # Fallback to enhanced socket-based scanning
-        logger.info(f"ðŸ”Œ Scanning ports for {domain} using enhanced socket method")
+        logger.info(f"ðŸ”Œ Scanning ports for {domain} using socket method")
         
         # Extended port list for socket scanning
         critical_ports = [21, 22, 23, 25, 53, 80, 110, 143, 443, 993, 995, 3389, 8080, 8443]
