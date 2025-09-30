@@ -1,0 +1,33 @@
+[package]
+name = "ai-bug-bounty-scanner"
+version = "2.0.0"
+description = "A safe, auditable, cross-platform desktop-first application that orchestrates recon & pentest tools"
+authors = ["AI Bug Bounty Scanner Team"]
+license = "MIT"
+repository = ""
+default-run = "ai-bug-bounty-scanner"
+edition = "2021"
+rust-version = "1.60"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "1.6", features = [ "process-relaunch", "process-exit", "fs-rename-file", "fs-remove-file", "fs-read-file", "fs-exists", "fs-copy-file", "os-all", "http-all", "fs-read-dir", "fs-remove-dir", "fs-create-dir", "fs-write-file", "shell-open"] }
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1.0", features = ["full"] }
+sys-info = "0.9"
+regex = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
+
+[features]
+# this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.
+# If you use cargo directly instead of tauri's cli you can use this feature flag to switch between tauri's `dev` and `build` modes.
+# DO NOT REMOVE!!
+custom-protocol = [ "tauri/custom-protocol" ]

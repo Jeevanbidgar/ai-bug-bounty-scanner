@@ -1,0 +1,21 @@
+name: "subfinder"
+description: "Fast passive subdomain discovery tool"
+category: "recon"
+risk_level: "low"
+
+execution:
+  command_template: ["subfinder", "-d", "{target}"]
+  timeout: 120
+  output_format: "text"
+
+parameters:
+  - name: "target"
+    type: "string"
+    required: true
+    description: "Target domain to scan"
+  - name: "output"
+    type: "file"
+    required: false
+    description: "Output file path"
+
+tags: ["passive", "subdomain", "recon"]

@@ -1,438 +1,396 @@
-# AI Bug Bounty Scanner
+# 🛡️ AI Bug Bounty Scanner
 
-🚀 **A comprehensive, automated security testing platform with modern UI and real-time communication that performs real-world penetration testing and vulnerability assessment.**
+**Professional Security Tool Orchestration Platform** - Desktop Application
 
-[![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)]()
-[![Version](https://img.shields.io/badge/Version-2.0.0-blue)]()
-[![Python](https://img.shields.io/badge/Python-3.13+-blue)]()
-[![Tailwind](https://img.shields.io/badge/Tailwind-CSS-38B2AC)]()
-[![Socket.IO](https://img.shields.io/badge/Socket.IO-Real--time-black)]()
-[![License](https://img.shields.io/badge/License-MIT-green)]()
+A cross-platform desktop application for orchestrating reconnaissance and penetration testing tools like subfinder, amass, nuclei, nmap, and sqlmap.
 
-## 🎯 Quick Start
+---
 
-### Installation
-```bash
-# Clone and setup
-git clone <repository-url>
-cd ai-bug-bounty-scanner
-pip install -r requirements.txt
+## 🚀 Quick Start
 
-# Start backend with Socket.IO
-python backend-app.py
+### **Windows**
 
-# Start frontend (new terminal)
-python -m http.server 3000
+1. **Start Application**
 
-# Access application
-# Frontend: http://localhost:3000
-# Backend API: http://localhost:5000
-# Socket.IO: Real-time communication enabled
-```
+   ```
+   Double-click: start.bat
+   ```
 
-## ✨ Features
+2. **Stop Application**
+   ```
+   Double-click: stop.bat
+   ```
 
-- 🔍 **Real Security Scanning** - Actual penetration testing, not simulations
-- 🤖 **5 AI Agents** - Specialized security testing agents
-- 🌐 **Modern Web Interface** - Responsive Tailwind CSS design
-- ⚡ **Real-Time Communication** - Socket.IO powered live updates
-- 📊 **Comprehensive Reports** - Detailed vulnerability analysis
-- 🛡️ **Ethical Scanning** - Built-in security validation
-- 📱 **Responsive Design** - Works on desktop, tablet, and mobile
-- 🔄 **Live Progress Tracking** - Real-time scan progress without polling
+That's it! The desktop window will open automatically.
+
+---
+
+## 📋 Requirements
+
+- **Python 3.11+**
+- **Node.js 18+**
+- **Rust** (for building)
+- **Windows 10/11** (Linux/Mac support planned)
+
+---
+
+## 🎯 Features
+
+- ✅ **Native Desktop App** - Built with Tauri + Rust
+- ✅ **Modern UI** - React + TypeScript + Tailwind CSS
+- ✅ **Tool Orchestration** - Manage security tools from one place
+- ✅ **Real-time Monitoring** - Live scan progress and results
+- ✅ **Production Ready** - Error handling, logging, metrics
+- ✅ **Secure** - Rate limiting, input validation, resource limits
+- ✅ **Cross-platform** - Windows, Linux, macOS (planned)
+
+---
 
 ## 🏗️ Architecture
 
 ```
-Frontend (Port 3000) ←→ Backend API (Port 5000) ←→ SQLite Database
-    ↓ Tailwind CSS           ↓ Flask-SocketIO
-    ↓ Socket.IO Client       ↓ Real-time Events
-    ↓ Responsive Design      ↓
-                    Security Agents:
-                    • Recon Agent (Network scanning)
-                    • WebApp Agent (Web app testing)
-                    • Network Agent (Network security)
-                    • API Agent (API testing)
-                    • Report Agent (Report generation)
+┌─────────────────────────────────────┐
+│     Desktop App (Tauri/Rust)        │
+│  ┌───────────────────────────────┐  │
+│  │   React Frontend (UI)         │  │
+│  │   - Dashboard                 │  │
+│  │   - Tool Management           │  │
+│  │   - Scan Orchestration        │  │
+│  └───────────────────────────────┘  │
+└─────────────────┬───────────────────┘
+                  │ HTTP
+     ┌────────────▼──────────────┐
+     │  Python FastAPI Backend   │
+     │  - Security Tools         │
+     │  - Scan Engine            │
+     │  - SQLite Database        │
+     └───────────────────────────┘
 ```
 
-## 🎨 Modern UI Features
+---
 
-### **Tailwind CSS Integration**
-- **Responsive Design**: Mobile-first approach with breakpoints
-- **Custom Color Palette**: Professional dark theme with accent colors
-- **Component Library**: Consistent buttons, cards, forms, and modals
-- **Utility Classes**: Rapid development with utility-first CSS
+## 🛠️ Supported Tools
 
-### **Real-time Communication**
-- **Socket.IO**: Bidirectional real-time communication
-- **Live Progress Updates**: No polling - instant scan progress
-- **Connection Status**: Visual indicators for connection health
-- **Test Interface**: Built-in Socket.IO testing functionality
+- **Subdomain Discovery**: subfinder, amass
+- **URL Discovery**: waybackurls, gau
+- **Port Scanning**: naabu, nmap
+- **Vulnerability Scanning**: nuclei
+- **Web Fuzzing**: ffuf, gobuster
+- **SQL Injection**: sqlmap
 
-## 🤖 Security Agents
+---
 
-| Agent | Purpose | Capabilities |
-|-------|---------|-------------|
-| **Recon Agent** | Network reconnaissance | Port scanning, service enumeration, SSL analysis |
-| **WebApp Agent** | Web application testing | XSS, SQL injection, security headers |
-| **Network Agent** | Network security | Service testing, protocol analysis |
-| **API Agent** | API security testing | Endpoint discovery, auth bypass |
-| **Report Agent** | Report generation | Vulnerability analysis, CVSS scoring |
+## 📖 Usage
 
-## 📡 API Endpoints & Real-time Events
+### **First Launch**
 
-### Core REST Endpoints
-- `GET /api/stats` - Dashboard statistics
-- `GET /api/scans` - List all scans
-- `POST /api/scans` - Create new scan
-- `POST /api/scan/{id}` - Start real scanning
-- `GET /api/vulnerabilities` - List vulnerabilities
+1. Double-click `start.bat`
+2. Wait 2-3 minutes (compiling Rust)
+3. Desktop window opens automatically
 
-### Socket.IO Real-time Events
-- `connect` - Client connection established
-- `disconnect` - Client disconnection
-- `ping/pong` - Connection testing
-- `scan_progress_request` - Request scan progress
-- `scan_progress_update` - Real-time progress broadcast
+### **Subsequent Launches**
 
-### Example Usage
-```javascript
-// REST API - Create scan
-const scan = await fetch('/api/scans', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-        target: 'https://example.com',
-        scanType: 'Quick Scan',
-        agents: ['Web App Agent', 'Recon Agent']
-    })
-});
+1. Double-click `start.bat`
+2. Desktop window opens in 5-10 seconds
 
-// Socket.IO - Real-time updates
-const socket = io('http://localhost:5000');
-socket.on('scan_progress_update', (data) => {
-    console.log(`Progress: ${data.progress}% - ${data.current_test}`);
-});
+### **Dashboard**
 
-// Start real scanning with real-time updates
-await fetch(`/api/scan/${scan.id}`, {method: 'POST'});
-```
+- View system health
+- See available tools
+- Quick scan functionality
 
-## 🔒 Security Features
+### **Tools Page**
 
-- **Input Validation** - URL sanitization and validation
-- **Rate Limiting** - Respectful scanning (200ms delays)
-- **Target Validation** - Prevents unauthorized scanning
-- **Ethical Controls** - Built-in consent mechanisms
-- **Data Protection** - Secure vulnerability storage
+- View all security tools
+- Check installation status
+- Tool descriptions and usage
 
-## 📊 Sample Results
+### **Scans Page**
 
-### Vulnerability Detection
-```json
-{
-  "title": "Missing Security Header: Content-Security-Policy",
-  "severity": "Medium",
-  "cvss": 5.3,
-  "description": "CSP header missing, potential XSS risk",
-  "remediation": "Implement Content-Security-Policy header",
-  "discovered_by": "Web App Agent"
-}
-```
+- Create new scans
+- View scan history
+- Monitor progress
 
-### Scan Statistics
-- **Scan Speed**: ~60 seconds for comprehensive scan
-- **Vulnerability Detection**: 8+ real vulnerabilities per scan
-- **Agent Success Rate**: 100% operational
-- **Performance**: Real-time updates every 3 seconds
+### **Reports Page**
 
-## 🧪 Testing
+- Generate reports
+- Export as PDF/HTML/JSON
+- Download results
 
-### Run Tests
+---
+
+## 🔧 Development
+
+### **Setup**
+
 ```bash
-# Backend integration test
-python test_backend_integration.py
+# Install Python dependencies
+pip install -r requirements.txt
 
-# Frontend integration test
-python test_frontend_integration.py
+# Install Node dependencies
+cd frontend
+npm install
 
-# Quick agent test
-python quick_test.py
+# First time setup
+cd ..
+start.bat
 ```
 
-### Test Results
-- ✅ All 5 agents functional
-- ✅ Real vulnerability detection
-- ✅ Database integration working
-- ✅ Frontend-backend communication
-- ✅ Progress monitoring operational
+### **Development Mode**
 
-**Database Models:**
-- `Scan` - Scan configurations and progress tracking
-- `Vulnerability` - Discovered security issues
-- `Agent` - AI agent configurations and status
-- `Report` - Generated assessment reports
-
-## 🤖 AI Agents
-
-The system includes 5 specialized AI agents:
-
-1. **Recon Agent**
-   - Subdomain enumeration and asset discovery
-   - Port scanning and service detection
-   - DNS enumeration and banner grabbing
-   - Success Rate: 94%
-
-2. **Web App Agent**
-   - XSS and SQL injection detection
-   - CSRF testing and authentication bypass
-   - Input validation testing
-   - Success Rate: 87%
-
-3. **Network Agent**
-   - Network-level vulnerability assessment
-   - Port scanning and service detection
-   - Network mapping and topology discovery
-   - Success Rate: 91%
-
-4. **API Agent**
-   - REST and GraphQL API security testing
-   - Endpoint discovery and authentication testing
-   - Input validation and rate limiting tests
-   - Success Rate: 89%
-
-5. **Report Agent**
-   - Comprehensive vulnerability report generation
-   - AI-powered risk assessment and analysis
-   - Executive summaries and remediation planning
-   - Success Rate: 96%
-
-## 📊 Data Models
-
-### Scan Object
-```javascript
-{
-  "id": "scan-001",
-  "target": "https://example.com",
-  "status": "completed|running|pending",
-  "scanType": "Quick Scan|Full Scan|Custom",
-  "started": "2025-08-01T09:30:00Z",
-  "progress": 100,
-  "vulnerabilities": 12,
-  "critical": 2,
-  "high": 4,
-  "medium": 6,
-  "low": 0,
-  "agents": ["Web App Agent", "API Agent"]
-}
+```bash
+# Runs with hot reload
+start.bat
 ```
 
-### Vulnerability Object
-```javascript
-{
-  "id": "vuln-001",
-  "title": "Cross-Site Scripting (XSS) in Contact Form",
-  "severity": "High|Critical|Medium|Low",
-  "cvss": 7.2,
-  "description": "Detailed vulnerability description",
-  "url": "https://example.com/contact",
-  "parameter": "message",
-  "payload": "<script>alert('XSS')</script>",
-  "remediation": "Implementation guidance",
-  "discoveredBy": "Web App Agent",
-  "timestamp": "2025-08-01T10:05:00Z"
-}
+### **Production Build**
+
+```bash
+# Creates installer (.msi)
+cd frontend
+npm run tauri build
 ```
 
-## 🎨 Modern UI Components
+**Output**: `src-tauri/target/release/bundle/msi/AI Bug Bounty Scanner_2.0.0_x64.msi`
 
-### Tailwind CSS Design System
-- **Color Scheme**: Professional dark theme with custom color palette
-- **Responsive Layout**: Mobile-first design with breakpoints
-- **Typography**: System fonts with proper hierarchy
-- **Components**: Utility-first approach with consistent styling
+---
 
-### Key UI Elements
-- **Responsive Grid**: `grid-cols-1 md:grid-cols-2 lg:grid-cols-4`
-- **Modern Cards**: Hover effects and gradient borders
-- **Real-time Indicators**: Live connection status with color coding
-- **Progress Bars**: Gradient progress bars with smooth animations
-- **Modal System**: Tailwind-styled modals with backdrop blur
-- **Interactive Buttons**: Hover states and transition effects
+## 📊 Tech Stack
 
-### Real-time Features
-- **Connection Status**: 🟢 Connected / 🔴 Disconnected indicators
-- **Live Progress**: Real-time scan progress without page refresh
-- **Socket.IO Test**: Built-in communication testing interface
-- **Auto-updates**: Instant notifications and status changes
+### **Frontend**
 
-## 🔧 API Endpoints (Backend)
+- React 18 + TypeScript
+- Vite (build tool)
+- Tailwind CSS
+- React Query (data fetching)
+- Tauri (desktop framework)
 
-```python
-# Scan Management
-GET    /api/scans              # List all scans
-POST   /api/scans              # Create new scan
-GET    /api/scans/<scan_id>    # Get scan details
-PUT    /api/scans/<scan_id>    # Update scan status
-DELETE /api/scans/<scan_id>    # Delete scan
+### **Backend**
 
-# Vulnerability Management
-GET    /api/vulnerabilities    # List vulnerabilities
-POST   /api/vulnerabilities    # Add new vulnerability
-GET    /api/vulnerabilities/<vuln_id>  # Get vulnerability details
+- FastAPI (Python async)
+- SQLAlchemy + SQLite
+- Pydantic (validation)
+- Structlog (logging)
+- Prometheus (metrics)
 
-# Agent Management
-GET    /api/agents             # List all agents
-PUT    /api/agents/<agent_id>  # Update agent configuration
+### **Desktop**
 
-# Reports
-GET    /api/reports            # List generated reports
-POST   /api/reports            # Generate new report
-```
+- Tauri 1.x (Rust)
+- Native window
+- System integration
 
-## 🚀 Getting Started
-
-### Prerequisites
-- Python 3.8+ (for backend)
-- Modern web browser with Socket.IO support (for frontend)
-- Flask and dependencies (see requirements.txt)
-
-### Installation
-
-1. **Backend Setup:**
-   ```bash
-   pip install -r requirements.txt
-   # Includes: flask, flask-sqlalchemy, flask-cors, flask-socketio
-   python backend-app.py
-   ```
-
-2. **Frontend Setup:**
-   ```bash
-   # Serve via local web server for Socket.IO support
-   python -m http.server 3000
-   # Then open http://localhost:3000
-   ```
-
-### New Dependencies
-- **Flask-SocketIO**: Real-time communication
-- **Tailwind CSS**: Utility-first CSS framework (via CDN)
-- **Socket.IO Client**: Real-time frontend communication (via CDN)
-
-### Usage
-
-1. **Quick Scan**: Enter a target URL in the dashboard quick scan form
-2. **Full Scan**: Use Scan Manager to configure detailed scans with agent selection
-3. **Monitor Progress**: Watch real-time updates in the dashboard
-4. **Review Results**: Check discovered vulnerabilities in Scan Results view
-5. **Generate Reports**: Download comprehensive security assessment reports
-
-## 📈 Statistics & Metrics
-
-- **Total Scans Tracked**: Historical scan data and trends
-- **Vulnerability Discovery**: Real-time counting by severity
-- **Agent Performance**: Success rates and uptime monitoring
-- **Scan Duration**: Average completion times and efficiency metrics
+---
 
 ## 🔒 Security Features
 
-- **Input Validation**: XSS and injection protection
-- **CORS Configuration**: Secure cross-origin requests
-- **SQL Injection Prevention**: Parameterized queries
-- **Authentication Ready**: Framework for user management
+- ✅ **Input Validation** - Pydantic schemas with regex validation
+- ✅ **Rate Limiting** - SlowAPI with configurable limits
+- ✅ **Resource Limits** - CPU, memory, execution time monitoring
+- ✅ **Error Handling** - Comprehensive error catching and logging
+- ✅ **CORS Protection** - Configured for desktop app only
+- ✅ **Structured Logging** - JSON logs for audit trails
 
-## 🛠️ Development
+---
+
+## 📈 Monitoring
+
+### **Metrics Endpoint**
+
+```
+http://localhost:8000/metrics
+```
+
+View Prometheus metrics:
+
+- HTTP requests (count, duration)
+- Tool executions (count, failures)
+- Resource usage (CPU, memory)
+- Error rates
+
+### **Health Check**
+
+```
+http://localhost:8000/api/health/
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### **App won't start?**
+
+1. Check Python is installed: `python --version`
+2. Check Node is installed: `node --version`
+3. Check Rust is installed: `cargo --version`
+4. Run `stop.bat` then `start.bat`
+
+### **Backend errors?**
+
+```bash
+# Check logs in backend PowerShell window
+# or manually test:
+cd backend
+python run.py
+```
+
+### **Frontend errors?**
+
+```bash
+# Rebuild frontend
+cd frontend
+npm install
+npm run dev
+```
+
+### **Port conflicts?**
+
+- Backend uses port **8000**
+- Frontend uses port **5173**
+- Run `stop.bat` to free ports
+
+---
 
 ## 📁 Project Structure
 
 ```
 ai-bug-bounty-scanner/
-├── backend-app.py              # Flask backend
-├── index.html                  # Web interface
-├── app.js                      # Frontend logic
-├── style.css                   # Styling
-├── requirements.txt            # Dependencies
-├── PROJECT_DOCUMENTATION.md    # Full documentation
-├── agents/                     # Security agents
-│   ├── recon_agent.py
-│   ├── webapp_agent.py
-│   ├── network_agent.py
-│   ├── api_agent.py
-│   └── report_agent.py
-└── instance/
-    └── bug_bounty_scanner.db   # SQLite database
+├── assets/              # Images and icons
+│   ├── app-icon.png     # Main application icon
+│   └── *.png            # Generated icon sizes
+├── backend/             # Python FastAPI backend
+│   ├── api/             # API endpoints
+│   ├── services/        # Business logic
+│   ├── models.py        # Database models
+│   └── main.py          # FastAPI app
+├── frontend/            # React frontend
+│   ├── src/
+│   │   ├── pages/       # UI pages
+│   │   ├── components/  # React components
+│   │   └── services/    # API client
+│   └── package.json
+├── src-tauri/           # Rust desktop wrapper
+│   ├── icons/           # Desktop app icons
+│   ├── src/main.rs      # Tauri commands
+│   └── tauri.conf.json  # App config
+├── data/                # SQLite database
+├── start.bat            # ▶️ START HERE!
+├── stop.bat             # ⏹️ Stop application
+└── README.md            # 📖 This file
 ```
-
-## 🚀 Deployment
-
-### Development
-```bash
-python backend-app.py          # Backend on :5000
-python -m http.server 3000     # Frontend on :3000
-```
-
-### Production
-```bash
-pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:5000 backend-app:app
-```
-
-## 🛠️ Troubleshooting
-
-### Common Issues
-
-**Backend won't start**
-```bash
-pip install -r requirements.txt
-python --version  # Ensure Python 3.13+
-```
-
-**CORS errors**
-- Ensure backend running on port 5000
-- Check CORS configuration in backend-app.py
-
-## 📈 Current Status
-
-### System Health: 🟢 FULLY OPERATIONAL
-- ✅ Backend API: Working
-- ✅ Frontend Interface: Complete
-- ✅ Security Agents: All 5 operational
-- ✅ Real Scanning: Actual vulnerability detection
-- ✅ Integration: End-to-end functionality
-
-## 🏆 Achievements
-
-- ✅ **Real Security Scanning** - Actual testing, not simulations
-- ✅ **Production Ready** - Comprehensive error handling
-- ✅ **Performance Optimized** - 5x speed improvement
-- ✅ **Complete Integration** - Seamless communication
-- ✅ **Thoroughly Tested** - Comprehensive test coverage
-
-## 📞 Support
-
-- **Documentation**: See PROJECT_DOCUMENTATION.md for complete details
-- **Issues**: Report bugs and feature requests
-- **Security**: Follow responsible disclosure for security issues
 
 ---
 
-**Status**: Production Ready ✅
-**Version**: 1.0.0
-**Last Updated**: August 1, 2025
+## 🎨 Icon
 
-*For complete technical documentation, see [PROJECT_DOCUMENTATION.md](PROJECT_DOCUMENTATION.md)*
+The application uses a custom cyberpunk-themed icon located in `assets/app-icon.png`.
 
-**⚠️ Disclaimer**: This tool is for educational and authorized testing purposes only. Users are responsible for ensuring they have proper authorization before scanning any targets.
+To replace:
 
-### Key Technologies
+1. Add your PNG (1024x1024) as `assets/app-icon.png`
+2. Rebuild: `npm run tauri build`
 
-- **Frontend**: Vanilla JavaScript, Socket.IO Client, Chart.js
-- **Backend**: Flask, Flask-SocketIO, SQLAlchemy, SQLite
-- **Styling**: Tailwind CSS (utility-first framework)
-- **Real-time**: Socket.IO for bidirectional communication
-- **Charts**: Chart.js for vulnerability trend visualization
-- **Responsive**: Mobile-first design with Tailwind breakpoints
+---
 
-## 📝 License
+## 📝 Configuration
 
-This project is designed for educational and professional security testing purposes.
+Edit `.env` file:
+
+```env
+# Application
+ENVIRONMENT=development
+DEBUG=True
+
+# Server
+HOST=127.0.0.1
+PORT=8000
+
+# Security
+SECRET_KEY=your-secret-key-here
+
+# Resource Limits
+MAX_MEMORY_MB=1024
+MAX_CPU_PERCENT=80
+MAX_EXECUTION_TIME=600
+```
+
+---
+
+## 🚢 Deployment
+
+### **For End Users**
+
+1. Build installer: `cd frontend && npm run tauri build`
+2. Share the `.msi` file from `src-tauri/target/release/bundle/msi/`
+3. User double-clicks to install
+4. App appears in Start Menu
+
+### **For Developers**
+
+- Use `start.bat` for development
+- Backend auto-reloads on code changes
+- Frontend hot-reloads via Vite
+
+---
+
+## 🤝 Contributing
+
+This is a professional security tool. Contributions welcome!
+
+### **Before contributing:**
+
+1. Test with `start.bat`
+2. Ensure no errors in console
+3. Run linters
+4. Test on Windows
+
+---
+
+## ⚖️ License
+
+MIT License - Use responsibly and ethically.
+
+**Important**: This tool is for authorized security testing only. Always get permission before scanning targets.
+
+---
+
+## 📞 Support
+
+For issues:
+
+1. Check this README
+2. Review PowerShell window errors
+3. Check `backend/logs/` directory
+
+---
+
+## 🎯 Roadmap
+
+- [ ] Linux support
+- [ ] macOS support
+- [ ] Docker integration
+- [ ] CI/CD pipeline
+- [ ] Plugin system
+- [ ] Report templates
+- [ ] Dark/Light theme toggle
+- [ ] Multi-language support
+
+---
+
+**Made with ❤️ for security professionals**
+
+**Version**: 2.0.0  
+**Last Updated**: 2025-09-30
+
+---
+
+## 🚀 TL;DR
+
+```bash
+# Just do this:
+start.bat
+
+# When done:
+stop.bat
+```
+
+**That's it!** 🎉
