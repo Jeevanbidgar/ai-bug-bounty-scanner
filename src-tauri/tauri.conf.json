@@ -1,0 +1,224 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:3000",
+    "distDir": "../frontend/dist"
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "identifier": "com.ai-bug-bounty-scanner.dev",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Desktop-native security scanning application",
+    "longDescription": "A comprehensive security scanning platform with Rust core and desktop-native performance",
+    "copyright": "",
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "",
+      "exceptionDomain": "",
+      "signingIdentity": null,
+      "providerShortName": null,
+      "entitlements": null
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    }
+  },
+  "productName": "AI Bug Bounty Scanner",
+  "version": "0.1.0",
+  "identifier": "com.ai-bug-bounty-scanner.dev",
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/your-repo/ai-bug-bounty-scanner/releases/latest"
+      ],
+      "dialog": true,
+      "pubkey": ""
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "fullscreen": false,
+        "resizable": true,
+        "title": "AI Bug Bounty Scanner",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "decorations": true,
+        "transparent": false,
+        "alwaysOnTop": false,
+        "skipTaskbar": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
+    }
+  },
+  "security": {
+    "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https: ws: wss:; font-src 'self' data:; object-src 'none'; media-src 'self' data:; frame-src 'none';"
+  },
+  "permissions": [
+    {
+      "identifier": "allow-run-security-tools",
+      "description": "Allow execution of security scanning tools",
+      "commands": {
+        "allow": [
+          {
+            "name": "subfinder",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "amass",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "naabu",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "httpx",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "nmap",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "nuclei",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "gau",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "waybackurls",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "ffuf",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "gobuster",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "sqlmap",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "python",
+            "args": true,
+            "cwd": true
+          },
+          {
+            "name": "python3",
+            "args": true,
+            "cwd": true
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "allow-read-security-files",
+      "description": "Allow reading security scan results and configuration files",
+      "scope": {
+        "allow": [
+          {
+            "path": "$DESKTOP/**",
+            "read": true
+          },
+          {
+            "path": "$DOCUMENT/**",
+            "read": true
+          },
+          {
+            "path": "$DOWNLOAD/**",
+            "read": true
+          },
+          {
+            "path": "./results/**",
+            "read": true
+          },
+          {
+            "path": "./plugins/**",
+            "read": true
+          },
+          {
+            "path": "./scripts/**",
+            "read": true
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "allow-write-security-files",
+      "description": "Allow writing security scan results and reports",
+      "scope": {
+        "allow": [
+          {
+            "path": "$DESKTOP/**",
+            "write": true
+          },
+          {
+            "path": "$DOCUMENT/**",
+            "write": true
+          },
+          {
+            "path": "$DOWNLOAD/**",
+            "write": true
+          },
+          {
+            "path": "./results/**",
+            "write": true
+          },
+          {
+            "path": "./reports/**",
+            "write": true
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "allow-network-access",
+      "description": "Allow network access for security scanning",
+      "network": {
+        "allow": [
+          "tcp:*",
+          "udp:*"
+        ]
+      }
+    }
+  ]
+}
