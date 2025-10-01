@@ -5,14 +5,15 @@ Pydantic models for API responses and SQLAlchemy models for database persistence
 """
 
 import json
+import uuid
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
 from enum import Enum
+from typing import Dict, List, Optional, Any
 
+from pydantic import BaseModel, Field
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.asyncio import AsyncAttrs
-import uuid
 
 from backend.database import Base
 
@@ -50,7 +51,7 @@ class Scan(Base, AsyncAttrs):
             'id': self.id,
             'target': self.target,
             'status': self.status,
-            'scanType': self.scan_type,
+            'scan_type': self.scan_type,  # Changed from 'scanType' to match Pydantic model
             'started': self.started.isoformat() if self.started else None,
             'completed': self.completed.isoformat() if self.completed else None,
             'progress': self.progress,
@@ -206,45 +207,56 @@ class ReconPlan(Base, AsyncAttrs):
         }
 
 class WorkflowExecution(Base, AsyncAttrs):
-    """Workflow execution tracking"""
+    """Workflow execution tracking model"""
     __tablename__ = 'workflow_executions'
 
     id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workflow_id = Column(String(100), nullable=False)
     workflow_name = Column(String(100), nullable=False)
-    target = Column(String(255), nullable=False)
-    status = Column(String(20), nullable=False, default='pending')  # pending, running, completed, failed
-    started_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
-    completed_at = Column(DateTime, nullable=True)
-    results = Column(Text, nullable=True)  # JSON string of execution results
-    error = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default='pending')  # pending, running, completed, failed, cancelled
+    started = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    completed = Column(DateTime, nullable=True)
+    inputs = Column(Text)  # JSON string of input parameters
+    error_message = Column(Text)
 
     # Relationships
     steps = relationship('WorkflowStep', back_populates='execution', cascade='all, delete-orphan')
+    artifacts = relationship('WorkflowArtifact', back_populates='execution', cascade='all, delete-orphan')
+    findings = relationship('WorkflowFinding', back_populates='execution', cascade='all, delete-orphan')
 
     def to_dict(self):
         """Convert workflow execution to dictionary"""
         return {
             'id': self.id,
+            'workflow_id': self.workflow_id,
             'workflow_name': self.workflow_name,
-            'target': self.target,
             'status': self.status,
-            'started_at': self.started_at.isoformat() if self.started_at else None,
-            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
-            'results': json.loads(self.results) if self.results else None,
-            'error': self.error,
-            'steps_count': len(self.steps)
+            'started': self.started.isoformat() if self.started else None,
+            'completed': self.completed.isoformat() if self.completed else None,
+            'inputs': json.loads(self.inputs) if self.inputs else {},
+            'error_message': self.error_message,
+            'steps_count': len(self.steps),
+            'artifacts_count': len(self.artifacts),
+            'findings_count': len(self.findings)
         }
 
 class WorkflowStep(Base, AsyncAttrs):
-    """Individual workflow step execution"""
+    """Individual step execution within a workflow"""
     __tablename__ = 'workflow_steps'
 
     id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
     execution_id = Column(String(50), ForeignKey('workflow_executions.id'), nullable=False)
-    tool_name = Column(String(100), nullable=False)
-    parameters = Column(Text, nullable=False)  # JSON string of parameters
-    result = Column(Text, nullable=True)  # JSON string of execution result
-    status = Column(String(20), nullable=False, default='pending')  # pending, running, completed, failed
+    step_id = Column(String(100), nullable=False)  # ID from workflow template
+    step_name = Column(String(100), nullable=False)
+    status = Column(String(20), nullable=False, default='pending')  # pending, running, completed, failed, cancelled
+    started = Column(DateTime, nullable=True)
+    completed = Column(DateTime, nullable=True)
+    command = Column(Text)  # JSON string of executed command
+    exit_code = Column(Integer, nullable=True)
+    stdout = Column(Text)
+    stderr = Column(Text)
+    error_message = Column(Text)
+    artifacts = Column(Text)  # JSON string of produced artifacts
 
     # Relationships
     execution = relationship('WorkflowExecution', back_populates='steps')
@@ -254,10 +266,85 @@ class WorkflowStep(Base, AsyncAttrs):
         return {
             'id': self.id,
             'execution_id': self.execution_id,
-            'tool_name': self.tool_name,
-            'parameters': json.loads(self.parameters) if self.parameters else {},
-            'result': json.loads(self.result) if self.result else None,
-            'status': self.status
+            'step_id': self.step_id,
+            'step_name': self.step_name,
+            'status': self.status,
+            'started': self.started.isoformat() if self.started else None,
+            'completed': self.completed.isoformat() if self.completed else None,
+            'command': json.loads(self.command) if self.command else None,
+            'exit_code': self.exit_code,
+            'stdout': self.stdout,
+            'stderr': self.stderr,
+            'error_message': self.error_message,
+            'artifacts': json.loads(self.artifacts) if self.artifacts else []
+        }
+
+class WorkflowArtifact(Base, AsyncAttrs):
+    """Artifacts produced by workflow steps"""
+    __tablename__ = 'workflow_artifacts'
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    execution_id = Column(String(50), ForeignKey('workflow_executions.id'), nullable=False)
+    step_id = Column(String(100), nullable=False)
+    artifact_name = Column(String(100), nullable=False)
+    artifact_type = Column(String(50), nullable=False)  # file, data, etc.
+    file_path = Column(String(500), nullable=True)  # Path if file artifact
+    content = Column(Text, nullable=True)  # Content if data artifact
+    artifact_metadata = Column(Text)  # JSON string of metadata
+
+    # Relationships
+    execution = relationship('WorkflowExecution', back_populates='artifacts')
+
+    def to_dict(self):
+        """Convert workflow artifact to dictionary"""
+        return {
+            'id': self.id,
+            'execution_id': self.execution_id,
+            'step_id': self.step_id,
+            'artifact_name': self.artifact_name,
+            'artifact_type': self.artifact_type,
+            'file_path': self.file_path,
+            'content': self.content,
+            'metadata': json.loads(self.artifact_metadata) if self.artifact_metadata else {}
+        }
+
+class WorkflowFinding(Base, AsyncAttrs):
+    """Findings extracted from workflow outputs (e.g., nuclei results)"""
+    __tablename__ = 'workflow_findings'
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    execution_id = Column(String(50), ForeignKey('workflow_executions.id'), nullable=False)
+    step_id = Column(String(100), nullable=False)
+    finding_type = Column(String(50), nullable=False)  # vulnerability, subdomain, port, etc.
+    title = Column(String(255), nullable=False)
+    severity = Column(String(20), nullable=True)  # Critical, High, Medium, Low, Info
+    description = Column(Text, nullable=True)
+    url = Column(String(500), nullable=True)
+    cvss = Column(Float, nullable=True)
+    cwe = Column(String(20), nullable=True)
+    tags = Column(Text)  # JSON string of tags
+    evidence = Column(Text)  # JSON string of evidence data
+    raw_data = Column(Text)  # Original JSON from tool
+
+    # Relationships
+    execution = relationship('WorkflowExecution', back_populates='findings')
+
+    def to_dict(self):
+        """Convert workflow finding to dictionary"""
+        return {
+            'id': self.id,
+            'execution_id': self.execution_id,
+            'step_id': self.step_id,
+            'finding_type': self.finding_type,
+            'title': self.title,
+            'severity': self.severity,
+            'description': self.description,
+            'url': self.url,
+            'cvss': self.cvss,
+            'cwe': self.cwe,
+            'tags': json.loads(self.tags) if self.tags else [],
+            'evidence': json.loads(self.evidence) if self.evidence else {},
+            'raw_data': json.loads(self.raw_data) if self.raw_data else {}
         }
 
 # Pydantic Models for API
@@ -358,15 +445,22 @@ class ReportResponse(BaseModel):
     severity: str
 
 class ToolResponse(BaseModel):
-    id: str
     name: str
     description: str
     category: str
-    command_template: str
-    available: bool
+    status: str
     installed: bool
+    available: bool
     version: Optional[str]
-    last_check: Optional[str]
+    raw_version: Optional[str] = None
+    path: Optional[str] = None
+    command_template: List[str]
+    output_format: str
+    os_dependencies: List[str] = Field(default_factory=list)
+    missing_dependencies: List[str] = Field(default_factory=list)
+    last_check: Optional[str] = None
+    last_seen: Optional[str] = None
+    last_error: Optional[str] = None
 
 class ReconPlanResponse(BaseModel):
     id: str
@@ -395,3 +489,97 @@ class ScanStats(BaseModel):
     vulnerabilities_found: int
     start_time: Optional[str]
     estimated_completion: Optional[str]
+
+# Workflow Models
+class WorkflowStepOutput(BaseModel):
+    """Output specification for a workflow step"""
+    name: str = Field(..., description="Output name")
+    type: str = Field(..., description="Output type (file, data, etc.)")
+    path: Optional[str] = Field(None, description="File path if file output")
+    description: Optional[str] = Field(None, description="Output description")
+
+class WorkflowStepRetry(BaseModel):
+    """Retry policy for a workflow step"""
+    max_attempts: int = Field(default=1, description="Maximum retry attempts")
+    delay: int = Field(default=0, description="Delay between retries in seconds")
+    backoff_factor: float = Field(default=1.0, description="Exponential backoff factor")
+
+class WorkflowStepModel(BaseModel):
+    """Individual step in a workflow template"""
+    id: str = Field(..., description="Unique step identifier")
+    name: str = Field(..., description="Human-readable step name")
+    description: Optional[str] = Field(None, description="Step description")
+    needs: List[str] = Field(default_factory=list, description="List of step IDs this step depends on")
+    run: List[str] = Field(..., description="Command to execute as argv array")
+    env: Dict[str, str] = Field(default_factory=dict, description="Environment variables")
+    timeout: int = Field(default=300, description="Timeout in seconds")
+    retry: WorkflowStepRetry = Field(default_factory=WorkflowStepRetry, description="Retry policy")
+    outputs: List[WorkflowStepOutput] = Field(default_factory=list, description="Expected outputs")
+    working_directory: Optional[str] = Field(None, description="Working directory for the step")
+
+class WorkflowTemplate(BaseModel):
+    """Complete workflow template"""
+    id: str = Field(..., description="Unique workflow identifier")
+    name: str = Field(..., description="Human-readable workflow name")
+    description: str = Field(..., description="Workflow description")
+    category: str = Field(..., description="Workflow category")
+    version: str = Field(default="1.0.0", description="Workflow version")
+    author: Optional[str] = Field(None, description="Workflow author")
+    tags: List[str] = Field(default_factory=list, description="Workflow tags")
+    inputs: Dict[str, str] = Field(default_factory=dict, description="Input parameters schema")
+    steps: List[WorkflowStepModel] = Field(..., description="Workflow steps")
+    outputs: List[WorkflowStepOutput] = Field(default_factory=list, description="Workflow-level outputs")
+
+class WorkflowExecutionResponse(BaseModel):
+    """Response for workflow execution"""
+    execution_id: str = Field(..., description="Unique execution identifier")
+    status: str = Field(..., description="Execution status")
+    message: str = Field(..., description="Status message")
+
+class WorkflowExecutionStatus(BaseModel):
+    """Status of a workflow execution"""
+    id: str = Field(..., description="Execution ID")
+    workflow_id: str = Field(..., description="Workflow template ID")
+    workflow_name: str = Field(..., description="Workflow name")
+    status: str = Field(..., description="Execution status")
+    started: Optional[str] = Field(None, description="Start time")
+    completed: Optional[str] = Field(None, description="Completion time")
+    inputs: Dict[str, str] = Field(default_factory=dict, description="Input parameters")
+    error_message: Optional[str] = Field(None, description="Error message if failed")
+    steps_count: int = Field(default=0, description="Number of steps")
+    artifacts_count: int = Field(default=0, description="Number of artifacts")
+    findings_count: int = Field(default=0, description="Number of findings")
+
+class WorkflowStepStatus(BaseModel):
+    """Status of an individual workflow step"""
+    id: str = Field(..., description="Step execution ID")
+    execution_id: str = Field(..., description="Execution ID")
+    step_id: str = Field(..., description="Template step ID")
+    step_name: str = Field(..., description="Step name")
+    status: str = Field(..., description="Step status")
+    started: Optional[str] = Field(None, description="Start time")
+    completed: Optional[str] = Field(None, description="Completion time")
+    command: Optional[List[str]] = Field(None, description="Executed command")
+    exit_code: Optional[int] = Field(None, description="Exit code")
+    error_message: Optional[str] = Field(None, description="Error message")
+    artifacts: List[str] = Field(default_factory=list, description="Produced artifacts")
+
+class WorkflowTemplateResponse(BaseModel):
+    """Response containing workflow template information"""
+    id: str = Field(..., description="Workflow ID")
+    name: str = Field(..., description="Workflow name")
+    description: str = Field(..., description="Workflow description")
+    category: str = Field(..., description="Workflow category")
+    version: str = Field(..., description="Workflow version")
+    author: Optional[str] = Field(None, description="Workflow author")
+    tags: List[str] = Field(default_factory=list, description="Workflow tags")
+    inputs: Dict[str, str] = Field(default_factory=dict, description="Input schema")
+    steps_count: int = Field(..., description="Number of steps")
+    outputs_count: int = Field(..., description="Number of outputs")
+
+class WorkflowExecuteRequest(BaseModel):
+    """Request to execute a workflow"""
+    workflow_id: Optional[str] = Field(None, description="Workflow template ID")
+    template: Optional[WorkflowTemplate] = Field(None, description="Inline workflow template")
+    inputs: Dict[str, str] = Field(default_factory=dict, description="Input parameters")
+    working_directory: Optional[str] = Field(None, description="Working directory")

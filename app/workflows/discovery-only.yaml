@@ -1,0 +1,59 @@
+id: discovery-only
+name: Discovery Only
+description: Basic subdomain and port discovery workflow
+category: reconnaissance
+version: "1.0.0"
+author: "AI Bug Bounty Scanner"
+tags:
+  - discovery
+  - subdomains
+  - ports
+
+inputs:
+  target: "example.com"
+  workdir: "./results"
+
+steps:
+  - id: subfinder
+    name: Subdomain Discovery
+    description: Discover subdomains using Subfinder
+    run:
+      - subfinder
+      - -d
+      - "{{target}}"
+      - -o
+      - "{{workdir}}/subdomains.txt"
+    timeout: 300
+    outputs:
+      - name: subdomains
+        type: file
+        path: "{{workdir}}/subdomains.txt"
+        description: Discovered subdomains
+
+  - id: naabu
+    name: Port Scanning
+    description: Scan for open ports using Naabu
+    needs:
+      - subfinder
+    run:
+      - naabu
+      - -list
+      - "{{workdir}}/subdomains.txt"
+      - -o
+      - "{{workdir}}/ports.txt"
+    timeout: 600
+    outputs:
+      - name: ports
+        type: file
+        path: "{{workdir}}/ports.txt"
+        description: Open ports discovered
+
+outputs:
+  - name: subdomains
+    type: file
+    path: "{{workdir}}/subdomains.txt"
+    description: All discovered subdomains
+  - name: ports
+    type: file
+    path: "{{workdir}}/ports.txt"
+    description: All discovered open ports

@@ -18,12 +18,12 @@ timeout /t 2 /nobreak >nul
 
 :: Start backend
 echo  [2/3] Starting Backend Server...
-start "AI Bug Bounty Scanner - Backend" /MIN cmd /k "cd /d %~dp0 && python run.py"
-timeout /t 6 /nobreak
+start "AI Bug Bounty Scanner - Backend" /MIN cmd /c "cd /d %~dp0 && python run.py"
+timeout /t 6 /nobreak >nul 2>&1
 
-:: Start desktop app
+:: Start desktop app (persistent PowerShell so dev server keeps running)
 echo  [3/3] Launching Desktop Application...
-start "AI Bug Bounty Scanner - Desktop" /MIN cmd /k "cd /d %~dp0 && npm run dev"
+start "AI Bug Bounty Scanner - Desktop" /MIN powershell -NoExit -Command "cd '%~dp0'; npm run dev"
 
 echo.
 echo  ========================================

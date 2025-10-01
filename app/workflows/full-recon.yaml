@@ -1,0 +1,113 @@
+id: full-recon
+name: Full Reconnaissance
+description: Complete reconnaissance workflow - subdomain discovery, port scanning, URL probing, and vulnerability assessment
+category: reconnaissance
+version: "1.0.0"
+author: "AI Bug Bounty Scanner"
+tags:
+  - reconnaissance
+  - full-scan
+  - nuclei
+
+inputs:
+  target: "example.com"
+  workdir: "./results"
+
+steps:
+  - id: subfinder
+    name: Subdomain Discovery
+    description: Discover subdomains using Subfinder
+    run:
+      - subfinder
+      - -d
+      - "{{target}}"
+      - -o
+      - "{{workdir}}/subdomains.txt"
+    timeout: 300
+    outputs:
+      - name: subdomains
+        type: file
+        path: "{{workdir}}/subdomains.txt"
+        description: Discovered subdomains
+
+  - id: naabu
+    name: Port Scanning
+    description: Scan for open ports using Naabu
+    needs:
+      - subfinder
+    run:
+      - naabu
+      - -list
+      - "{{workdir}}/subdomains.txt"
+      - -o
+      - "{{workdir}}/ports.txt"
+    timeout: 600
+    outputs:
+      - name: ports
+        type: file
+        path: "{{workdir}}/ports.txt"
+        description: Open ports discovered
+
+  - id: httpx
+    name: URL Probing
+    description: Probe for live URLs and HTTP responses using httpx
+    needs:
+      - naabu
+    run:
+      - httpx
+      - -l
+      - "{{workdir}}/ports.txt"
+      - -o
+      - "{{workdir}}/urls.txt"
+      - -title
+      - -status-code
+      - -content-length
+    timeout: 900
+    outputs:
+      - name: urls
+        type: file
+        path: "{{workdir}}/urls.txt"
+        description: Live URLs with HTTP responses
+
+  - id: nuclei
+    name: Vulnerability Scanning
+    description: Scan for vulnerabilities using Nuclei
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/urls.txt"
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei.jsonl"
+      - -je
+      - "{{workdir}}/nuclei-export.json"
+    timeout: 1800
+    outputs:
+      - name: nuclei_results
+        type: file
+        path: "{{workdir}}/nuclei.jsonl"
+        description: Nuclei scan results in JSONL format
+      - name: nuclei_export
+        type: file
+        path: "{{workdir}}/nuclei-export.json"
+        description: Nuclei export data
+
+outputs:
+  - name: subdomains
+    type: file
+    path: "{{workdir}}/subdomains.txt"
+    description: All discovered subdomains
+  - name: ports
+    type: file
+    path: "{{workdir}}/ports.txt"
+    description: All discovered open ports
+  - name: urls
+    type: file
+    path: "{{workdir}}/urls.txt"
+    description: Live URLs with HTTP responses
+  - name: vulnerabilities
+    type: file
+    path: "{{workdir}}/nuclei.jsonl"
+    description: Vulnerability findings

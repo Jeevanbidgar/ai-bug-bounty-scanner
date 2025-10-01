@@ -12,7 +12,7 @@ from datetime import datetime
 class ScanCreateRequest(BaseModel):
     """Schema for creating a new scan"""
     target: str = Field(..., min_length=3, max_length=255, description="Target domain or IP address")
-    scan_type: str = Field(default="quick", regex="^(quick|deep|custom)$", description="Type of scan to perform")
+    scan_type: str = Field(default="quick", pattern="^(quick|deep|custom)$", description="Type of scan to perform")
     tools: List[str] = Field(default_factory=list, description="List of tools to use")
     description: Optional[str] = Field(None, max_length=500, description="Optional scan description")
     
@@ -94,7 +94,7 @@ class ToolExecuteRequest(BaseModel):
 class ReportGenerateRequest(BaseModel):
     """Schema for generating a report"""
     scan_id: str = Field(..., description="Scan ID to generate report for")
-    format: str = Field(default="html", regex="^(html|pdf|json|markdown)$")
+    format: str = Field(default="html", pattern="^(html|pdf|json|markdown)$")
     include_raw_data: bool = Field(default=False, description="Include raw tool outputs")
     
     @field_validator('scan_id')
@@ -166,12 +166,24 @@ class ScanResponse(BaseModel):
 
 class ToolResponse(BaseModel):
     """Schema for tool response"""
+
     name: str
     description: str
     category: str
+    status: str
     installed: bool
+    available: bool
     version: Optional[str] = None
-    
+    raw_version: Optional[str] = None
+    path: Optional[str] = None
+    command_template: List[str]
+    output_format: str
+    os_dependencies: List[str] = Field(default_factory=list)
+    missing_dependencies: List[str] = Field(default_factory=list)
+    last_check: Optional[str] = None
+    last_seen: Optional[str] = None
+    last_error: Optional[str] = None
+
     class Config:
         from_attributes = True
 

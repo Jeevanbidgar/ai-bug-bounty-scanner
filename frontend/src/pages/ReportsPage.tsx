@@ -171,21 +171,21 @@ const ReportsPage = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Security Reports</h1>
-          <p className="text-gray-400 mt-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Security Reports</h1>
+          <p className="text-gray-400 mt-2 text-sm sm:text-base">
             Generate and manage security assessment reports
           </p>
         </div>
-        <Button onClick={() => setShowGenerateForm(true)}>
+        <Button onClick={() => setShowGenerateForm(true)} className="w-fit">
           <Plus className="mr-2 h-4 w-4" />
           Generate Report
         </Button>
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4">
+      <div className="flex flex-col lg:flex-row gap-4">
         <div className="flex-1">
           <Input
             placeholder="Search reports..."
@@ -195,7 +195,7 @@ const ReportsPage = () => {
           />
         </div>
         <Select value={formatFilter} onValueChange={setFormatFilter}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-full lg:w-48">
             <SelectValue placeholder="Format" />
           </SelectTrigger>
           <SelectContent>
@@ -207,7 +207,7 @@ const ReportsPage = () => {
           </SelectContent>
         </Select>
         <Select value={severityFilter} onValueChange={setSeverityFilter}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-full lg:w-48">
             <SelectValue placeholder="Severity" />
           </SelectTrigger>
           <SelectContent>
@@ -296,17 +296,17 @@ const ReportsPage = () => {
           filteredReports.map((report) => (
             <Card key={report.id}>
               <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <FileText className="h-8 w-8 text-blue-500" />
-                    <div>
-                      <h3 className="font-semibold text-white">{report.title}</h3>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <FileText className="h-8 w-8 text-blue-500 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-white truncate">{report.title}</h3>
                       <p className="text-sm text-gray-400">
                         Generated {new Date(report.generated).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 flex-shrink-0">
                     <Badge className={getSeverityColor(report.severity)} variant="secondary">
                       <div className="flex items-center space-x-1">
                         {getSeverityIcon(report.severity)}

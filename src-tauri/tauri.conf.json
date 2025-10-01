@@ -15,7 +15,27 @@
       "all": false,
       "shell": {
         "all": false,
-        "open": true
+        "open": true,
+        "execute": true,
+        "sidecar": true,
+        "scope": [
+          { "name": "subfinder", "cmd": "subfinder", "args": true },
+          { "name": "naabu", "cmd": "naabu", "args": true },
+          { "name": "nuclei", "cmd": "nuclei", "args": true },
+          { "name": "nmap", "cmd": "nmap", "args": true },
+          { "name": "sqlmap", "cmd": "sqlmap", "args": true },
+          { "name": "gobuster", "cmd": "gobuster", "args": true },
+          { "name": "ffuf", "cmd": "ffuf", "args": true },
+          { "name": "dirb", "cmd": "dirb", "args": true },
+          { "name": "nikto", "cmd": "nikto", "args": true },
+          { "name": "wpscan", "cmd": "wpscan", "args": true },
+          { "name": "joomlavs", "cmd": "joomlavs", "args": true },
+          { "name": "amass", "cmd": "amass", "args": true },
+          { "name": "waybackurls", "cmd": "waybackurls", "args": true },
+          { "name": "gau", "cmd": "gau", "args": true },
+          { "name": "httpx", "cmd": "httpx", "args": true },
+          { "name": "katana", "cmd": "katana", "args": true }
+        ]
       },
       "http": {
         "all": true,
@@ -48,7 +68,13 @@
       "active": true,
       "targets": "all",
       "identifier": "com.aibugbountyscanner.app",
-      "icon": [],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
       "resources": [],
       "externalBin": [],
       "category": "DeveloperTool",

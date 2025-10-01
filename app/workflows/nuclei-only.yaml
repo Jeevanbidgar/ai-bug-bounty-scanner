@@ -1,0 +1,48 @@
+id: nuclei-only
+name: Nuclei Vulnerability Scan
+description: Run Nuclei vulnerability scanner on target domains
+category: vulnerability
+version: "1.0.0"
+author: "AI Bug Bounty Scanner"
+tags:
+  - nuclei
+  - vulnerability
+  - scanning
+
+inputs:
+  target: "example.com"
+  workdir: "./results"
+
+steps:
+  - id: nuclei
+    name: Vulnerability Scanning
+    description: Scan for vulnerabilities using Nuclei
+    run:
+      - nuclei
+      - -u
+      - "{{target}}"
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei.jsonl"
+      - -je
+      - "{{workdir}}/nuclei-export.json"
+    timeout: 1800
+    outputs:
+      - name: nuclei_results
+        type: file
+        path: "{{workdir}}/nuclei.jsonl"
+        description: Nuclei scan results in JSONL format
+      - name: nuclei_export
+        type: file
+        path: "{{workdir}}/nuclei-export.json"
+        description: Nuclei export data
+
+outputs:
+  - name: vulnerabilities
+    type: file
+    path: "{{workdir}}/nuclei.jsonl"
+    description: Vulnerability findings
+  - name: export_data
+    type: file
+    path: "{{workdir}}/nuclei-export.json"
+    description: Structured export data

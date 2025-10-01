@@ -6,15 +6,95 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tauri::State;
+use tauri::Manager;
 use tokio::process::Command as TokioCommand;
 use tokio::time::timeout;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use std::path::PathBuf;
+use chrono;
+use which::which;
 
 // Tool discovery and execution state
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct AppState {
     tools: Arc<Mutex<HashMap<String, ToolInfo>>>,
     backend_pid: Arc<Mutex<Option<u32>>>,
+    workflow_executions: Arc<Mutex<HashMap<String, WorkflowExecution>>>,
+}
+
+// Workflow execution structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowStep {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub needs: Vec<String>,
+    pub run: Vec<String>,
+    pub env: HashMap<String, String>,
+    pub timeout: u64,
+    pub retry: WorkflowRetry,
+    pub outputs: Vec<WorkflowOutput>,
+    pub working_directory: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowOutput {
+    pub name: String,
+    pub r#type: String,
+    pub path: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowRetry {
+    pub max_attempts: u32,
+    pub delay: u64,
+    pub backoff_factor: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub version: String,
+    pub author: Option<String>,
+    pub tags: Vec<String>,
+    pub inputs: HashMap<String, String>,
+    pub steps: Vec<WorkflowStep>,
+    pub outputs: Vec<WorkflowOutput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowExecution {
+    pub id: String,
+    pub workflow_id: String,
+    pub workflow_name: String,
+    pub status: String,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub inputs: HashMap<String, String>,
+    pub current_step: Option<String>,
+    pub steps: HashMap<String, StepExecution>,
+    pub artifacts: HashMap<String, Value>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepExecution {
+    pub step_id: String,
+    pub status: String,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub error_message: Option<String>,
+    pub artifacts: Vec<String>,
+    pub attempts: u32,
 }
 
 // Tool information structure
@@ -45,6 +125,520 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+// Workflow execution commands
+#[tauri::command]
+async fn load_workflow_templates() -> Result<Vec<serde_json::Value>, String> {
+    let workflows_dir = std::env::current_dir()
+        .map_err(|e| format!("Failed to get current directory: {}", e))?
+        .join("app")
+        .join("workflows");
+
+    let mut templates = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(workflows_dir) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                if let Some(ext) = entry.path().extension() {
+                    if ext == "yaml" || ext == "yml" {
+                        if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                            match serde_yaml::from_str::<serde_json::Value>(&content) {
+                                Ok(yaml_data) => {
+                                    templates.push(yaml_data);
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to parse YAML file {:?}: {}", entry.path(), e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(templates)
+}
+
+#[tauri::command]
+async fn execute_workflow(
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    workflow_data: serde_json::Value,
+    inputs: std::collections::HashMap<String, String>
+) -> Result<String, String> {
+    // Parse workflow template
+    let workflow_template: WorkflowTemplate = serde_json::from_value(workflow_data)
+        .map_err(|e| format!("Failed to parse workflow template: {}", e))?;
+
+    // Create execution ID
+    let execution_id = format!("exec_{}", chrono::Utc::now().timestamp());
+
+    // Create execution context
+    let mut execution = WorkflowExecution {
+        id: execution_id.clone(),
+        workflow_id: workflow_template.id.clone(),
+        workflow_name: workflow_template.name.clone(),
+        status: "running".to_string(),
+        started_at: chrono::Utc::now().to_rfc3339(),
+        completed_at: None,
+        inputs: inputs.clone(),
+        current_step: None,
+        steps: HashMap::new(),
+        artifacts: HashMap::new(),
+        error_message: None,
+    };
+
+    // Initialize step executions
+    for step in &workflow_template.steps {
+        let step_exec = StepExecution {
+            step_id: step.id.clone(),
+            status: "pending".to_string(),
+            started_at: None,
+            completed_at: None,
+            exit_code: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            error_message: None,
+            artifacts: Vec::new(),
+            attempts: 0,
+        };
+        execution.steps.insert(step.id.clone(), step_exec);
+    }
+
+    // Store execution
+    state.workflow_executions.lock().unwrap().insert(execution_id.clone(), execution);
+
+    // Start workflow execution in background
+    let execution_id_clone = execution_id.clone();
+    let state_clone = state.inner().clone();
+    tokio::spawn(async move {
+        if let Err(e) = execute_workflow_async(state_clone, app_handle, execution_id_clone).await {
+            eprintln!("Workflow execution failed: {}", e);
+        }
+    });
+
+    Ok(execution_id)
+}
+
+#[tauri::command]
+async fn get_workflow_status(
+    state: tauri::State<'_, AppState>,
+    execution_id: String
+) -> Result<serde_json::Value, String> {
+    let executions = state.workflow_executions.lock().unwrap();
+    let execution = executions.get(&execution_id)
+        .ok_or_else(|| format!("Execution {} not found", execution_id))?;
+
+    Ok(serde_json::to_value(execution).unwrap())
+}
+
+async fn execute_workflow_async(
+    state: AppState,
+    app_handle: tauri::AppHandle,
+    execution_id: String
+) -> Result<(), String> {
+    // Load workflow template first (outside mutex)
+    let workflow_id = {
+        let executions = state.workflow_executions.lock().unwrap();
+        let execution = executions.get(&execution_id)
+            .ok_or_else(|| "Execution not found".to_string())?;
+        execution.workflow_id.clone()
+    };
+
+    let workflows_dir = std::env::current_dir()
+        .map_err(|e| format!("Failed to get current directory: {}", e))?
+        .join("app")
+        .join("workflows");
+
+    let workflow_file = workflows_dir.join(format!("{}.yaml", workflow_id));
+    let content = std::fs::read_to_string(workflow_file)
+        .map_err(|e| format!("Failed to read workflow file: {}", e))?;
+
+    let workflow_template: WorkflowTemplate = serde_yaml::from_str(&content)
+        .map_err(|e| format!("Failed to parse workflow template: {}", e))?;
+
+    // Execute DAG (mutex will be locked/unlocked inside as needed)
+    execute_dag(&state, &execution_id, &workflow_template, app_handle).await?;
+
+    Ok(())
+}
+
+async fn execute_dag(
+    state: &AppState,
+    execution_id: &str,
+    template: &WorkflowTemplate,
+    app_handle: tauri::AppHandle
+) -> Result<(), String> {
+    use tauri::Manager;
+
+    // Build dependency graph
+    let dependency_graph = build_dependency_graph(template);
+
+    // Helper to lock and get mutable execution
+    let get_exec = || -> std::sync::MutexGuard<'_, HashMap<String, WorkflowExecution>> {
+        state.workflow_executions.lock().unwrap()
+    };
+
+    // Determine initial ready steps
+    let ready_steps_init = {
+        let executions = get_exec();
+        let execution = executions.get(execution_id).ok_or_else(|| "Execution not found".to_string())?;
+        get_ready_steps(&execution.steps, &dependency_graph)
+    };
+
+    let mut ready_steps = ready_steps_init;
+
+    while !ready_steps.is_empty() {
+        // Prepare tasks
+        let mut tasks = Vec::new();
+
+        for step_id in &ready_steps {
+            // Snapshot data under lock
+            let (exec_id_owned, step_template, _prev_status) = {
+                let mut executions = get_exec();
+                let execution = executions.get_mut(execution_id).ok_or_else(|| "Execution not found".to_string())?;
+                let step_template = template.steps.iter()
+                    .find(|s| s.id == *step_id)
+                    .ok_or_else(|| format!("Step {} not found in template", step_id))?;
+
+                // Mark running
+                if let Some(step_exec) = execution.steps.get_mut(step_id) {
+                    step_exec.status = "running".to_string();
+                    step_exec.started_at = Some(chrono::Utc::now().to_rfc3339());
+                }
+
+                (execution.id.clone(), step_template.clone(), ())
+            };
+
+            // Emit step started
+            let _ = app_handle.emit_all("workflow:step_started", serde_json::json!({
+                "execution_id": exec_id_owned,
+                "step_id": step_id,
+                "step_name": step_template.name
+            }));
+
+            // Spawn step execution
+            let step_id_clone = step_id.clone();
+            let command = step_template.run.clone();
+            let env = step_template.env.clone();
+            let timeout = step_template.timeout;
+            let working_dir = step_template.working_directory.clone();
+            let app_handle_clone = app_handle.clone();
+
+            let task = tokio::spawn(async move {
+                execute_step(exec_id_owned, step_id_clone, command, env, timeout, working_dir, app_handle_clone).await
+            });
+
+            tasks.push((step_id.clone(), task));
+        }
+
+        // Await tasks and update state
+        for (step_id, task) in tasks {
+            match task.await {
+                Ok(Ok(step_result)) => {
+                    let mut executions = get_exec();
+                    let execution = executions.get_mut(execution_id).ok_or_else(|| "Execution not found".to_string())?;
+                    if let Some(step_exec) = execution.steps.get_mut(&step_id) {
+                        *step_exec = step_result.clone();
+                    }
+                    let _ = app_handle.emit_all("workflow:step_completed", serde_json::json!({
+                        "execution_id": execution.id,
+                        "step_id": step_id,
+                        "status": step_result.status,
+                        "exit_code": step_result.exit_code,
+                        "artifacts": step_result.artifacts
+                    }));
+                }
+                Ok(Err(e)) => {
+                    let mut executions = get_exec();
+                    let execution = executions.get_mut(execution_id).ok_or_else(|| "Execution not found".to_string())?;
+                    if let Some(step_exec) = execution.steps.get_mut(&step_id) {
+                        step_exec.status = "failed".to_string();
+                        step_exec.error_message = Some(e.to_string());
+                    }
+                    let _ = app_handle.emit_all("workflow:step_failed", serde_json::json!({
+                        "execution_id": execution.id,
+                        "step_id": step_id,
+                        "error": e
+                    }));
+                }
+                Err(e) => {
+                    let mut executions = get_exec();
+                    let execution = executions.get_mut(execution_id).ok_or_else(|| "Execution not found".to_string())?;
+                    if let Some(step_exec) = execution.steps.get_mut(&step_id) {
+                        step_exec.status = "failed".to_string();
+                        step_exec.error_message = Some(format!("Task panicked: {}", e));
+                    }
+                    let _ = app_handle.emit_all("workflow:step_failed", serde_json::json!({
+                        "execution_id": execution.id,
+                        "step_id": step_id,
+                        "error": "Task panicked"
+                    }));
+                }
+            }
+        }
+
+        // Recompute ready steps under lock
+        ready_steps = {
+            let executions = get_exec();
+            let execution = executions.get(execution_id).ok_or_else(|| "Execution not found".to_string())?;
+            get_ready_steps(&execution.steps, &dependency_graph)
+        };
+    }
+
+    // Finalize status
+    {
+        let mut executions = get_exec();
+        let execution = executions.get_mut(execution_id).ok_or_else(|| "Execution not found".to_string())?;
+        let failed_steps: Vec<_> = execution.steps.values()
+            .filter(|step| step.status == "failed")
+            .map(|step| step.step_id.clone())
+            .collect();
+
+        if failed_steps.is_empty() {
+            execution.status = "completed".to_string();
+            execution.completed_at = Some(chrono::Utc::now().to_rfc3339());
+            let _ = app_handle.emit_all("workflow:execution_completed", serde_json::json!({
+                "execution_id": execution.id,
+                "status": "completed"
+            }));
+        } else {
+            execution.status = "failed".to_string();
+            execution.error_message = Some(format!("Steps failed: {:?}", failed_steps));
+            let _ = app_handle.emit_all("workflow:execution_failed", serde_json::json!({
+                "execution_id": execution.id,
+                "failed_steps": failed_steps
+            }));
+        }
+    }
+
+    Ok(())
+}
+
+async fn execute_step(
+    execution_id: String,
+    step_id: String,
+    command: Vec<String>,
+    env: HashMap<String, String>,
+    timeout: u64,
+    working_directory: Option<String>,
+    app_handle: tauri::AppHandle
+) -> Result<StepExecution, String> {
+    // Resolve tool paths
+    let resolved_command = resolve_tool_paths(command)?;
+
+    // Set up working directory
+    let working_dir = if let Some(dir) = working_directory {
+        PathBuf::from(dir)
+    } else {
+        std::env::current_dir().map_err(|e| format!("Failed to get current directory: {}", e))?
+    };
+
+    // Execute command
+    let mut cmd = TokioCommand::new(&resolved_command[0]);
+    cmd.args(&resolved_command[1..])
+        .current_dir(working_dir)
+        .envs(env)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    // Start process
+    let mut child = cmd.spawn()
+        .map_err(|e| format!("Failed to spawn process: {}", e))?;
+
+    // Set up output capture
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    let stdout_reader = BufReader::new(stdout);
+    let stderr_reader = BufReader::new(stderr);
+
+    // Read stdout and stderr concurrently
+    let execution_id_clone = execution_id.clone();
+    let step_id_clone = step_id.clone();
+    let app_handle_clone = app_handle.clone();
+    let (stdout_handle, stderr_handle) = tokio::join!(
+        read_stream(stdout_reader, execution_id.clone(), step_id.clone(), app_handle.clone()),
+        read_stream(stderr_reader, execution_id_clone, step_id_clone, app_handle_clone)
+    );
+
+    let stdout_content = stdout_handle.unwrap_or_default();
+    let stderr_content = stderr_handle.unwrap_or_default();
+
+    // Wait for process with timeout
+    let timeout_duration = Duration::from_secs(timeout);
+    let exit_status = tokio::time::timeout(timeout_duration, child.wait()).await
+        .map_err(|_| format!("Process timed out after {} seconds", timeout))?
+        .map_err(|e| format!("Process failed: {}", e))?;
+
+    let exit_code = exit_status.code();
+
+    // Collect artifacts
+    let artifacts = collect_step_artifacts(&step_id, &std::env::current_dir().unwrap())?;
+
+    Ok(StepExecution {
+        step_id,
+        status: if exit_code == Some(0) { "completed".to_string() } else { "failed".to_string() },
+        started_at: Some(chrono::Utc::now().to_rfc3339()),
+        completed_at: Some(chrono::Utc::now().to_rfc3339()),
+        exit_code,
+        stdout: stdout_content,
+        stderr: stderr_content,
+        error_message: if exit_code != Some(0) {
+            Some(format!("Process exited with code {:?}", exit_code))
+        } else {
+            None
+        },
+        artifacts,
+        attempts: 1,
+    })
+}
+
+async fn read_stream<R: tokio::io::AsyncRead + Unpin>(
+    reader: R,
+    execution_id: String,
+    step_id: String,
+    app_handle: tauri::AppHandle
+) -> Result<String, String> {
+    let mut reader = BufReader::new(reader);
+    let mut content = String::new();
+    let mut line = String::new();
+
+    loop {
+        line.clear();
+        match reader.read_line(&mut line).await {
+            Ok(0) => break, // EOF
+            Ok(_) => {
+                content.push_str(&line);
+                // Emit line to frontend
+                let _ = app_handle.emit_all("workflow:stdout", serde_json::json!({
+                    "execution_id": execution_id,
+                    "step_id": step_id,
+                    "line": line.trim_end()
+                }));
+            }
+            Err(e) => return Err(format!("Failed to read stream: {}", e)),
+        }
+    }
+
+    Ok(content)
+}
+
+fn resolve_tool_paths(command: Vec<String>) -> Result<Vec<String>, String> {
+    let mut resolved = Vec::new();
+
+    for arg in command {
+        if arg.starts_with("./") || arg.starts_with("../") || arg.starts_with("/") {
+            // Keep absolute or relative paths as-is
+            resolved.push(arg);
+        } else {
+            // Try to resolve as a tool name using 'which' crate
+            match which(&arg) {
+                Ok(path) => {
+                    resolved.push(path.to_string_lossy().to_string());
+                }
+                Err(_) => {
+                    // Tool not found in PATH, keep original (might be a flag or parameter)
+                    resolved.push(arg);
+                }
+            }
+        }
+    }
+
+    Ok(resolved)
+}
+
+fn collect_step_artifacts(_step_id: &str, working_dir: &PathBuf) -> Result<Vec<String>, String> {
+    let mut artifacts = Vec::new();
+
+    // Look for common artifact files
+    let artifact_patterns = [
+        "subdomains.txt", "ports.txt", "urls.txt", "nuclei.jsonl", "nuclei.json",
+        "results.json", "output.json", "findings.json"
+    ];
+
+    for pattern in &artifact_patterns {
+        let artifact_path = working_dir.join(pattern);
+        if artifact_path.exists() {
+            artifacts.push(pattern.to_string());
+        }
+    }
+
+    Ok(artifacts)
+}
+
+fn build_dependency_graph(template: &WorkflowTemplate) -> HashMap<String, Vec<String>> {
+    let mut graph = HashMap::new();
+
+    for step in &template.steps {
+        graph.insert(step.id.clone(), step.needs.clone());
+    }
+
+    graph
+}
+
+fn get_ready_steps(
+    steps: &HashMap<String, StepExecution>,
+    dependency_graph: &HashMap<String, Vec<String>>
+) -> Vec<String> {
+    let mut ready = Vec::new();
+
+    for (step_id, dependencies) in dependency_graph {
+        if steps.get(step_id).unwrap().status != "pending" {
+            continue;
+        }
+
+        // Check if all dependencies are completed
+        let all_deps_completed = dependencies.iter().all(|dep_id| {
+            steps.get(dep_id).unwrap().status == "completed"
+        });
+
+        if all_deps_completed {
+            ready.push(step_id.clone());
+        }
+    }
+
+    ready
+}
+
+// Execute arbitrary commands for security tools
+#[tauri::command]
+async fn execute_command(
+    command: String,
+    args: Vec<String>,
+    working_directory: Option<String>
+) -> Result<String, String> {
+    println!("Executing command: {} with args: {:?}", command, args);
+
+    let mut cmd = TokioCommand::new(&command);
+    cmd.args(&args);
+
+    if let Some(dir) = working_directory {
+        cmd.current_dir(dir);
+    }
+
+    cmd.stdout(Stdio::piped())
+       .stderr(Stdio::piped());
+
+    match cmd.output().await {
+        Ok(output) => {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                println!("Command executed successfully");
+                Ok(stdout.to_string())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                println!("Command failed: {}", stderr);
+                Err(format!("Command failed: {}", stderr))
+            }
+        }
+        Err(e) => {
+            println!("Failed to execute command: {}", e);
+            Err(format!("Failed to execute command: {}", e))
+        }
+    }
+}
+
 // Enhanced backend management with proper process management
 #[tauri::command]
 async fn start_backend(state: State<'_, AppState>) -> Result<String, String> {
@@ -53,7 +647,7 @@ async fn start_backend(state: State<'_, AppState>) -> Result<String, String> {
         .join("backend");
 
     // Check if backend is already running
-    if let Ok(response) = reqwest::get("http://127.0.0.1:8000/health").await {
+    if let Ok(response) = reqwest::get("http://127.0.0.1:8000/api/health/").await {
         if response.status().is_success() {
             return Ok("Backend is already running".to_string());
         }
@@ -62,7 +656,7 @@ async fn start_backend(state: State<'_, AppState>) -> Result<String, String> {
     let mut command = TokioCommand::new("python");
     command
         .current_dir(&backend_path)
-        .args(["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"])
+        .args(["run.py"])
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
 
@@ -74,7 +668,7 @@ async fn start_backend(state: State<'_, AppState>) -> Result<String, String> {
 
             // Wait for backend to be ready
             for _ in 0..30 {
-                if let Ok(response) = reqwest::get("http://127.0.0.1:8000/health").await {
+                if let Ok(response) = reqwest::get("http://127.0.0.1:8000/api/health/").await {
                     if response.status().is_success() {
                         return Ok(format!("Backend started successfully with PID: {}", pid));
                     }
@@ -128,7 +722,7 @@ async fn stop_backend(state: State<'_, AppState>) -> Result<String, String> {
 
 #[tauri::command]
 async fn check_backend_health() -> Result<String, String> {
-    match timeout(Duration::from_secs(5), reqwest::get("http://127.0.0.1:8000/health")).await {
+    match timeout(Duration::from_secs(5), reqwest::get("http://127.0.0.1:8000/api/health/")).await {
         Ok(Ok(response)) => {
             if response.status().is_success() {
                 Ok("Backend is healthy".to_string())
@@ -349,13 +943,17 @@ fn main() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             greet,
+            execute_command,
             start_backend,
             stop_backend,
             check_backend_health,
             discover_tools,
             execute_tool,
             get_system_info,
-            get_application_state
+            get_application_state,
+            load_workflow_templates,
+            execute_workflow,
+            get_workflow_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,0 +1,148 @@
+id: api-security-scan
+name: API Security Testing
+description:
+  Comprehensive API security testing workflow - endpoint discovery, authentication
+  testing, and API-specific vulnerability detection
+category: vulnerability
+version: "1.0"
+inputs:
+  target: example.com
+  workdir: ./results
+steps:
+  - id: katana
+    name: API Endpoint Crawling
+    description: Discover API endpoints and routes
+    run:
+      - katana
+      - -u
+      - "{{target}}"
+      - -d
+      - "5"
+      - -jc
+      - -kf
+      - all
+      - -o
+      - "{{workdir}}/api-endpoints.txt"
+      - -silent
+    timeout: 900
+    outputs:
+      - name: endpoints
+        type: file
+        path: "{{workdir}}/api-endpoints.txt"
+        description: Discovered API endpoints
+  - id: httpx-api
+    name: API Service Analysis
+    description: Analyze API endpoints and detect technologies
+    needs:
+      - katana
+    run:
+      - httpx
+      - -l
+      - "{{workdir}}/api-endpoints.txt"
+      - -o
+      - "{{workdir}}/live-api-endpoints.txt"
+      - -json
+      - -tech-detect
+      - -status-code
+      - -content-length
+      - -method
+      - -silent
+    timeout: 600
+    outputs:
+      - name: live_endpoints
+        type: file
+        path: "{{workdir}}/live-api-endpoints.txt"
+        description: Live API endpoints with metadata
+  - id: nuclei-api
+    name: API Vulnerability Detection
+    description: Scan for API-specific vulnerabilities (OWASP API Top 10)
+    needs:
+      - httpx-api
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-api-endpoints.txt"
+      - -tags
+      - api,owasp,auth,jwt,graphql
+      - -severity
+      - critical,high,medium
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-api-vulns.jsonl"
+      - -je
+      - "{{workdir}}/nuclei-api-export.json"
+      - -stats
+      - -silent
+    timeout: 1800
+    outputs:
+      - name: api_vulnerabilities
+        type: file
+        path: "{{workdir}}/nuclei-api-vulns.jsonl"
+        description: API vulnerabilities in JSONL format
+      - name: nuclei_export
+        type: file
+        path: "{{workdir}}/nuclei-api-export.json"
+        description: Full Nuclei export for API scan
+  - id: sqlmap
+    name: SQL Injection Testing
+    description: Test for SQL injection vulnerabilities in API endpoints
+    needs:
+      - httpx-api
+    run:
+      - sqlmap
+      - -m
+      - "{{workdir}}/live-api-endpoints.txt"
+      - --batch
+      - --random-agent
+      - --level=1
+      - --risk=1
+      - --output-dir={{workdir}}/sqlmap
+      - --flush-session
+    timeout: 2400
+    outputs:
+      - name: sqlmap_results
+        type: directory
+        path: "{{workdir}}/sqlmap"
+        description: SQL injection test results
+  - id: nuclei-auth
+    name: Authentication Testing
+    description: Test for authentication and authorization issues
+    needs:
+      - httpx-api
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-api-endpoints.txt"
+      - -tags
+      - auth,authentication,authorization,jwt,oauth
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-auth.jsonl"
+      - -silent
+    timeout: 1200
+    outputs:
+      - name: auth_issues
+        type: file
+        path: "{{workdir}}/nuclei-auth.jsonl"
+        description: Authentication and authorization issues
+outputs:
+  - name: endpoints
+    path: "{{workdir}}/api-endpoints.txt"
+    description: Discovered API endpoints
+    type: file
+  - name: live_endpoints
+    path: "{{workdir}}/live-api-endpoints.txt"
+    description: Live API endpoints
+    type: file
+  - name: vulnerabilities
+    path: "{{workdir}}/nuclei-api-vulns.jsonl"
+    description: Identified API vulnerabilities
+    type: file
+  - name: auth_issues
+    path: "{{workdir}}/nuclei-auth.jsonl"
+    description: Authentication/authorization issues
+    type: file
+  - name: sqlmap_results
+    path: "{{workdir}}/sqlmap"
+    description: SQL injection test results
+    type: directory

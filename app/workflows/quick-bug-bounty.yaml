@@ -1,0 +1,156 @@
+id: quick-bug-bounty
+name: Quick Bug Bounty Recon
+description:
+  Fast bug bounty reconnaissance workflow - quick subdomain discovery,
+  live host detection, and critical vulnerability scanning for efficient bug hunting
+category: reconnaissance
+version: "1.0"
+inputs:
+  target: example.com
+  workdir: ./results
+steps:
+  - id: subfinder
+    name: Quick Subdomain Enumeration
+    description: Fast passive subdomain discovery
+    run:
+      - subfinder
+      - -d
+      - "{{target}}"
+      - -o
+      - "{{workdir}}/subdomains.txt"
+      - -all
+      - -silent
+    timeout: 300
+    outputs:
+      - name: subdomains
+        type: file
+        path: "{{workdir}}/subdomains.txt"
+        description: Discovered subdomains
+  - id: naabu
+    name: Fast Port Scanning
+    description: Scan top 100 ports quickly
+    needs:
+      - subfinder
+    run:
+      - naabu
+      - -l
+      - "{{workdir}}/subdomains.txt"
+      - -o
+      - "{{workdir}}/ports.txt"
+      - -top-ports
+      - "100"
+      - -rate
+      - "2000"
+      - -silent
+    timeout: 300
+    outputs:
+      - name: open_ports
+        type: file
+        path: "{{workdir}}/ports.txt"
+        description: Open ports on discovered subdomains
+  - id: httpx
+    name: Live Host Detection
+    description: Identify live HTTP/HTTPS services
+    needs:
+      - naabu
+    run:
+      - httpx
+      - -l
+      - "{{workdir}}/ports.txt"
+      - -o
+      - "{{workdir}}/live-urls.txt"
+      - -title
+      - -status-code
+      - -tech-detect
+      - -content-length
+      - -follow-redirects
+      - -random-agent
+      - -threads
+      - "50"
+      - -silent
+    timeout: 300
+    outputs:
+      - name: live_urls
+        type: file
+        path: "{{workdir}}/live-urls.txt"
+        description: Live HTTP/HTTPS endpoints
+  - id: nuclei
+    name: Critical Vulnerability Detection
+    description: Quick scan for critical and high severity vulnerabilities
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-urls.txt"
+      - -severity
+      - critical,high
+      - -tags
+      - cve,exposure,misconfig,rce,sqli,xss,lfi,rfi,ssrf
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-critical.jsonl"
+      - -je
+      - "{{workdir}}/nuclei-export.json"
+      - -rate-limit
+      - "150"
+      - -bulk-size
+      - "50"
+      - -c
+      - "25"
+      - -stats
+      - -silent
+    timeout: 900
+    outputs:
+      - name: critical_vulns
+        type: file
+        path: "{{workdir}}/nuclei-critical.jsonl"
+        description: Critical vulnerabilities in JSONL format
+      - name: nuclei_export
+        type: file
+        path: "{{workdir}}/nuclei-export.json"
+        description: Full Nuclei export data
+  - id: nuclei-quick-wins
+    name: Quick Wins Detection
+    description: Detect easy-to-find vulnerabilities and exposures
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-urls.txt"
+      - -tags
+      - default-login,exposure,panel,config,backup,debug
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-quick-wins.jsonl"
+      - -rate-limit
+      - "150"
+      - -silent
+    timeout: 600
+    outputs:
+      - name: quick_wins
+        type: file
+        path: "{{workdir}}/nuclei-quick-wins.jsonl"
+        description: Easy-to-exploit findings
+outputs:
+  - name: subdomains
+    path: "{{workdir}}/subdomains.txt"
+    description: Discovered subdomains
+    type: file
+  - name: open_ports
+    path: "{{workdir}}/ports.txt"
+    description: Open ports
+    type: file
+  - name: live_urls
+    path: "{{workdir}}/live-urls.txt"
+    description: Live web services
+    type: file
+  - name: critical_vulnerabilities
+    path: "{{workdir}}/nuclei-critical.jsonl"
+    description: Critical and high severity vulnerabilities
+    type: file
+  - name: quick_wins
+    path: "{{workdir}}/nuclei-quick-wins.jsonl"
+    description: Low-hanging fruit vulnerabilities
+    type: file

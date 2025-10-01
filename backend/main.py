@@ -129,7 +129,7 @@ app.add_middleware(
 # Configure trusted hosts
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["tauri://localhost", "https://tauri.localhost", "localhost", "127.0.0.1"]
+    allowed_hosts=["tauri://localhost", "https://tauri.localhost", "localhost", "127.0.0.1", "testserver"]  # testserver for TestClient
 )
 
 # Add request logging middleware
@@ -151,7 +151,7 @@ app.include_router(tools_router, prefix="/api/tools", tags=["tools"])
 app.include_router(reports_router, prefix="/api/reports", tags=["reports"])
 app.include_router(recon_router, prefix="/api/recon", tags=["recon"])
 app.include_router(workflows_router, prefix="/api/workflows", tags=["workflows"])
-app.include_router(metrics_router, tags=["metrics"])
+app.include_router(metrics_router, prefix="/api/metrics", tags=["metrics"])
 
 @app.get("/")
 async def root():
@@ -161,6 +161,18 @@ async def root():
         "version": "2.0.0",
         "status": "running"
     }
+
+@app.get("/metrics")
+async def prometheus_endpoint():
+    """Prometheus metrics endpoint at root level"""
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    from fastapi import Response
+    try:
+        metrics_data = generate_latest()
+        return Response(content=metrics_data, media_type=CONTENT_TYPE_LATEST)
+    except Exception as e:
+        logger.error("prometheus_metrics_error", error=str(e))
+        return Response(content="", media_type=CONTENT_TYPE_LATEST, status_code=500)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

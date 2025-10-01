@@ -17,12 +17,20 @@ tauri-build = { version = "1.5", features = [] }
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "1.6", features = [ "process-relaunch", "process-exit", "fs-rename-file", "fs-remove-file", "fs-read-file", "fs-exists", "fs-copy-file", "os-all", "http-all", "fs-read-dir", "fs-remove-dir", "fs-create-dir", "fs-write-file", "shell-open"] }
+serde_yaml = "0.9"
+tauri = { version = "1.6", features = [ "shell-open", "shell-execute", "shell-sidecar", "process-relaunch", "process-exit", "fs-rename-file", "fs-remove-file", "fs-read-file", "fs-exists", "fs-copy-file", "os-all", "http-all", "fs-read-dir", "fs-remove-dir", "fs-create-dir", "fs-write-file", "path-all"] }
 reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1.0", features = ["full"] }
 sys-info = "0.9"
 regex = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+which = "4.4"
+
+# Database dependencies
+sqlx = { version = "0.7", features = [ "runtime-tokio-rustls", "sqlite", "chrono", "uuid", "migrate" ] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+thiserror = "1.0"
+anyhow = "1.0"
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 

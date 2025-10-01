@@ -12,63 +12,21 @@ from sqlalchemy import select
 import structlog
 
 from backend.models import Tool
-from backend.services.tool_registry import ToolRegistry
+from backend.tool_discovery import tool_discovery_service
 from backend.adapters.adapter_manager import AdapterManager
 from backend.middleware.error_handler import ToolExecutionError
 
 logger = structlog.get_logger()
 
 class ToolService:
-    """Service for managing security tools"""
+    """Service for managing security tools using the unified tool discovery system"""
 
     def __init__(self):
-        self.tool_registry = ToolRegistry()
         self.adapter_manager = AdapterManager()
-        self.tools_config = self._get_tools_config()
-
-    def _get_tools_config(self) -> Dict[str, Dict[str, Any]]:
-        """Get configuration for available security tools"""
-        return {
-            'subfinder': {
-                'name': 'subfinder',
-                'description': 'Fast subdomain enumeration tool',
-                'category': 'recon',
-                'command_template': 'subfinder -d {target} -o {output_file}',
-                'timeout': 600
-            },
-            'amass': {
-                'name': 'amass',
-                'description': 'Comprehensive network reconnaissance tool',
-                'category': 'recon',
-                'command_template': 'amass enum -passive -d {target} -o {output_file}',
-                'timeout': 1200
-            },
-            'nmap': {
-                'name': 'nmap',
-                'description': 'Network discovery and security auditing tool',
-                'category': 'network',
-                'command_template': 'nmap -sV -sC -O -p- {target} -oN {output_file} -oX {xml_output_file}',
-                'timeout': 1800,
-                'requires_root': True
-            },
-            'nuclei': {
-                'name': 'nuclei',
-                'description': 'Fast and customizable vulnerability scanner',
-                'category': 'web',
-                'command_template': 'nuclei -u {target} -o {output_file}',
-                'timeout': 900
-            },
-            'sqlmap': {
-                'name': 'sqlmap',
-                'description': 'Automatic SQL injection tool',
-                'category': 'web',
-                'command_template': 'sqlmap -u "{target}" --batch --output-dir={output_dir}',
-                'timeout': 1800
-            }
-        }
+        # Use tool_discovery_service instead of hardcoded configs
 
     async def initialize_tools_db(self, db: AsyncSession):
-        """Initialize tools in the database"""
+        """Initialize tools in the database using tool discovery service"""
         try:
             # Check if tools already exist
             result = await db.execute(select(Tool).limit(1))
@@ -78,16 +36,24 @@ class ToolService:
                 logger.info("Tools already initialized")
                 return
 
-            # Create tool records
+            # Ensure discovery service is ready
+            await tool_discovery_service.ensure_ready()
+            
+            # Get discovered tools
+            discovered_tools = await tool_discovery_service.list_tools()
+
+            # Create tool records from discovered tools
             tools_to_create = []
-            for tool_name, config in self.tools_config.items():
+            for tool_record in discovered_tools:
                 tool = Tool(
-                    name=config['name'],
-                    description=config['description'],
-                    category=config['category'],
-                    command_template=config['command_template'],
-                    available=False,  # Will be checked separately
-                    installed=False
+                    name=tool_record.name,
+                    description=tool_record.description,
+                    category=tool_record.category,
+                    command_template=" ".join(tool_record.command_template),
+                    available=tool_record.installed,
+                    installed=tool_record.installed,
+                    version=tool_record.version,
+                    last_check=datetime.fromisoformat(tool_record.last_checked) if tool_record.last_checked else None
                 )
                 tools_to_create.append(tool)
 
@@ -95,58 +61,52 @@ class ToolService:
                 db.add(tool)
 
             await db.commit()
-            logger.info(f"Initialized {len(tools_to_create)} tools in database")
+            logger.info(f"Initialized {len(tools_to_create)} tools in database from discovery service")
 
         except Exception as e:
             logger.error("Failed to initialize tools", error=str(e))
             raise
 
     async def check_tool_availability(self, tool_name: str) -> bool:
-        """Check if a specific tool is available"""
-        if tool_name not in self.tools_config:
-            return False
-
+        """Check if a specific tool is available using discovery service"""
         try:
-            # Use asyncio subprocess for async checking
-            process = await asyncio.create_subprocess_exec(
-                'which', tool_name,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
-            )
-
-            await process.wait()
-            return process.returncode == 0
-
+            tool_record = await tool_discovery_service.get_tool(tool_name)
+            return tool_record.installed if tool_record else False
         except Exception as e:
             logger.debug(f"Error checking tool availability: {tool_name}", error=str(e))
             return False
 
     async def check_all_tools_availability(self) -> Dict[str, bool]:
-        """Check availability of all tools"""
+        """Check availability of all tools using discovery service"""
+        await tool_discovery_service.ensure_ready()
+        discovered_tools = await tool_discovery_service.list_tools()
+        
         availability = {}
-
-        for tool_name in self.tools_config.keys():
-            availability[tool_name] = await self.check_tool_availability(tool_name)
-
+        for tool_record in discovered_tools:
+            availability[tool_record.name] = tool_record.installed
+        
         return availability
 
     async def update_tools_availability(self, db: AsyncSession):
-        """Update availability status of all tools in database"""
+        """Update availability status of all tools in database using discovery service"""
         try:
-            availability = await self.check_all_tools_availability()
+            # Refresh all tools in discovery service
+            refreshed_tools = await tool_discovery_service.refresh_all(force=True)
 
-            for tool_name, available in availability.items():
+            for tool_name, tool_record in refreshed_tools.items():
                 result = await db.execute(
                     select(Tool).where(Tool.name == tool_name)
                 )
                 tool = result.scalar_one_or_none()
 
                 if tool:
-                    tool.available = available
-                    tool.last_check = datetime.now()
+                    tool.available = tool_record.installed
+                    tool.installed = tool_record.installed
+                    tool.version = tool_record.version
+                    tool.last_check = datetime.fromisoformat(tool_record.last_checked) if tool_record.last_checked else datetime.now()
 
             await db.commit()
-            logger.info("Updated tools availability status")
+            logger.info("Updated tools availability status from discovery service")
 
         except Exception as e:
             logger.error("Failed to update tools availability", error=str(e))
@@ -156,16 +116,21 @@ class ToolService:
                 details={"error": str(e)}
             )
 
-    def format_command(self, tool_name: str, target: str, **kwargs) -> str:
-        """Format command template with provided parameters"""
-        if tool_name not in self.tools_config:
+    async def format_command(self, tool_name: str, target: str, **kwargs) -> str:
+        """Format command template with provided parameters using discovery service"""
+        # Get tool from discovery service
+        tool_record = await tool_discovery_service.get_tool(tool_name)
+        if not tool_record:
+            # Get all available tools for error message
+            all_tools = await tool_discovery_service.list_tools()
             raise ToolExecutionError(
                 tool_name=tool_name,
                 message=f"Unknown tool: {tool_name}",
-                details={"available_tools": list(self.tools_config.keys())}
+                details={"available_tools": [t.name for t in all_tools]}
             )
 
-        config = self.tools_config[tool_name]
+        # Reconstruct command template from list
+        command_template_str = " ".join(tool_record.command_template)
 
         # Prepare template variables
         template_vars = {
@@ -178,19 +143,22 @@ class ToolService:
 
         # Format command template
         try:
-            command = config['command_template'].format(**template_vars)
+            command = command_template_str.format(**template_vars)
             return command
         except KeyError as e:
             raise ValueError(f"Missing template variable: {e}")
 
     async def run_tool(self, tool_name: str, target: str, **kwargs) -> Dict[str, Any]:
-        """Run a security tool using the adapter system"""
-        if tool_name not in self.tools_config:
-            raise ValueError(f"Unknown tool: {tool_name}")
-
-        # Check if tool is available
-        if not await self.check_tool_availability(tool_name):
-            raise RuntimeError(f"Tool '{tool_name}' is not available")
+        """Run a security tool using the adapter system with discovery service verification"""
+        # Verify tool before execution using discovery service (includes health check)
+        tool_record = await tool_discovery_service.verify_tool_before_use(tool_name)
+        
+        if not tool_record.installed:
+            raise RuntimeError(
+                f"Tool '{tool_name}' is not available. "
+                f"Status: {tool_record.status}. "
+                f"Missing dependencies: {', '.join(tool_record.missing_dependencies) if tool_record.missing_dependencies else 'None'}"
+            )
 
         # Use adapter system for execution
         try:
@@ -248,19 +216,22 @@ class ToolService:
             } for tool_name in tool_names]
 
     async def get_tool_info(self, tool_name: str) -> Dict[str, Any]:
-        """Get detailed information about a tool"""
-        if tool_name not in self.tools_config:
+        """Get detailed information about a tool from discovery service"""
+        tool_record = await tool_discovery_service.get_tool(tool_name)
+        if not tool_record:
             raise ValueError(f"Unknown tool: {tool_name}")
 
-        config = self.tools_config[tool_name]
-        available = await self.check_tool_availability(tool_name)
-
         return {
-            'name': config['name'],
-            'description': config['description'],
-            'category': config['category'],
-            'command_template': config['command_template'],
-            'timeout': config['timeout'],
-            'requires_root': config.get('requires_root', False),
-            'available': available
+            'name': tool_record.name,
+            'description': tool_record.description,
+            'category': tool_record.category,
+            'command_template': " ".join(tool_record.command_template),
+            'timeout': 300,  # Default timeout, could be made configurable per tool
+            'requires_root': False,  # Could be added to ToolDefinition if needed
+            'available': tool_record.installed,
+            'version': tool_record.version,
+            'path': tool_record.path,
+            'status': tool_record.status,
+            'os_dependencies': tool_record.os_dependencies,
+            'missing_dependencies': tool_record.missing_dependencies
         }

@@ -78,29 +78,29 @@ const SettingsPage = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Settings</h1>
-          <p className="text-gray-400 mt-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Settings</h1>
+          <p className="text-gray-400 mt-2 text-sm sm:text-base">
             Configure system settings and preferences
           </p>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 flex-wrap">
           {hasUnsavedChanges && (
-            <Badge variant="outline" className="text-yellow-400 border-yellow-400">
+            <Badge variant="outline" className="text-yellow-400 border-yellow-400 text-xs">
               Unsaved Changes
             </Badge>
           )}
-          <Button onClick={handleSaveConfig} disabled={!hasUnsavedChanges}>
+          <Button onClick={handleSaveConfig} disabled={!hasUnsavedChanges} className="w-fit">
             <Save className="mr-2 h-4 w-4" />
             Save Changes
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Main Settings */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="xl:col-span-2 space-y-6">
 
           {/* Database Settings */}
           <Card>
@@ -124,7 +124,7 @@ const SettingsPage = () => {
                   placeholder="sqlite+aiosqlite:///./ai_bug_bounty_scanner.db"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     Max Connections
@@ -161,7 +161,7 @@ const SettingsPage = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     Max Concurrent Scans

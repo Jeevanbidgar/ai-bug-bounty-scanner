@@ -6,6 +6,7 @@ Handles database setup, migrations, and initial data seeding.
 
 import asyncio
 import os
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 from alembic import command
@@ -60,7 +61,7 @@ def seed_initial_data():
     """Seed database with initial data"""
     from backend.database import _ensure_session_maker
     from backend.models import Tool, ReconPlan
-    from backend.services.tool_registry import ToolRegistry
+    from backend.tool_discovery import tool_discovery_service
     from backend.services.recon_service import ReconService
 
     async def _seed():
@@ -75,23 +76,25 @@ def seed_initial_data():
                 logger.info("Tools already seeded")
                 return
 
-            # Seed tools from registry
-            tool_registry = ToolRegistry()
-            mvp_tools = tool_registry.get_mvp_tools()
+            # Seed tools from discovery service
+            await tool_discovery_service.ensure_ready()
+            discovered_tools = await tool_discovery_service.list_tools()
 
-            for tool_info in mvp_tools:
+            for tool_record in discovered_tools:
                 tool = Tool(
-                    name=tool_info.name,
-                    description=tool_info.description,
-                    category=tool_info.category.value,
-                    command_template=tool_info.command_template,
-                    available=False,  # Will be checked by tool service
-                    installed=False
+                    name=tool_record.name,
+                    description=tool_record.description,
+                    category=tool_record.category,
+                    command_template=" ".join(tool_record.command_template),
+                    available=tool_record.installed,
+                    installed=tool_record.installed,
+                    version=tool_record.version,
+                    last_check=datetime.fromisoformat(tool_record.last_checked) if tool_record.last_checked else None
                 )
                 session.add(tool)
 
             await session.commit()
-            logger.info(f"Seeded {len(mvp_tools)} tools")
+            logger.info(f"Seeded {len(discovered_tools)} tools from discovery service")
 
             # Seed reconnaissance plans
             result = await session.execute(select(ReconPlan).limit(1))

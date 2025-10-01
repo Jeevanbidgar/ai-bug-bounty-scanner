@@ -1,0 +1,314 @@
+id: comprehensive-audit
+name: Comprehensive Security Audit
+description:
+  Complete security audit workflow - combines reconnaissance, web application
+  testing, API security, network scanning, and vulnerability assessment for thorough
+  security analysis
+category: audit
+version: "1.0"
+inputs:
+  target: example.com
+  workdir: ./results
+steps:
+  - id: subfinder
+    name: Subdomain Discovery
+    description: Comprehensive subdomain enumeration
+    run:
+      - subfinder
+      - -d
+      - "{{target}}"
+      - -o
+      - "{{workdir}}/subdomains.txt"
+      - -all
+      - -recursive
+      - -silent
+    timeout: 900
+    outputs:
+      - name: subdomains
+        type: file
+        path: "{{workdir}}/subdomains.txt"
+        description: All discovered subdomains
+  - id: amass
+    name: Advanced Subdomain Enumeration
+    description: Additional subdomain discovery with Amass
+    run:
+      - amass
+      - enum
+      - -passive
+      - -d
+      - "{{target}}"
+      - -o
+      - "{{workdir}}/amass-subdomains.txt"
+      - -timeout
+      - "15"
+    timeout: 1200
+    outputs:
+      - name: amass_subdomains
+        type: file
+        path: "{{workdir}}/amass-subdomains.txt"
+        description: Amass discovered subdomains
+  - id: naabu
+    name: Comprehensive Port Scanning
+    description: Full port scan of all discovered assets
+    needs:
+      - subfinder
+    run:
+      - naabu
+      - -l
+      - "{{workdir}}/subdomains.txt"
+      - -o
+      - "{{workdir}}/ports.txt"
+      - -p
+      - "-"
+      - -rate
+      - "1000"
+      - -json
+      - -silent
+    timeout: 1800
+    outputs:
+      - name: all_ports
+        type: file
+        path: "{{workdir}}/ports.txt"
+        description: All open ports
+  - id: nmap
+    name: Service Version Detection
+    description: Detailed service and version detection
+    needs:
+      - naabu
+    run:
+      - nmap
+      - -iL
+      - "{{workdir}}/ports.txt"
+      - -sV
+      - -sC
+      - -A
+      - -T4
+      - -oX
+      - "{{workdir}}/nmap-detailed.xml"
+      - -oN
+      - "{{workdir}}/nmap-detailed.txt"
+      - --script=default,discovery,vuln,exploit
+    timeout: 3600
+    outputs:
+      - name: nmap_results
+        type: file
+        path: "{{workdir}}/nmap-detailed.xml"
+        description: Detailed service information
+  - id: httpx
+    name: HTTP Service Discovery
+    description: Comprehensive HTTP/HTTPS service analysis
+    needs:
+      - naabu
+    run:
+      - httpx
+      - -l
+      - "{{workdir}}/ports.txt"
+      - -o
+      - "{{workdir}}/live-urls.txt"
+      - -title
+      - -status-code
+      - -tech-detect
+      - -web-server
+      - -cdn
+      - -content-length
+      - -method
+      - -follow-redirects
+      - -random-agent
+      - -json
+      - -silent
+    timeout: 1200
+    outputs:
+      - name: live_services
+        type: file
+        path: "{{workdir}}/live-urls.txt"
+        description: Live HTTP/HTTPS services with metadata
+  - id: katana
+    name: Web Crawling
+    description: Crawl web applications to discover endpoints
+    needs:
+      - httpx
+    run:
+      - katana
+      - -list
+      - "{{workdir}}/live-urls.txt"
+      - -d
+      - "5"
+      - -jc
+      - -kf
+      - all
+      - -o
+      - "{{workdir}}/crawled-urls.txt"
+      - -silent
+    timeout: 1800
+    outputs:
+      - name: crawled_endpoints
+        type: file
+        path: "{{workdir}}/crawled-urls.txt"
+        description: Crawled endpoints and URLs
+  - id: ffuf
+    name: Directory Fuzzing
+    description: Discover hidden directories and files
+    needs:
+      - httpx
+    run:
+      - ffuf
+      - -u
+      - "{{target}}/FUZZ"
+      - -w
+      - /usr/share/wordlists/dirb/common.txt
+      - -o
+      - "{{workdir}}/ffuf-results.json"
+      - -of
+      - json
+      - -mc
+      - all
+      - -fc
+      - "404"
+      - -t
+      - "50"
+      - -recursion
+      - -recursion-depth
+      - "2"
+    timeout: 2400
+    outputs:
+      - name: discovered_paths
+        type: file
+        path: "{{workdir}}/ffuf-results.json"
+        description: Discovered directories and files
+  - id: nuclei-all
+    name: Comprehensive Vulnerability Scan
+    description: Full vulnerability assessment with all templates
+    needs:
+      - httpx
+      - katana
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-urls.txt"
+      - -severity
+      - critical,high,medium,low
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-all-vulns.jsonl"
+      - -je
+      - "{{workdir}}/nuclei-export.json"
+      - -stats
+      - -metrics
+      - -silent
+    timeout: 3600
+    outputs:
+      - name: all_vulnerabilities
+        type: file
+        path: "{{workdir}}/nuclei-all-vulns.jsonl"
+        description: All detected vulnerabilities
+      - name: nuclei_export
+        type: file
+        path: "{{workdir}}/nuclei-export.json"
+        description: Complete Nuclei export
+  - id: nuclei-cves
+    name: CVE Detection
+    description: Scan for known CVEs
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-urls.txt"
+      - -tags
+      - cve
+      - -severity
+      - critical,high
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-cves.jsonl"
+      - -silent
+    timeout: 1800
+    outputs:
+      - name: cve_findings
+        type: file
+        path: "{{workdir}}/nuclei-cves.jsonl"
+        description: Detected CVEs
+  - id: nuclei-takeover
+    name: Subdomain Takeover Check
+    description: Check for subdomain takeover vulnerabilities
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-urls.txt"
+      - -tags
+      - takeover
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-takeover.jsonl"
+      - -silent
+    timeout: 900
+    outputs:
+      - name: takeover_vulns
+        type: file
+        path: "{{workdir}}/nuclei-takeover.jsonl"
+        description: Subdomain takeover vulnerabilities
+  - id: sqlmap
+    name: SQL Injection Testing
+    description: Deep SQL injection testing
+    needs:
+      - httpx
+    run:
+      - sqlmap
+      - -m
+      - "{{workdir}}/live-urls.txt"
+      - --batch
+      - --random-agent
+      - --level=3
+      - --risk=2
+      - --output-dir={{workdir}}/sqlmap
+      - --flush-session
+      - --threads=5
+    timeout: 3600
+    outputs:
+      - name: sqli_results
+        type: directory
+        path: "{{workdir}}/sqlmap"
+        description: SQL injection findings
+outputs:
+  - name: subdomains
+    path: "{{workdir}}/subdomains.txt"
+    description: All discovered subdomains
+    type: file
+  - name: open_ports
+    path: "{{workdir}}/ports.txt"
+    description: All open ports
+    type: file
+  - name: service_info
+    path: "{{workdir}}/nmap-detailed.xml"
+    description: Detailed service information
+    type: file
+  - name: live_services
+    path: "{{workdir}}/live-urls.txt"
+    description: Live web services
+    type: file
+  - name: crawled_content
+    path: "{{workdir}}/crawled-urls.txt"
+    description: Crawled endpoints
+    type: file
+  - name: hidden_paths
+    path: "{{workdir}}/ffuf-results.json"
+    description: Hidden directories and files
+    type: file
+  - name: all_vulnerabilities
+    path: "{{workdir}}/nuclei-all-vulns.jsonl"
+    description: All vulnerabilities
+    type: file
+  - name: cve_findings
+    path: "{{workdir}}/nuclei-cves.jsonl"
+    description: CVE detections
+    type: file
+  - name: takeover_issues
+    path: "{{workdir}}/nuclei-takeover.jsonl"
+    description: Takeover vulnerabilities
+    type: file
+  - name: sql_injection
+    path: "{{workdir}}/sqlmap"
+    description: SQL injection results
+    type: file

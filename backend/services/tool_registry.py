@@ -1,6 +1,15 @@
 """
 Tool Registry - Comprehensive catalog of security tools with priorities and adapter difficulties
 
+⚠️ DEPRECATED: This module is kept for reference only.
+   All tool management now uses backend.tool_discovery.tool_discovery_service
+   which provides:
+   - Real-time tool discovery
+   - Cross-platform PATH resolution
+   - Version detection
+   - OS dependency checking
+   - Automatic caching
+
 This registry contains all the tools mentioned by the user, organized by category
 with their adapter implementation complexity and priority levels.
 """

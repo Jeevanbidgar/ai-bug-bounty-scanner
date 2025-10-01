@@ -1,0 +1,156 @@
+id: network-recon
+name: Network Reconnaissance
+description:
+  Complete network reconnaissance workflow - port scanning, service detection,
+  and vulnerability assessment for network infrastructure
+category: reconnaissance
+version: "1.0"
+inputs:
+  target: example.com
+  workdir: ./results
+steps:
+  - id: naabu
+    name: Fast Port Scanning
+    description: Quick TCP/UDP port discovery
+    run:
+      - naabu
+      - -host
+      - "{{target}}"
+      - -o
+      - "{{workdir}}/ports.txt"
+      - -json
+      - -Pn
+      - -rate
+      - "1000"
+      - -top-ports
+      - "1000"
+      - -silent
+    timeout: 900
+    outputs:
+      - name: open_ports
+        type: file
+        path: "{{workdir}}/ports.txt"
+        description: Discovered open ports
+  - id: nmap
+    name: Service Detection
+    description: Detailed service and version detection
+    needs:
+      - naabu
+    run:
+      - nmap
+      - -iL
+      - "{{workdir}}/ports.txt"
+      - -sV
+      - -sC
+      - -T4
+      - -oX
+      - "{{workdir}}/nmap-scan.xml"
+      - -oN
+      - "{{workdir}}/nmap-scan.txt"
+      - --script=default,discovery,vuln
+      - --min-rate=300
+    timeout: 1800
+    outputs:
+      - name: nmap_xml
+        type: file
+        path: "{{workdir}}/nmap-scan.xml"
+        description: Nmap results in XML format
+      - name: nmap_txt
+        type: file
+        path: "{{workdir}}/nmap-scan.txt"
+        description: Nmap results in text format
+  - id: httpx
+    name: HTTP Service Discovery
+    description: Identify HTTP/HTTPS services from open ports
+    needs:
+      - naabu
+    run:
+      - httpx
+      - -l
+      - "{{workdir}}/ports.txt"
+      - -o
+      - "{{workdir}}/http-services.txt"
+      - -title
+      - -status-code
+      - -tech-detect
+      - -follow-redirects
+      - -web-server
+      - -silent
+    timeout: 900
+    outputs:
+      - name: http_services
+        type: file
+        path: "{{workdir}}/http-services.txt"
+        description: Discovered HTTP/HTTPS services
+  - id: nuclei-network
+    name: Network Vulnerability Scan
+    description: Scan for network service vulnerabilities
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/http-services.txt"
+      - -tags
+      - network,exposed,misconfiguration,default-login
+      - -severity
+      - critical,high,medium
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-network.jsonl"
+      - -je
+      - "{{workdir}}/nuclei-network-export.json"
+      - -stats
+      - -silent
+    timeout: 1800
+    outputs:
+      - name: network_vulns
+        type: file
+        path: "{{workdir}}/nuclei-network.jsonl"
+        description: Network vulnerabilities in JSONL format
+      - name: nuclei_export
+        type: file
+        path: "{{workdir}}/nuclei-network-export.json"
+        description: Full Nuclei export data
+  - id: nuclei-ssl
+    name: SSL/TLS Security Testing
+    description: Test SSL/TLS configurations and certificates
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/http-services.txt"
+      - -tags
+      - ssl,tls,certificate
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-ssl.jsonl"
+      - -silent
+    timeout: 600
+    outputs:
+      - name: ssl_issues
+        type: file
+        path: "{{workdir}}/nuclei-ssl.jsonl"
+        description: SSL/TLS security issues
+outputs:
+  - name: open_ports
+    path: "{{workdir}}/ports.txt"
+    description: Open ports discovered
+    type: file
+  - name: nmap_results
+    path: "{{workdir}}/nmap-scan.xml"
+    description: Nmap service detection results
+    type: file
+  - name: http_services
+    path: "{{workdir}}/http-services.txt"
+    description: HTTP/HTTPS services
+    type: file
+  - name: network_vulnerabilities
+    path: "{{workdir}}/nuclei-network.jsonl"
+    description: Network vulnerabilities
+    type: file
+  - name: ssl_issues
+    path: "{{workdir}}/nuclei-ssl.jsonl"
+    description: SSL/TLS security issues
+    type: file

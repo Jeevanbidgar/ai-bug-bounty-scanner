@@ -1,0 +1,148 @@
+id: web-application-scan
+name: Web Application Security Scan
+description:
+  Comprehensive web application security testing workflow - directory brute
+  forcing, parameter fuzzing, and vulnerability detection
+category: vulnerability
+version: "1.0"
+inputs:
+  target: example.com
+  workdir: ./results
+steps:
+  - id: subfinder
+    name: Subdomain Enumeration
+    description: Discover subdomains using passive sources
+    run:
+      - subfinder
+      - -d
+      - "{{target}}"
+      - -o
+      - "{{workdir}}/subdomains.txt"
+      - -all
+      - -silent
+    timeout: 600
+    outputs:
+      - name: subdomains
+        type: file
+        path: "{{workdir}}/subdomains.txt"
+        description: List of discovered subdomains
+  - id: httpx
+    name: HTTP Service Discovery
+    description: Probe for live web services and gather information
+    needs:
+      - subfinder
+    run:
+      - httpx
+      - -l
+      - "{{workdir}}/subdomains.txt"
+      - -o
+      - "{{workdir}}/live-urls.txt"
+      - -title
+      - -status-code
+      - -tech-detect
+      - -follow-redirects
+      - -random-agent
+      - -silent
+    timeout: 900
+    outputs:
+      - name: live_urls
+        type: file
+        path: "{{workdir}}/live-urls.txt"
+        description: Live HTTP/HTTPS URLs with metadata
+  - id: ffuf
+    name: Directory Fuzzing
+    description: Discover hidden directories and files
+    needs:
+      - httpx
+    run:
+      - ffuf
+      - -u
+      - "{{target}}/FUZZ"
+      - -w
+      - /usr/share/wordlists/dirb/common.txt
+      - -o
+      - "{{workdir}}/ffuf-results.json"
+      - -of
+      - json
+      - -mc
+      - all
+      - -fc
+      - "404"
+      - -t
+      - "50"
+    timeout: 1800
+    outputs:
+      - name: directories
+        type: file
+        path: "{{workdir}}/ffuf-results.json"
+        description: Discovered directories and files
+  - id: nuclei-tech
+    name: Technology Detection
+    description: Detect web technologies and frameworks
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-urls.txt"
+      - -tags
+      - tech,detect
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-tech.jsonl"
+      - -silent
+    timeout: 1200
+    outputs:
+      - name: tech_detection
+        type: file
+        path: "{{workdir}}/nuclei-tech.jsonl"
+        description: Detected technologies in JSONL format
+  - id: nuclei-vuln
+    name: Vulnerability Detection
+    description: Scan for web application vulnerabilities
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-urls.txt"
+      - -severity
+      - critical,high,medium
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-vulns.jsonl"
+      - -je
+      - "{{workdir}}/nuclei-export.json"
+      - -stats
+      - -silent
+    timeout: 2400
+    outputs:
+      - name: vulnerabilities
+        type: file
+        path: "{{workdir}}/nuclei-vulns.jsonl"
+        description: Discovered vulnerabilities in JSONL format
+      - name: nuclei_export
+        type: file
+        path: "{{workdir}}/nuclei-export.json"
+        description: Full Nuclei export data
+outputs:
+  - name: subdomains
+    path: "{{workdir}}/subdomains.txt"
+    description: Discovered subdomains
+    type: file
+  - name: live_urls
+    path: "{{workdir}}/live-urls.txt"
+    description: Live web services
+    type: file
+  - name: directories
+    path: "{{workdir}}/ffuf-results.json"
+    description: Discovered directories and files
+    type: file
+  - name: vulnerabilities
+    path: "{{workdir}}/nuclei-vulns.jsonl"
+    description: Identified vulnerabilities
+    type: file
+  - name: export_data
+    path: "{{workdir}}/nuclei-export.json"
+    description: Complete scan results
+    type: file

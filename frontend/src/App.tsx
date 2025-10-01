@@ -6,7 +6,7 @@ import ToolsPage from './pages/ToolsPage'
 import ReportsPage from './pages/ReportsPage'
 import SettingsPage from './pages/SettingsPage'
 import Layout from './components/Layout'
-import { invoke } from '@tauri-apps/api/tauri'
+// import { invoke } from '@tauri-apps/api/tauri' // Will be used when needed
 
 function App() {
   const [backendStarted, setBackendStarted] = useState(false)
@@ -14,17 +14,33 @@ function App() {
   const [isDesktopApp, setIsDesktopApp] = useState(false)
 
   useEffect(() => {
-    // Desktop app ONLY - always use Tauri
+    // Desktop app - start backend automatically
     setIsDesktopApp(true)
-    
-    const checkBackend = async () => {
+
+    const startDesktopApp = async () => {
       try {
-        console.log('🚀 Checking backend connection...')
-        
-        // Check if backend is running (started by start.bat/start.ps1)
+        console.log('🚀 Starting AI Bug Bounty Scanner Desktop App...')
+
+        // Start the backend server using Tauri command
+        try {
+          const { invoke } = await import('@tauri-apps/api/tauri')
+          console.log('🔧 Starting backend server...')
+
+          // Execute the Python backend
+          const backendResult = await invoke('start_backend')
+          console.log('✅ Backend started:', backendResult)
+
+          // Wait a moment for backend to initialize
+          await new Promise(resolve => setTimeout(resolve, 2000))
+
+        } catch (tauriError) {
+          console.log('⚠️ Tauri command failed, trying direct backend check:', tauriError)
+        }
+
+        // Check if backend is running
         let attempts = 0
-        const maxAttempts = 10
-        
+        const maxAttempts = 15
+
         while (attempts < maxAttempts) {
           try {
             const response = await fetch('http://localhost:8000/api/health/')
@@ -37,19 +53,19 @@ function App() {
           } catch (e) {
             console.log(`Backend not ready yet (attempt ${attempts + 1}/${maxAttempts}):`, e)
           }
-          
+
           await new Promise(resolve => setTimeout(resolve, 1000))
           attempts++
         }
-        
-        setStartupError('Backend not responding. Please ensure start.bat/start.ps1 is running.')
+
+        setStartupError('Backend failed to start. Please check if Python and dependencies are installed.')
       } catch (error) {
         console.error('Desktop app startup error:', error)
         setStartupError(`Desktop app error: ${error}`)
       }
     }
 
-    checkBackend()
+    startDesktopApp()
   }, [])
 
   if (startupError) {
@@ -63,9 +79,10 @@ function App() {
             <p className="text-sm text-gray-300 mb-2">Troubleshooting:</p>
             <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
               <li>Ensure Python 3.11+ is installed</li>
-              <li>Check if port 8000 is available</li>
-              <li>Verify backend dependencies are installed</li>
-              <li>Try running: cd backend && python run.py</li>
+              <li>Check if all security tools are installed (sqlmap, naabu, nuclei, etc.)</li>
+              <li>Verify backend dependencies: pip install -r requirements.txt</li>
+              <li>Try running manually: python run.py</li>
+              <li>Check if antivirus is blocking the desktop app</li>
             </ul>
           </div>
         </div>

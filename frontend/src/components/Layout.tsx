@@ -8,8 +8,7 @@ import {
   Settings,
   Menu,
   X,
-  Shield,
-  Activity
+  Shield
 } from 'lucide-react'
 
 interface LayoutProps {
@@ -31,7 +30,7 @@ const Layout = ({ children }: LayoutProps) => {
   const isActive = (href: string) => location.pathname === href
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="flex h-screen bg-gray-900 text-white overflow-hidden">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -41,91 +40,90 @@ const Layout = ({ children }: LayoutProps) => {
       )}
 
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-800 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-800 transform transition-transform duration-300 ease-in-out lg:relative lg:transform-none ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
-        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-700">
-          <div className="flex items-center">
-            <Shield className="h-8 w-8 text-blue-500" />
-            <span className="ml-2 text-xl font-bold">AI Bug Bounty Scanner</span>
+        <div className="flex flex-col h-full">
+          {/* Sidebar Header */}
+          <div className="flex items-center justify-between h-16 px-4 border-b border-gray-700 flex-shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <Shield className="h-7 w-7 text-blue-500 flex-shrink-0" />
+              <span className="text-lg font-bold truncate">AI Bug Bounty</span>
+            </div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="lg:hidden p-2 rounded-md hover:bg-gray-700 flex-shrink-0"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-2 rounded-md hover:bg-gray-700"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
 
-        <nav className="mt-8">
-          <div className="px-4 space-y-2">
-            {navigation.map((item) => {
-              const Icon = item.icon
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors duration-200 ${
-                    isActive(item.href)
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                  }`}
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <Icon className="mr-3 h-5 w-5" />
-                  {item.name}
-                </Link>
-              )
-            })}
-          </div>
-        </nav>
+          {/* Navigation */}
+          <nav className="flex-1 overflow-y-auto py-4">
+            <div className="px-3 space-y-1">
+              {navigation.map((item) => {
+                const Icon = item.icon
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    className={`flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors duration-150 ${
+                      isActive(item.href)
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                    }`}
+                    onClick={() => setSidebarOpen(false)}
+                  >
+                    <Icon className="mr-3 h-5 w-5 flex-shrink-0" />
+                    <span className="truncate">{item.name}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4">
-          <div className="flex items-center text-sm text-gray-400">
-            <Activity className="mr-2 h-4 w-4" />
-            <span>System Online</span>
+          {/* Sidebar Footer */}
+          <div className="p-4 border-t border-gray-700 flex-shrink-0">
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse flex-shrink-0" />
+              <span className="truncate">System Online</span>
+            </div>
+            <div className="mt-2 text-xs text-gray-500">
+              v2.0.0
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="lg:pl-64 flex flex-col flex-1">
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <div className="sticky top-0 z-10 flex-shrink-0 flex h-16 bg-gray-800 border-b border-gray-700">
+        <div className="h-16 bg-gray-800 border-b border-gray-700 flex items-center px-4 gap-4 flex-shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="lg:hidden px-4 border-r border-gray-700 text-gray-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+            className="lg:hidden p-2 rounded-md text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
           >
             <Menu className="h-6 w-6" />
           </button>
 
-          <div className="flex-1 px-4 flex justify-between">
-            <div className="flex-1 flex">
-              <div className="w-full flex md:ml-0">
-                <div className="relative w-full text-gray-400 focus-within:text-gray-600">
-                  <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none">
-                    <Search className="h-5 w-5" aria-hidden="true" />
-                  </div>
-                  <input
-                    className="block w-full pl-10 pr-3 py-2 border border-transparent rounded-md leading-5 bg-gray-700 placeholder-gray-500 focus:outline-none focus:bg-white focus:ring-white focus:border-white focus:text-gray-900 sm:text-sm"
-                    placeholder="Search scans, tools, reports..."
-                    type="search"
-                  />
-                </div>
+          <div className="flex-1 max-w-2xl">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <Search className="h-4 w-4 text-gray-400" />
               </div>
-            </div>
-            <div className="ml-4 flex items-center md:ml-6">
-              <div className="text-sm text-gray-300">
-                v2.0.0
-              </div>
+              <input
+                className="block w-full pl-10 pr-3 py-2 border border-gray-700 rounded-lg bg-gray-700/50 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                placeholder="Search scans, tools, reports..."
+                type="search"
+              />
             </div>
           </div>
         </div>
 
         {/* Page content */}
-        <main className="flex-1">
-          <div className="py-6">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+        <main className="flex-1 overflow-y-auto bg-gray-900">
+          <div className="p-6">
+            <div className="max-w-7xl mx-auto">
               {children}
             </div>
           </div>

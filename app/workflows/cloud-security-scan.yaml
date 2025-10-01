@@ -1,0 +1,170 @@
+id: cloud-security-scan
+name: Cloud Security Assessment
+description:
+  Cloud infrastructure security testing workflow - detect exposed cloud
+  services, storage buckets, and cloud-specific vulnerabilities
+category: vulnerability
+version: "1.0"
+inputs:
+  target: example.com
+  workdir: ./results
+steps:
+  - id: subfinder
+    name: Subdomain Enumeration
+    description: Discover subdomains that might host cloud services
+    run:
+      - subfinder
+      - -d
+      - "{{target}}"
+      - -o
+      - "{{workdir}}/subdomains.txt"
+      - -all
+      - -silent
+    timeout: 600
+    outputs:
+      - name: subdomains
+        type: file
+        path: "{{workdir}}/subdomains.txt"
+        description: Discovered subdomains
+  - id: httpx
+    name: Cloud Service Discovery
+    description: Probe for live services and detect cloud providers
+    needs:
+      - subfinder
+    run:
+      - httpx
+      - -l
+      - "{{workdir}}/subdomains.txt"
+      - -o
+      - "{{workdir}}/live-urls.txt"
+      - -title
+      - -status-code
+      - -tech-detect
+      - -cdn
+      - -web-server
+      - -json
+      - -silent
+    timeout: 900
+    outputs:
+      - name: live_services
+        type: file
+        path: "{{workdir}}/live-urls.txt"
+        description: Live cloud services
+  - id: nuclei-storage
+    name: Cloud Storage Detection
+    description: Detect exposed cloud storage buckets (S3, Azure Blob, GCS)
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-urls.txt"
+      - -tags
+      - s3,aws,azure,gcp,bucket,storage,blob
+      - -severity
+      - critical,high,medium
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-storage.jsonl"
+      - -je
+      - "{{workdir}}/nuclei-storage-export.json"
+      - -stats
+      - -silent
+    timeout: 1200
+    outputs:
+      - name: storage_issues
+        type: file
+        path: "{{workdir}}/nuclei-storage.jsonl"
+        description: Cloud storage security issues
+      - name: nuclei_export
+        type: file
+        path: "{{workdir}}/nuclei-storage-export.json"
+        description: Full Nuclei export for storage scan
+  - id: nuclei-cloud
+    name: Cloud Misconfiguration Detection
+    description: Scan for cloud service misconfigurations and exposures
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-urls.txt"
+      - -tags
+      - cloud,aws,azure,gcp,kubernetes,docker,exposure,misconfiguration
+      - -severity
+      - critical,high,medium
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-cloud.jsonl"
+      - -silent
+    timeout: 1800
+    outputs:
+      - name: cloud_misconfigs
+        type: file
+        path: "{{workdir}}/nuclei-cloud.jsonl"
+        description: Cloud misconfigurations
+  - id: nuclei-containers
+    name: Container Security Testing
+    description: Test for container and orchestration vulnerabilities
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-urls.txt"
+      - -tags
+      - docker,kubernetes,k8s,container,orchestration
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-containers.jsonl"
+      - -silent
+    timeout: 900
+    outputs:
+      - name: container_issues
+        type: file
+        path: "{{workdir}}/nuclei-containers.jsonl"
+        description: Container security issues
+  - id: nuclei-metadata
+    name: Cloud Metadata Testing
+    description: Test for exposed cloud metadata and APIs
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-urls.txt"
+      - -tags
+      - metadata,aws-metadata,azure-metadata,gcp-metadata
+      - -severity
+      - critical,high
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-metadata.jsonl"
+      - -silent
+    timeout: 600
+    outputs:
+      - name: metadata_exposure
+        type: file
+        path: "{{workdir}}/nuclei-metadata.jsonl"
+        description: Cloud metadata exposure issues
+outputs:
+  - name: live_services
+    path: "{{workdir}}/live-urls.txt"
+    description: Live cloud services
+    type: file
+  - name: storage_issues
+    path: "{{workdir}}/nuclei-storage.jsonl"
+    description: Cloud storage vulnerabilities
+    type: file
+  - name: cloud_misconfigurations
+    path: "{{workdir}}/nuclei-cloud.jsonl"
+    description: Cloud service misconfigurations
+    type: file
+  - name: container_issues
+    path: "{{workdir}}/nuclei-containers.jsonl"
+    description: Container security issues
+    type: file
+  - name: metadata_exposure
+    path: "{{workdir}}/nuclei-metadata.jsonl"
+    description: Cloud metadata exposure
+    type: file

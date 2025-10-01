@@ -4,8 +4,9 @@ import {
   RefreshCw,
   CheckCircle,
   XCircle,
-  Settings,
-  Search
+  Search,
+  Plus,
+  Trash2
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card'
@@ -13,15 +14,7 @@ import { Badge } from '../components/ui/Badge'
 import { Input } from '../components/ui/Input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/Select'
 
-interface Tool {
-  name: string
-  description: string
-  category: string
-  command_template: string[]
-  output_format: string
-  installed: boolean
-  version: string | null
-}
+import type { Tool } from '../services/api'
 
 // API functions using our service
 import apiService from '../services/api'
@@ -30,6 +23,10 @@ const ToolsPage = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [showAddToolDialog, setShowAddToolDialog] = useState(false)
+  const [manualToolName, setManualToolName] = useState('')
+  const [manualToolPath, setManualToolPath] = useState('')
+  const [manualToolCategory, setManualToolCategory] = useState('custom')
 
   const { data: tools, isLoading, refetch } = useQuery({
     queryKey: ['tools'],
@@ -43,7 +40,31 @@ const ToolsPage = () => {
     }
   })
 
-  const filteredTools = (tools?.data || []).filter(tool => {
+  const addManualToolMutation = useMutation({
+    mutationFn: (data: { tool_name: string; tool_path: string; category: string }) =>
+      apiService.addManualTool(data),
+    onSuccess: () => {
+      refetch()
+      setShowAddToolDialog(false)
+      setManualToolName('')
+      setManualToolPath('')
+      setManualToolCategory('custom')
+    }
+  })
+
+  const removeManualToolMutation = useMutation({
+    mutationFn: (toolName: string) => apiService.removeManualTool(toolName),
+    onSuccess: () => {
+      refetch()
+    }
+  })
+
+  const { data: manualTools } = useQuery({
+    queryKey: ['manual-tools'],
+    queryFn: () => apiService.getManualTools(),
+  })
+
+  const filteredTools = (tools?.data || []).filter((tool: Tool) => {
     const matchesSearch = tool.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          tool.description.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesCategory = categoryFilter === 'all' || tool.category === categoryFilter
@@ -80,37 +101,26 @@ const ToolsPage = () => {
     }
   }
 
-  const getRiskLevel = (tool: Tool) => {
-    // This would come from the tool registry in a real implementation
-    if (tool.name === 'sqlmap' || tool.name === 'nmap') {
-      return { level: 'high', color: 'bg-red-600' }
-    } else if (tool.name === 'nuclei' || tool.name === 'amass') {
-      return { level: 'medium', color: 'bg-yellow-600' }
-    } else {
-      return { level: 'low', color: 'bg-green-600' }
-    }
-  }
-
   const categories = Array.from(new Set((tools?.data || []).map(tool => tool.category)))
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Security Tools</h1>
-          <p className="text-gray-400 mt-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Security Tools</h1>
+          <p className="text-gray-400 mt-2 text-sm sm:text-base">
             Manage and monitor available security scanning tools
           </p>
         </div>
-        <Button onClick={() => refreshMutation.mutate()}>
+        <Button onClick={() => refreshMutation.mutate()} className="w-fit">
           <RefreshCw className="mr-2 h-4 w-4" />
           Refresh Status
         </Button>
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4">
+      <div className="flex flex-col lg:flex-row gap-4">
         <div className="flex-1">
           <Input
             placeholder="Search tools..."
@@ -120,7 +130,7 @@ const ToolsPage = () => {
           />
         </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-full lg:w-48">
             <SelectValue placeholder="Category" />
           </SelectTrigger>
           <SelectContent>
@@ -133,7 +143,7 @@ const ToolsPage = () => {
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-full lg:w-48">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -143,6 +153,137 @@ const ToolsPage = () => {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Manual Tool Management */}
+      <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-blue-400">
+                <Plus className="h-5 w-5" />
+                Manual Tool Management
+              </CardTitle>
+              <CardDescription className="text-gray-400">
+                Add tools that weren't automatically discovered or are in non-standard locations
+              </CardDescription>
+            </div>
+            <Button
+              onClick={() => setShowAddToolDialog(true)}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Tool
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {manualTools?.data?.manual_tools?.length > 0 ? (
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-gray-300">Manually Added Tools:</h4>
+              <div className="grid gap-3">
+                {manualTools.data.manual_tools.map((toolName: string) => {
+                  const tool = tools?.data?.find((t: Tool) => t.name === toolName)
+                  return (
+                    <div key={toolName} className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-700">
+                      <div className="flex items-center gap-3">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <div>
+                          <span className="font-medium text-white">{toolName}</span>
+                          {tool && <div className="text-sm text-gray-400">{tool.path}</div>}
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeManualToolMutation.mutate(toolName)}
+                        className="text-red-400 border-red-400 hover:bg-red-400 hover:text-white"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400">
+              <Plus className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No manually added tools yet</p>
+              <p className="text-sm">Click "Add Tool" to add tools in non-standard locations</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Add Manual Tool Dialog */}
+      {showAddToolDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md bg-gray-900 border-gray-700">
+            <CardHeader>
+              <CardTitle className="text-blue-400">Add Manual Tool</CardTitle>
+              <CardDescription className="text-gray-400">
+                Add a tool that wasn't automatically discovered
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300">Tool Name</label>
+                <Input
+                  placeholder="e.g., httpx"
+                  value={manualToolName}
+                  onChange={(e) => setManualToolName(e.target.value)}
+                  className="bg-gray-800 border-gray-600 text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300">Tool Path</label>
+                <Input
+                  placeholder="e.g., /usr/local/bin/httpx"
+                  value={manualToolPath}
+                  onChange={(e) => setManualToolPath(e.target.value)}
+                  className="bg-gray-800 border-gray-600 text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300">Category</label>
+                <Select value={manualToolCategory} onValueChange={setManualToolCategory}>
+                  <SelectTrigger className="bg-gray-800 border-gray-600 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="custom">Custom</SelectItem>
+                    <SelectItem value="recon">Reconnaissance</SelectItem>
+                    <SelectItem value="web">Web Application</SelectItem>
+                    <SelectItem value="network">Network</SelectItem>
+                    <SelectItem value="vulnerability">Vulnerability</SelectItem>
+                    <SelectItem value="utility">Utility</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-3 pt-4">
+                <Button
+                  onClick={() => addManualToolMutation.mutate({
+                    tool_name: manualToolName,
+                    tool_path: manualToolPath,
+                    category: manualToolCategory
+                  })}
+                  disabled={!manualToolName.trim() || !manualToolPath.trim() || addManualToolMutation.isPending}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                >
+                  {addManualToolMutation.isPending ? 'Adding...' : 'Add Tool'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAddToolDialog(false)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Tools Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -161,23 +302,14 @@ const ToolsPage = () => {
             </Card>
           ))
         ) : (
-          filteredTools.map((tool) => {
-            const risk = getRiskLevel(tool)
+          filteredTools.map((tool: Tool) => {
             return (
-              <Card key={tool.id}>
+              <Card key={tool.name}>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       {getStatusIcon(tool)}
                       <CardTitle className="text-lg">{tool.name}</CardTitle>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge className={risk.color} variant="secondary">
-                        {risk.level}
-                      </Badge>
-                      <Button size="sm" variant="ghost">
-                        <Settings className="h-4 w-4" />
-                      </Button>
                     </div>
                   </div>
                   <CardDescription>{tool.description}</CardDescription>
@@ -193,7 +325,7 @@ const ToolsPage = () => {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-400">Version:</span>
                     <span className="text-white">
-                      {tool.version || 'Unknown'}
+                      {tool.version || tool.raw_version || 'Unknown'}
                     </span>
                   </div>
 
@@ -206,16 +338,16 @@ const ToolsPage = () => {
                         <XCircle className="h-4 w-4 text-red-500" />
                       )}
                       <span className={tool.installed ? 'text-green-400' : 'text-red-400'}>
-                        {tool.installed ? 'Installed' : 'Not Installed'}
+                        {tool.status}
                       </span>
                     </div>
                   </div>
 
-                  {tool.lastCheck && (
+                  {tool.last_check && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-400">Last Check:</span>
                       <span className="text-gray-300">
-                        {new Date(tool.lastCheck).toLocaleDateString()}
+                        {new Date(tool.last_check).toLocaleDateString()}
                       </span>
                     </div>
                   )}
@@ -225,6 +357,18 @@ const ToolsPage = () => {
                     <code className="text-xs text-gray-300 bg-gray-800 p-2 rounded block overflow-x-auto">
                       {tool.command_template.join(' ')}
                     </code>
+                    {tool.path && (
+                      <div className="mt-2 text-xs text-gray-400">
+                        <span className="font-medium text-gray-300">Executable:</span>
+                        <div className="truncate text-gray-400">{tool.path}</div>
+                      </div>
+                    )}
+                    {tool.missing_dependencies.length > 0 && (
+                      <div className="mt-2 text-xs text-red-400">
+                        <span className="font-medium text-red-300">Missing dependencies:</span>
+                        <div>{tool.missing_dependencies.join(', ')}</div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -246,16 +390,16 @@ const ToolsPage = () => {
       )}
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-white">{(tools?.data || []).length}</div>
+            <div className="text-xl sm:text-2xl font-bold text-white">{(tools?.data || []).length}</div>
             <div className="text-sm text-gray-400">Total Tools</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-green-400">
+            <div className="text-xl sm:text-2xl font-bold text-green-400">
               {(tools?.data || []).filter((t: Tool) => t.installed).length}
             </div>
             <div className="text-sm text-gray-400">Installed</div>
@@ -263,7 +407,7 @@ const ToolsPage = () => {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-red-400">
+            <div className="text-xl sm:text-2xl font-bold text-red-400">
               {(tools?.data || []).filter((t: Tool) => !t.installed).length}
             </div>
             <div className="text-sm text-gray-400">Not Installed</div>
@@ -271,7 +415,7 @@ const ToolsPage = () => {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-blue-400">
+            <div className="text-xl sm:text-2xl font-bold text-blue-400">
               {categories.length}
             </div>
             <div className="text-sm text-gray-400">Categories</div>

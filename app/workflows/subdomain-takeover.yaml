@@ -1,0 +1,141 @@
+id: subdomain-takeover
+name: Subdomain Takeover Detection
+description:
+  Specialized workflow for detecting subdomain takeover vulnerabilities
+  - comprehensive subdomain enumeration, DNS analysis, and takeover validation
+category: vulnerability
+version: "1.0"
+inputs:
+  target: example.com
+  workdir: ./results
+steps:
+  - id: subfinder
+    name: Passive Subdomain Enumeration
+    description: Discover subdomains using passive sources
+    run:
+      - subfinder
+      - -d
+      - "{{target}}"
+      - -o
+      - "{{workdir}}/subdomains.txt"
+      - -all
+      - -recursive
+      - -silent
+    timeout: 600
+    outputs:
+      - name: subdomains
+        type: file
+        path: "{{workdir}}/subdomains.txt"
+        description: Discovered subdomains
+  - id: amass
+    name: Active Subdomain Enumeration
+    description: Additional subdomain discovery using Amass
+    run:
+      - amass
+      - enum
+      - -passive
+      - -d
+      - "{{target}}"
+      - -o
+      - "{{workdir}}/amass-subdomains.txt"
+      - -timeout
+      - "10"
+    timeout: 900
+    outputs:
+      - name: amass_subdomains
+        type: file
+        path: "{{workdir}}/amass-subdomains.txt"
+        description: Amass discovered subdomains
+  - id: httpx
+    name: HTTP Probing
+    description: Probe subdomains and detect CNAMEs
+    needs:
+      - subfinder
+      - amass
+    run:
+      - httpx
+      - -l
+      - "{{workdir}}/subdomains.txt"
+      - -o
+      - "{{workdir}}/live-subdomains.txt"
+      - -title
+      - -status-code
+      - -cname
+      - -cdn
+      - -follow-redirects
+      - -json
+      - -silent
+    timeout: 900
+    outputs:
+      - name: live_subdomains
+        type: file
+        path: "{{workdir}}/live-subdomains.txt"
+        description: Live subdomains with CNAME data
+  - id: nuclei-takeover
+    name: Takeover Vulnerability Detection
+    description: Detect potential subdomain takeover vulnerabilities
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-subdomains.txt"
+      - -tags
+      - takeover,dns,cname
+      - -severity
+      - critical,high
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-takeover.jsonl"
+      - -je
+      - "{{workdir}}/nuclei-takeover-export.json"
+      - -stats
+      - -silent
+    timeout: 1200
+    outputs:
+      - name: takeover_vulns
+        type: file
+        path: "{{workdir}}/nuclei-takeover.jsonl"
+        description: Detected subdomain takeover vulnerabilities
+      - name: nuclei_export
+        type: file
+        path: "{{workdir}}/nuclei-takeover-export.json"
+        description: Full Nuclei export data
+  - id: nuclei-dns
+    name: DNS Security Testing
+    description: Test for DNS misconfigurations and vulnerabilities
+    needs:
+      - httpx
+    run:
+      - nuclei
+      - -l
+      - "{{workdir}}/live-subdomains.txt"
+      - -tags
+      - dns,dnssec,zone-transfer
+      - -jsonl
+      - -o
+      - "{{workdir}}/nuclei-dns.jsonl"
+      - -silent
+    timeout: 600
+    outputs:
+      - name: dns_issues
+        type: file
+        path: "{{workdir}}/nuclei-dns.jsonl"
+        description: DNS security issues
+outputs:
+  - name: subdomains
+    path: "{{workdir}}/subdomains.txt"
+    description: All discovered subdomains
+    type: file
+  - name: live_subdomains
+    path: "{{workdir}}/live-subdomains.txt"
+    description: Live subdomains with metadata
+    type: file
+  - name: takeover_vulnerabilities
+    path: "{{workdir}}/nuclei-takeover.jsonl"
+    description: Subdomain takeover vulnerabilities
+    type: file
+  - name: dns_issues
+    path: "{{workdir}}/nuclei-dns.jsonl"
+    description: DNS security issues
+    type: file
