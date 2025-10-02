@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useElevation } from './ElevationDialog'
 
 interface PackageManager {
-  manager_type: 'Go' | 'Pipx' | 'Apt' | 'WinGet'
+  manager_type: 'go' | 'pipx' | 'apt' | 'winget'
   available: boolean
   version?: string
   path?: string
@@ -58,17 +58,17 @@ export function PackageManagerTest() {
       let result: InstallationResult
       
       switch (managerType) {
-        case 'Go':
+        case 'go':
           result = await invoke<InstallationResult>('install_package_manager_go')
           break
-        case 'Pipx':
+        case 'pipx':
           result = await invoke<InstallationResult>('install_package_manager_pipx')
           break
-        case 'Apt':
+        case 'apt':
           // For APT, we'd need to specify which package, but for testing let's use golang-go
           result = await invoke<InstallationResult>('install_package_manager_apt', { packageName: 'golang-go' })
           break
-        case 'WinGet':
+        case 'winget':
           result = await invoke<InstallationResult>('install_package_manager_winget')
           break
         default:
@@ -91,10 +91,10 @@ export function PackageManagerTest() {
 
   const getBadgeColor = (type: string) => {
     switch (type) {
-      case 'Go': return 'bg-green-500'
-      case 'Pipx': return 'bg-yellow-500'
-      case 'Apt': return 'bg-blue-500'
-      case 'WinGet': return 'bg-blue-500'
+      case 'go': return 'bg-green-500'
+      case 'pipx': return 'bg-yellow-500'
+      case 'apt': return 'bg-blue-500'
+      case 'winget': return 'bg-blue-500'
       default: return 'bg-gray-500'
     }
   }
@@ -187,10 +187,10 @@ export function PackageManagerTest() {
                     <p className="text-sm text-gray-400 whitespace-pre-wrap">
                       {manager.error}
                     </p>
-                    {manager.manager_type === 'Apt' && (
+                    {manager.manager_type === 'apt' && (
                       <p className="text-xs text-yellow-400 mt-2">⚠ Requires sudo on Linux</p>
                     )}
-                    {manager.manager_type === 'WinGet' && (
+                    {manager.manager_type === 'winget' && (
                       <p className="text-xs text-blue-400 mt-2">ℹ May trigger UAC prompt if required</p>
                     )}
                   </div>
