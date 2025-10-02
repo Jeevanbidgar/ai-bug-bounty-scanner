@@ -1,52 +1,13 @@
 {
   "tools": {
-    "wget": {
-      "name": "wget",
-      "description": "Network downloader",
-      "category": "utility",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "wget"
-      ],
-      "output_format": "text",
-      "version": "1.8.2",
-      "raw_version": "1.8.2",
-      "path": "C:\\SH\\wget.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.594440800+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "assetfinder": {
-      "name": "assetfinder",
-      "description": "Find domains and subdomains",
-      "category": "recon",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "assetfinder",
-        "assetfinder.exe"
-      ],
-      "output_format": "text",
-      "version": "unknown",
-      "raw_version": "unknown",
-      "path": "C:\\Users\\jeevan\\go\\bin\\assetfinder.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.786775700+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "aquatone": {
-      "name": "aquatone",
-      "description": "Domain flyover tool",
-      "category": "recon",
+    "rustscan": {
+      "name": "rustscan",
+      "description": "Modern port scanner",
+      "category": "network",
       "status": "missing",
       "installed": false,
       "command_template": [
-        "aquatone"
+        "rustscan"
       ],
       "output_format": "text",
       "version": null,
@@ -54,26 +15,180 @@
       "path": null,
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.293594500+00:00",
+      "last_checked": "2025-10-02T12:12:00.269033300+00:00",
       "last_seen": null,
       "last_error": null
     },
-    "curl": {
-      "name": "curl",
-      "description": "Transfer data with URLs",
-      "category": "utility",
+    "dnsrecon": {
+      "name": "dnsrecon",
+      "description": "DNS enumeration script",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "dnsrecon"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:59.187690200+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "ffuf": {
+      "name": "ffuf",
+      "description": "Fast web fuzzer",
+      "category": "web",
       "status": "available",
       "installed": true,
       "command_template": [
-        "curl"
+        "ffuf"
       ],
-      "output_format": "text",
-      "version": "8.14.1",
-      "raw_version": "8.14.1",
-      "path": "C:\\windows\\system32\\curl.exe",
+      "output_format": "json",
+      "version": "2.1.0",
+      "raw_version": "2.1.0",
+      "path": "C:\\Users\\jeevan\\go\\bin\\ffuf.exe",
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:45.983275600+00:00",
+      "last_checked": "2025-10-02T12:12:06.270943100+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "arjun": {
+      "name": "arjun",
+      "description": "HTTP parameter discovery tool",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "arjun",
+        "arjun.exe"
+      ],
+      "output_format": "text",
+      "version": "unknown",
+      "raw_version": "unknown",
+      "path": "C:\\Users\\jeevan\\AppData\\Roaming\\Python\\Python313\\Scripts\\arjun.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:58.453193100+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "waybackurls": {
+      "name": "waybackurls",
+      "description": "Wayback Machine URL fetcher",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "waybackurls"
+      ],
+      "output_format": "text",
+      "version": "unknown",
+      "raw_version": "unknown",
+      "path": "C:\\Users\\jeevan\\go\\bin\\waybackurls.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:59.257479700+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gau": {
+      "name": "gau",
+      "description": "Get all URLs from various sources",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "gau"
+      ],
+      "output_format": "text",
+      "version": "2.2.4",
+      "raw_version": "2.2.4",
+      "path": "C:\\Users\\jeevan\\go\\bin\\gau.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:59.222300600+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "wappalyzer": {
+      "name": "wappalyzer",
+      "description": "Technology detection",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "wappalyzer"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.468323700+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "nuclei": {
+      "name": "nuclei",
+      "description": "Fast and customizable vulnerability scanner",
+      "category": "vulnerability",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "nuclei"
+      ],
+      "output_format": "jsonl",
+      "version": "3.4.10",
+      "raw_version": "3.4.10",
+      "path": "C:\\Users\\jeevan\\go\\bin\\nuclei.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.955148300+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "netcat": {
+      "name": "netcat",
+      "description": "Network utility",
+      "category": "network",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "nc",
+        "netcat"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:07.170378500+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gospider": {
+      "name": "gospider",
+      "description": "Fast web spider",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "gospider"
+      ],
+      "output_format": "text",
+      "version": "1.1.6",
+      "raw_version": "1.1.6",
+      "path": "C:\\Users\\jeevan\\go\\bin\\gospider.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.071221700+00:00",
       "last_seen": null,
       "last_error": null
     },
@@ -92,18 +207,18 @@
       "path": null,
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.457368200+00:00",
+      "last_checked": "2025-10-02T12:12:00.411388+00:00",
       "last_seen": null,
       "last_error": null
     },
-    "s3scanner": {
-      "name": "s3scanner",
-      "description": "S3 bucket scanner",
-      "category": "cloud",
+    "whatweb": {
+      "name": "whatweb",
+      "description": "Web technology identification",
+      "category": "recon",
       "status": "missing",
       "installed": false,
       "command_template": [
-        "s3scanner"
+        "whatweb"
       ],
       "output_format": "text",
       "version": null,
@@ -111,7 +226,160 @@
       "path": null,
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.334857500+00:00",
+      "last_checked": "2025-10-02T12:12:00.100509600+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "wpscan": {
+      "name": "wpscan",
+      "description": "WordPress vulnerability scanner",
+      "category": "vulnerability",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "wpscan"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.618882900+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "httpx": {
+      "name": "httpx",
+      "description": "Fast HTTP probe",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "httpx",
+        "httpx.exe"
+      ],
+      "output_format": "json",
+      "version": "1.7.1",
+      "raw_version": "1.7.1",
+      "path": "C:\\Users\\jeevan\\go\\bin\\httpx.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:07.258359600+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "aquatone": {
+      "name": "aquatone",
+      "description": "Domain flyover tool",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "aquatone"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.590399500+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "sqlmap": {
+      "name": "sqlmap",
+      "description": "Automatic SQL injection tool",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "sqlmap"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": "C:\\Users\\jeevan\\AppData\\Roaming\\Python\\Python313\\Scripts\\sqlmap.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:06.112578400+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gowitness": {
+      "name": "gowitness",
+      "description": "Web screenshot utility",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "gowitness"
+      ],
+      "output_format": "text",
+      "version": "unknown",
+      "raw_version": "unknown",
+      "path": "C:\\Users\\jeevan\\go\\bin\\gowitness.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:01.049368200+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "meg": {
+      "name": "meg",
+      "description": "Fetch many paths for many hosts",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "meg"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:58.482424500+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "socat": {
+      "name": "socat",
+      "description": "Multipurpose relay",
+      "category": "network",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "socat"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:59.086806300+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "eyewitness": {
+      "name": "eyewitness",
+      "description": "Website screenshot tool",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "eyewitness"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:59.022233500+00:00",
       "last_seen": null,
       "last_error": null
     },
@@ -132,83 +400,7 @@
         "libpcap"
       ],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.382198300+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "subjs": {
-      "name": "subjs",
-      "description": "Find JavaScript files",
-      "category": "recon",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "subjs"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:37.458411600+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "nuclei": {
-      "name": "nuclei",
-      "description": "Fast and customizable vulnerability scanner",
-      "category": "vulnerability",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "nuclei"
-      ],
-      "output_format": "jsonl",
-      "version": "3.4.10",
-      "raw_version": "3.4.10",
-      "path": "C:\\Users\\jeevan\\go\\bin\\nuclei.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:37.265226200+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "httprobe": {
-      "name": "httprobe",
-      "description": "HTTP/HTTPS probe",
-      "category": "web",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "httprobe"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:40.522909200+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "eyewitness": {
-      "name": "eyewitness",
-      "description": "Website screenshot tool",
-      "category": "recon",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "eyewitness"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.211523700+00:00",
+      "last_checked": "2025-10-02T12:11:59.154066500+00:00",
       "last_seen": null,
       "last_error": null
     },
@@ -227,258 +419,7 @@
       "path": null,
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:37.376531+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "subfinder": {
-      "name": "subfinder",
-      "description": "Fast passive subdomain discovery tool",
-      "category": "recon",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "subfinder"
-      ],
-      "output_format": "json",
-      "version": "2.8.0",
-      "raw_version": "2.8.0",
-      "path": "D:\\setups\\subfinder-2.8.0\\subfinder.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:37.044849300+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "waybackurls": {
-      "name": "waybackurls",
-      "description": "Wayback Machine URL fetcher",
-      "category": "recon",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "waybackurls"
-      ],
-      "output_format": "text",
-      "version": "unknown",
-      "raw_version": "unknown",
-      "path": "C:\\Users\\jeevan\\go\\bin\\waybackurls.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:40.168886100+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "naabu": {
-      "name": "naabu",
-      "description": "Fast port scanner",
-      "category": "network",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "naabu"
-      ],
-      "output_format": "text",
-      "version": "2.3.5",
-      "raw_version": "2.3.5",
-      "path": "C:\\Users\\jeevan\\go\\bin\\naabu.exe",
-      "os_dependencies": [
-        "libpcap"
-      ],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:47.215803400+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "ffuf": {
-      "name": "ffuf",
-      "description": "Fast web fuzzer",
-      "category": "web",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "ffuf"
-      ],
-      "output_format": "json",
-      "version": "2.1.0",
-      "raw_version": "2.1.0",
-      "path": "C:\\Users\\jeevan\\go\\bin\\ffuf.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:45.891370400+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "arjun": {
-      "name": "arjun",
-      "description": "HTTP parameter discovery tool",
-      "category": "web",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "arjun",
-        "arjun.exe"
-      ],
-      "output_format": "text",
-      "version": "unknown",
-      "raw_version": "unknown",
-      "path": "C:\\Users\\jeevan\\AppData\\Roaming\\Python\\Python313\\Scripts\\arjun.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:39.307712600+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "amass": {
-      "name": "amass",
-      "description": "Comprehensive network reconnaissance tool",
-      "category": "recon",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "amass"
-      ],
-      "output_format": "json",
-      "version": "5.0.0",
-      "raw_version": "5.0.0",
-      "path": "D:\\Preqin\\tools\\amass_windows_amd64\\amass.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:40.466187800+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "socat": {
-      "name": "socat",
-      "description": "Multipurpose relay",
-      "category": "network",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "socat"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:40.303012700+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "jq": {
-      "name": "jq",
-      "description": "JSON processor",
-      "category": "utility",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "jq"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:40.388117200+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "katana": {
-      "name": "katana",
-      "description": "Web crawler from ProjectDiscovery",
-      "category": "web",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "katana",
-        "katana.exe"
-      ],
-      "output_format": "json",
-      "version": "1.2.1",
-      "raw_version": "1.2.1",
-      "path": "C:\\Users\\jeevan\\go\\bin\\katana.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.156410+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "dalfox": {
-      "name": "dalfox",
-      "description": "Fast XSS scanner",
-      "category": "web",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "dalfox"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:37.292389800+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "gau": {
-      "name": "gau",
-      "description": "Get all URLs from various sources",
-      "category": "recon",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "gau"
-      ],
-      "output_format": "text",
-      "version": "2.2.4",
-      "raw_version": "2.2.4",
-      "path": "C:\\Users\\jeevan\\go\\bin\\gau.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:40.581647100+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "xsstrike": {
-      "name": "xsstrike",
-      "description": "XSS detection suite",
-      "category": "web",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "xsstrike"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:37.431967100+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "param-miner": {
-      "name": "param-miner",
-      "description": "Parameter mining tool",
-      "category": "web",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "param-miner"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.893278300+00:00",
+      "last_checked": "2025-10-02T12:11:59.053122400+00:00",
       "last_seen": null,
       "last_error": null
     },
@@ -497,26 +438,83 @@
       "path": "C:\\Program Files\\Git\\cmd\\git.exe",
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.430020800+00:00",
+      "last_checked": "2025-10-02T12:11:59.993512200+00:00",
       "last_seen": null,
       "last_error": null
     },
-    "hakrawler": {
-      "name": "hakrawler",
-      "description": "Simple, fast web crawler",
+    "param-miner": {
+      "name": "param-miner",
+      "description": "Parameter mining tool",
       "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "param-miner"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.440109900+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "go": {
+      "name": "go",
+      "description": "Go programming language",
+      "category": "utility",
       "status": "available",
       "installed": true,
       "command_template": [
-        "hakrawler"
+        "go"
       ],
       "output_format": "text",
-      "version": "127.0.0",
-      "raw_version": "127.0.0",
-      "path": "C:\\Users\\jeevan\\go\\bin\\hakrawler.exe",
+      "version": "1.24.5",
+      "raw_version": "1.24.5",
+      "path": "D:\\bin\\go.exe",
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:37.349964800+00:00",
+      "last_checked": "2025-10-02T12:12:00.381505200+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "curl": {
+      "name": "curl",
+      "description": "Transfer data with URLs",
+      "category": "utility",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "curl"
+      ],
+      "output_format": "text",
+      "version": "8.14.1",
+      "raw_version": "8.14.1",
+      "path": "C:\\windows\\system32\\curl.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.758264300+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "feroxbuster": {
+      "name": "feroxbuster",
+      "description": "Fast content discovery tool",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "feroxbuster"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.238286100+00:00",
       "last_seen": null,
       "last_error": null
     },
@@ -537,198 +535,7 @@
         "libpcap"
       ],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.863657200+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "netcat": {
-      "name": "netcat",
-      "description": "Network utility",
-      "category": "network",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "nc",
-        "netcat"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.837691900+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "dirbuster": {
-      "name": "dirbuster",
-      "description": "Web directory brute forcer",
-      "category": "web",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "dirbuster"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:45.787243700+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "whatweb": {
-      "name": "whatweb",
-      "description": "Web technology identification",
-      "category": "recon",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "whatweb"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.240194800+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "wappalyzer": {
-      "name": "wappalyzer",
-      "description": "Technology detection",
-      "category": "recon",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "wappalyzer"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:45.817545100+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "dnsrecon": {
-      "name": "dnsrecon",
-      "description": "DNS enumeration script",
-      "category": "recon",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "dnsrecon"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.184125800+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "wfuzz": {
-      "name": "wfuzz",
-      "description": "Web application fuzzer",
-      "category": "web",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "wfuzz"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:37.320197900+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "sqlmap": {
-      "name": "sqlmap",
-      "description": "Automatic SQL injection tool",
-      "category": "web",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "sqlmap"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": "C:\\Users\\jeevan\\AppData\\Roaming\\Python\\Python313\\Scripts\\sqlmap.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:45.614816+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "interactsh-client": {
-      "name": "interactsh-client",
-      "description": "OAST client",
-      "category": "testing",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "interactsh-client"
-      ],
-      "output_format": "text",
-      "version": "1.2.4",
-      "raw_version": "1.2.4",
-      "path": "C:\\Users\\jeevan\\go\\bin\\interactsh-client.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.438482500+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "go": {
-      "name": "go",
-      "description": "Go programming language",
-      "category": "utility",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "go"
-      ],
-      "output_format": "text",
-      "version": "1.24.5",
-      "raw_version": "1.24.5",
-      "path": "D:\\bin\\go.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:40.275873300+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "rustscan": {
-      "name": "rustscan",
-      "description": "Modern port scanner",
-      "category": "network",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "rustscan"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.919864300+00:00",
+      "last_checked": "2025-10-02T12:11:59.353451600+00:00",
       "last_seen": null,
       "last_error": null
     },
@@ -747,18 +554,18 @@
       "path": null,
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.011158800+00:00",
+      "last_checked": "2025-10-02T12:11:59.291535300+00:00",
       "last_seen": null,
       "last_error": null
     },
-    "wpscan": {
-      "name": "wpscan",
-      "description": "WordPress vulnerability scanner",
-      "category": "vulnerability",
+    "xsstrike": {
+      "name": "xsstrike",
+      "description": "XSS detection suite",
+      "category": "web",
       "status": "missing",
       "installed": false,
       "command_template": [
-        "wpscan"
+        "xsstrike"
       ],
       "output_format": "text",
       "version": null,
@@ -766,64 +573,26 @@
       "path": null,
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.785951400+00:00",
+      "last_checked": "2025-10-02T12:12:00.649553900+00:00",
       "last_seen": null,
       "last_error": null
     },
-    "gobuster": {
-      "name": "gobuster",
-      "description": "Directory/DNS brute force tool",
-      "category": "web",
+    "trufflehog": {
+      "name": "trufflehog",
+      "description": "Find secrets in git repos",
+      "category": "security",
       "status": "available",
       "installed": true,
       "command_template": [
-        "gobuster"
+        "trufflehog"
       ],
       "output_format": "text",
-      "version": "3.8.2",
-      "raw_version": "3.8.2",
-      "path": "C:\\Users\\jeevan\\go\\bin\\gobuster.exe",
+      "version": "3.90.6",
+      "raw_version": "3.90.6",
+      "path": "C:\\ProgramData\\chocolatey\\bin\\trufflehog.exe",
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.304961900+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "joomscan": {
-      "name": "joomscan",
-      "description": "Joomla vulnerability scanner",
-      "category": "vulnerability",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "joomscan"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:37.405087600+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "knockpy": {
-      "name": "knockpy",
-      "description": "Subdomain scanner",
-      "category": "recon",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "knockpy"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:40.493512600+00:00",
+      "last_checked": "2025-10-02T12:12:07.113869700+00:00",
       "last_seen": null,
       "last_error": null
     },
@@ -842,56 +611,18 @@
       "path": null,
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:37.074516300+00:00",
+      "last_checked": "2025-10-02T12:11:59.386060500+00:00",
       "last_seen": null,
       "last_error": null
     },
-    "meg": {
-      "name": "meg",
-      "description": "Fetch many paths for many hosts",
-      "category": "web",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "meg"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:40.551835500+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "gowitness": {
-      "name": "gowitness",
-      "description": "Web screenshot utility",
-      "category": "recon",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "gowitness"
-      ],
-      "output_format": "text",
-      "version": "unknown",
-      "raw_version": "unknown",
-      "path": "C:\\Users\\jeevan\\go\\bin\\gowitness.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:45.748781200+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "fierce": {
-      "name": "fierce",
-      "description": "DNS reconnaissance tool",
+    "knockpy": {
+      "name": "knockpy",
+      "description": "Subdomain scanner",
       "category": "recon",
       "status": "missing",
       "installed": false,
       "command_template": [
-        "fierce"
+        "knockpy"
       ],
       "output_format": "text",
       "version": null,
@@ -899,45 +630,7 @@
       "path": null,
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.647322600+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "gitleaks": {
-      "name": "gitleaks",
-      "description": "Secret scanning tool",
-      "category": "security",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "gitleaks"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.673838+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "gospider": {
-      "name": "gospider",
-      "description": "Fast web spider",
-      "category": "web",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "gospider"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:36.908911100+00:00",
+      "last_checked": "2025-10-02T12:12:00.023651200+00:00",
       "last_seen": null,
       "last_error": null
     },
@@ -956,45 +649,7 @@
       "path": null,
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.621093700+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "gauplus": {
-      "name": "gauplus",
-      "description": "Modified GAU with additional features",
-      "category": "recon",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "gauplus"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:46.267616600+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "feroxbuster": {
-      "name": "feroxbuster",
-      "description": "Fast content discovery tool",
-      "category": "web",
-      "status": "missing",
-      "installed": false,
-      "command_template": [
-        "feroxbuster"
-      ],
-      "output_format": "text",
-      "version": null,
-      "raw_version": null,
-      "path": null,
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:40.360082700+00:00",
+      "last_checked": "2025-10-02T12:11:59.919773400+00:00",
       "last_seen": null,
       "last_error": null
     },
@@ -1014,7 +669,200 @@
       "path": "C:\\Python313\\python.exe",
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.274832+00:00",
+      "last_checked": "2025-10-02T12:12:07.278838400+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "wget": {
+      "name": "wget",
+      "description": "Network downloader",
+      "category": "utility",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "wget"
+      ],
+      "output_format": "text",
+      "version": "1.8.2",
+      "raw_version": "1.8.2",
+      "path": "C:\\SH\\wget.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:59.429245+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "naabu": {
+      "name": "naabu",
+      "description": "Fast port scanner",
+      "category": "network",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "naabu"
+      ],
+      "output_format": "text",
+      "version": "2.3.5",
+      "raw_version": "2.3.5",
+      "path": "C:\\Users\\jeevan\\go\\bin\\naabu.exe",
+      "os_dependencies": [
+        "libpcap"
+      ],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:58.903765500+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "interactsh-client": {
+      "name": "interactsh-client",
+      "description": "OAST client",
+      "category": "testing",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "interactsh-client"
+      ],
+      "output_format": "text",
+      "version": "1.2.4",
+      "raw_version": "1.2.4",
+      "path": "C:\\Users\\jeevan\\go\\bin\\interactsh-client.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:58.991697200+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "subfinder": {
+      "name": "subfinder",
+      "description": "Fast passive subdomain discovery tool",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "subfinder"
+      ],
+      "output_format": "json",
+      "version": "2.8.0",
+      "raw_version": "2.8.0",
+      "path": "D:\\setups\\subfinder-2.8.0\\subfinder.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.179100600+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gitleaks": {
+      "name": "gitleaks",
+      "description": "Secret scanning tool",
+      "category": "security",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "gitleaks"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:01.079594+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gobuster": {
+      "name": "gobuster",
+      "description": "Directory/DNS brute force tool",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "gobuster"
+      ],
+      "output_format": "text",
+      "version": "3.8.2",
+      "raw_version": "3.8.2",
+      "path": "C:\\Users\\jeevan\\go\\bin\\gobuster.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:59.948646200+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "s3scanner": {
+      "name": "s3scanner",
+      "description": "S3 bucket scanner",
+      "category": "cloud",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "s3scanner"
+      ],
+      "output_format": "text",
+      "version": "unknown",
+      "raw_version": "unknown",
+      "path": "C:\\Users\\jeevan\\go\\bin\\s3scanner.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:06.149806500+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gauplus": {
+      "name": "gauplus",
+      "description": "Modified GAU with additional features",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "gauplus"
+      ],
+      "output_format": "text",
+      "version": "1.2.0",
+      "raw_version": "1.2.0",
+      "path": "C:\\Users\\jeevan\\go\\bin\\gauplus.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.562548900+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "katana": {
+      "name": "katana",
+      "description": "Web crawler from ProjectDiscovery",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "katana",
+        "katana.exe"
+      ],
+      "output_format": "json",
+      "version": "1.2.1",
+      "raw_version": "1.2.1",
+      "path": "C:\\Users\\jeevan\\go\\bin\\katana.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:06.230298900+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "dalfox": {
+      "name": "dalfox",
+      "description": "Fast XSS scanner",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "dalfox"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:59.322962100+00:00",
       "last_seen": null,
       "last_error": null
     },
@@ -1033,27 +881,7 @@
       "path": "C:\\Users\\jeevan\\AppData\\Roaming\\Python\\Python313\\Scripts\\sublist3r.exe",
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:39.715425100+00:00",
-      "last_seen": null,
-      "last_error": null
-    },
-    "httpx": {
-      "name": "httpx",
-      "description": "Fast HTTP probe",
-      "category": "web",
-      "status": "available",
-      "installed": true,
-      "command_template": [
-        "httpx",
-        "httpx.exe"
-      ],
-      "output_format": "json",
-      "version": "1.7.1",
-      "raw_version": "1.7.1",
-      "path": "C:\\Users\\jeevan\\go\\bin\\httpx.exe",
-      "os_dependencies": [],
-      "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.757992700+00:00",
+      "last_checked": "2025-10-02T12:11:59.860075400+00:00",
       "last_seen": null,
       "last_error": null
     },
@@ -1072,30 +900,202 @@
       "path": null,
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:40.329726600+00:00",
+      "last_checked": "2025-10-02T12:11:59.889184800+00:00",
       "last_seen": null,
       "last_error": null
     },
-    "trufflehog": {
-      "name": "trufflehog",
-      "description": "Find secrets in git repos",
-      "category": "security",
+    "amass": {
+      "name": "amass",
+      "description": "Comprehensive network reconnaissance tool",
+      "category": "recon",
       "status": "available",
       "installed": true,
       "command_template": [
-        "trufflehog"
+        "amass"
       ],
-      "output_format": "text",
-      "version": "3.90.6",
-      "raw_version": "3.90.6",
-      "path": "C:\\ProgramData\\chocolatey\\bin\\trufflehog.exe",
+      "output_format": "json",
+      "version": "5.0.0",
+      "raw_version": "5.0.0",
+      "path": "D:\\Preqin\\tools\\amass_windows_amd64\\amass.exe",
       "os_dependencies": [],
       "missing_dependencies": [],
-      "last_checked": "2025-10-02T09:25:38.248462100+00:00",
+      "last_checked": "2025-10-02T12:12:00.726111900+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "subjs": {
+      "name": "subjs",
+      "description": "Find JavaScript files",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "subjs"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:07.306502400+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "wfuzz": {
+      "name": "wfuzz",
+      "description": "Web application fuzzer",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "wfuzz"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:58.539181900+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "joomscan": {
+      "name": "joomscan",
+      "description": "Joomla vulnerability scanner",
+      "category": "vulnerability",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "joomscan"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.206945100+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "assetfinder": {
+      "name": "assetfinder",
+      "description": "Find domains and subdomains",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "assetfinder",
+        "assetfinder.exe"
+      ],
+      "output_format": "text",
+      "version": "unknown",
+      "raw_version": "unknown",
+      "path": "C:\\Users\\jeevan\\go\\bin\\assetfinder.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.504677900+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "hakrawler": {
+      "name": "hakrawler",
+      "description": "Simple, fast web crawler",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "hakrawler"
+      ],
+      "output_format": "text",
+      "version": "127.0.0",
+      "raw_version": "127.0.0",
+      "path": "C:\\Users\\jeevan\\go\\bin\\hakrawler.exe",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:06.302462800+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "dirbuster": {
+      "name": "dirbuster",
+      "description": "Web directory brute forcer",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "dirbuster"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:06.334410100+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "fierce": {
+      "name": "fierce",
+      "description": "DNS reconnaissance tool",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "fierce"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:12:00.533204100+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "httprobe": {
+      "name": "httprobe",
+      "description": "HTTP/HTTPS probe",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "httprobe"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:58.511153+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "jq": {
+      "name": "jq",
+      "description": "JSON processor",
+      "category": "utility",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "jq"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-02T12:11:58.567639200+00:00",
       "last_seen": null,
       "last_error": null
     }
   },
   "manual_tools": [],
-  "last_refresh": "2025-10-02T09:25:47.216465400+00:00"
+  "last_refresh": "2025-10-02T12:12:07.307061400+00:00"
 }

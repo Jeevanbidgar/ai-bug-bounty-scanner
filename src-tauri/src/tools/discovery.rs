@@ -401,8 +401,16 @@ impl ToolDiscoveryService {
         
         eprintln!("get_all_tool_records: force_refresh={}, catalog size={}", force_refresh, self.catalog.len());
         
-        // Check if refresh needed
-        let needs_refresh = force_refresh || self.is_stale(cache.last_refresh.as_ref());
+        // Check if this is the first time (no cache exists)
+        let is_first_load = cache.last_refresh.is_none() && cache.tools.is_empty();
+        
+        // Check if refresh needed - but SKIP auto-refresh on first load
+        let needs_refresh = if is_first_load && !force_refresh {
+            eprintln!("First load detected - skipping auto-refresh. Use force_refresh=true to discover tools.");
+            false  // Don't auto-refresh on first load unless explicitly requested
+        } else {
+            force_refresh || self.is_stale(cache.last_refresh.as_ref())
+        };
         
         eprintln!("needs_refresh={}, cache tools count={}", needs_refresh, cache.tools.len());
         

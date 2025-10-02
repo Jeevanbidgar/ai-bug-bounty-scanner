@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useState, useEffect, useMemo } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw,
   CheckCircle,
@@ -8,7 +8,8 @@ import {
   Plus,
   Trash2,
   AlertTriangle,
-  Loader2
+  Loader2,
+  ArrowUpCircle
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card'
@@ -33,7 +34,11 @@ const ToolsPage = () => {
   const [manualToolPath, setManualToolPath] = useState('')
   const [manualToolCategory, setManualToolCategory] = useState('custom')
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null)
+  const [toolUpdates, setToolUpdates] = useState<Record<string, { hasUpdate: boolean; latestVersion: string | null }>>({})
+  const [isInitialDiscovery, setIsInitialDiscovery] = useState(false)
+  const [discoveryProgress, setDiscoveryProgress] = useState(0)
   
+  const queryClient = useQueryClient()
   const { toasts, success, error: showError, info, removeToast } = useToast()
 
   const { data: tools, isLoading, error, refetch } = useQuery({
@@ -42,7 +47,37 @@ const ToolsPage = () => {
       const result = await apiService.getTools(false)
       return result
     },
+    refetchInterval: isInitialDiscovery ? 2000 : false, // Poll every 2s during initial discovery
+    refetchOnWindowFocus: false,
   })
+
+  // Detect if this is the initial discovery and trigger it explicitly
+  useEffect(() => {
+    const triggerInitialDiscovery = async () => {
+      // If we have no tools (empty cache), trigger discovery explicitly
+      if (tools && tools.data && tools.data.length === 0 && !isLoading) {
+        setIsInitialDiscovery(true)
+        
+        // Trigger discovery with forceRefresh=true
+        try {
+          await apiService.getTools(true)
+          // After triggering, refetch will poll via refetchInterval
+          refetch()
+        } catch (err) {
+          console.error('Failed to trigger initial discovery:', err)
+          setIsInitialDiscovery(false)
+        }
+      } else if (tools?.data && tools.data.length > 0) {
+        // Once we have tools data, discovery is complete
+        if (isInitialDiscovery) {
+          setDiscoveryProgress(100)
+          setTimeout(() => setIsInitialDiscovery(false), 500) // Brief delay to show 100%
+        }
+      }
+    }
+    
+    triggerInitialDiscovery()
+  }, [isLoading, tools, isInitialDiscovery, refetch])
 
   const refreshMutation = useMutation({
     mutationFn: async () => {
@@ -85,15 +120,59 @@ const ToolsPage = () => {
     queryFn: () => apiService.getManualTools(),
   })
 
-  const filteredTools = (tools?.data || []).filter((tool: Tool) => {
-    const matchesSearch = tool.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         tool.description.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesCategory = categoryFilter === 'all' || tool.category === categoryFilter
-    const matchesStatus = statusFilter === 'all' ||
-      (statusFilter === 'installed' && tool.installed) ||
-      (statusFilter === 'not_installed' && !tool.installed)
-    return matchesSearch && matchesCategory && matchesStatus
-  })
+  // Check for updates on installed tools
+  useEffect(() => {
+    const checkUpdatesForInstalledTools = async () => {
+      if (!tools?.data) return
+      
+      const installedTools = tools.data.filter((t: Tool) => t.installed)
+      const updates: Record<string, { hasUpdate: boolean; latestVersion: string | null }> = {}
+      
+      // Check updates for installed tools (limit to avoid too many concurrent requests)
+      const toolsToCheck = installedTools.slice(0, 10) // Check first 10 installed tools
+      
+      for (const tool of toolsToCheck) {
+        try {
+          const result = await apiService.checkToolUpdate(tool.name)
+          updates[tool.name] = {
+            hasUpdate: result.has_update,
+            latestVersion: result.latest_version
+          }
+        } catch (error) {
+          // Silently ignore errors for individual tools
+          console.debug(`Failed to check update for ${tool.name}:`, error)
+        }
+      }
+      
+      setToolUpdates(updates)
+    }
+    
+    checkUpdatesForInstalledTools()
+  }, [tools?.data])
+
+  const filteredTools = useMemo(() => {
+    console.log('Filtering tools with:', { 
+      totalTools: tools?.data?.length, 
+      searchTerm, 
+      categoryFilter, 
+      statusFilter,
+      toolUpdatesCount: Object.keys(toolUpdates).length 
+    })
+    
+    const filtered = (tools?.data || []).filter((tool: Tool) => {
+      const matchesSearch = tool.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           tool.description.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesCategory = categoryFilter === 'all' || tool.category === categoryFilter
+      const matchesStatus = statusFilter === 'all' ||
+        (statusFilter === 'installed' && tool.installed) ||
+        (statusFilter === 'not-installed' && !tool.installed) ||
+        (statusFilter === 'updates-available' && tool.installed && toolUpdates[tool.name]?.hasUpdate)
+      return matchesSearch && matchesCategory && matchesStatus
+    })
+    
+    console.log('Filtered result:', filtered.length, 'tools')
+    return filtered
+  }, [tools?.data, searchTerm, categoryFilter, statusFilter, toolUpdates])
 
   const getCategoryDisplayName = (category: string) => {
     const categoryNames: Record<string, string> = {
@@ -122,15 +201,42 @@ const ToolsPage = () => {
     }
   }
 
-  const categories = Array.from(new Set((tools?.data || []).map(tool => tool.category)))
+  const categories = useMemo(() => {
+    return Array.from(new Set((tools?.data || []).map(tool => tool.category)))
+  }, [tools?.data])
 
-  // Loading state
-  if (isLoading) {
+  // Initial discovery loading state with overlay
+  if (isInitialDiscovery || (isLoading && !tools)) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto" />
-          <p className="text-gray-400">Loading tools...</p>
+      <div className="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center">
+        <div className="text-center space-y-6 max-w-md px-6">
+          <div className="relative">
+            <Loader2 className="h-16 w-16 animate-spin text-blue-500 mx-auto" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Search className="h-8 w-8 text-blue-300 animate-pulse" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold text-white">Discovering Security Tools</h2>
+            <p className="text-gray-400">
+              Scanning your system for available security tools...
+            </p>
+          </div>
+          {discoveryProgress > 0 && discoveryProgress < 100 && (
+            <div className="space-y-2">
+              <div className="w-full bg-gray-700 rounded-full h-2">
+                <div 
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${discoveryProgress}%` }}
+                ></div>
+              </div>
+              <p className="text-sm text-gray-500">{discoveryProgress}% complete</p>
+            </div>
+          )}
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+            <AlertTriangle className="h-4 w-4" />
+            <span>This may take a few moments on first run</span>
+          </div>
         </div>
       </div>
     )
@@ -227,7 +333,8 @@ const ToolsPage = () => {
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="installed">Installed</SelectItem>
-            <SelectItem value="not_installed">Not Installed</SelectItem>
+            <SelectItem value="not-installed">Not Installed</SelectItem>
+            <SelectItem value="updates-available">Updates Available</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -394,6 +501,12 @@ const ToolsPage = () => {
                         {getStatusIcon(tool)}
                         <CardTitle className="text-lg">{tool.name}</CardTitle>
                       </div>
+                      {toolUpdates[tool.name]?.hasUpdate && (
+                        <Badge className="bg-green-700 text-green-100 animate-pulse flex items-center gap-1">
+                          <ArrowUpCircle className="h-3 w-3" />
+                          Update
+                        </Badge>
+                      )}
                     </div>
                     <CardDescription>{tool.description}</CardDescription>
                   </CardHeader>
@@ -407,9 +520,16 @@ const ToolsPage = () => {
 
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-400">Version:</span>
-                    <span className="text-white">
-                      {tool.version || tool.raw_version || 'Unknown'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-white">
+                        {tool.version || tool.raw_version || 'Unknown'}
+                      </span>
+                      {toolUpdates[tool.name]?.hasUpdate && toolUpdates[tool.name]?.latestVersion && (
+                        <span className="text-xs text-green-400">
+                          → {toolUpdates[tool.name].latestVersion}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between text-sm">
@@ -513,10 +633,21 @@ const ToolsPage = () => {
           tool={selectedTool}
           onClose={() => setSelectedTool(null)}
           onToolUpdate={(updatedTool) => {
-            // Update the tool in the local state
+            // Update the selected tool in local state
             setSelectedTool(updatedTool)
-            // Optionally refetch the full tools list
-            refetch()
+            
+            // CRITICAL FIX: Update React Query cache directly
+            // This prevents the tool from reverting to "Not Installed" when modal closes
+            queryClient.setQueryData(['tools'], (oldData: any) => {
+              if (!oldData?.data) return oldData
+              
+              return {
+                ...oldData,
+                data: oldData.data.map((tool: Tool) => 
+                  tool.name === updatedTool.name ? updatedTool : tool
+                )
+              }
+            })
           }}
         />
       )}

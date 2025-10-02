@@ -15,6 +15,13 @@ pub struct ToolDefinition {
     pub version_args: Vec<String>,
     pub output_format: String,
     pub os_dependencies: Vec<String>,
+    
+    // Installation metadata (Phase 2)
+    pub go_module: Option<String>,        // Go module path for `go install`
+    pub pipx_package: Option<String>,     // pipx package name
+    pub apt_package: Option<String>,      // APT package name (Linux)
+    pub winget_id: Option<String>,        // WinGet package ID (Windows)
+    pub install_method: String,           // Primary installation method: "go", "pipx", "apt", "winget", "manual", "runtime"
 }
 
 impl ToolDefinition {
@@ -32,6 +39,11 @@ impl ToolDefinition {
             version_args: vec!["--version".to_string()],
             output_format: "text".to_string(),
             os_dependencies: vec![],
+            go_module: None,
+            pipx_package: None,
+            apt_package: None,
+            winget_id: None,
+            install_method: "manual".to_string(),
         }
     }
 
@@ -49,6 +61,36 @@ impl ToolDefinition {
         self.os_dependencies = deps.iter().map(|s| s.to_string()).collect();
         self
     }
+    
+    // Installation metadata builders (Phase 2)
+    pub fn with_go_module(mut self, module: &str) -> Self {
+        self.go_module = Some(module.to_string());
+        self.install_method = "go".to_string();
+        self
+    }
+    
+    pub fn with_pipx_package(mut self, package: &str) -> Self {
+        self.pipx_package = Some(package.to_string());
+        self.install_method = "pipx".to_string();
+        self
+    }
+    
+    pub fn with_apt_package(mut self, package: &str) -> Self {
+        self.apt_package = Some(package.to_string());
+        self.install_method = "apt".to_string();
+        self
+    }
+    
+    pub fn with_winget_id(mut self, id: &str) -> Self {
+        self.winget_id = Some(id.to_string());
+        self.install_method = "winget".to_string();
+        self
+    }
+    
+    pub fn with_install_method(mut self, method: &str) -> Self {
+        self.install_method = method.to_string();
+        self
+    }
 }
 
 /// Get the complete catalog of all supported security tools
@@ -62,7 +104,9 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Fast passive subdomain discovery tool",
             "recon",
             vec!["subfinder"]
-        ).with_output_format("json")
+        )
+        .with_output_format("json")
+        .with_go_module("github.com/projectdiscovery/subfinder/v2/cmd/subfinder")
     );
 
     catalog.insert("amass".to_string(),
@@ -71,7 +115,9 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Comprehensive network reconnaissance tool",
             "recon",
             vec!["amass"]
-        ).with_output_format("json")
+        )
+        .with_output_format("json")
+        .with_go_module("github.com/owasp-amass/amass/v4/...")
     );
 
     catalog.insert("assetfinder".to_string(),
@@ -81,6 +127,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["assetfinder", "assetfinder.exe"]
         )
+        .with_go_module("github.com/tomnomnom/assetfinder")
     );
 
     catalog.insert("knockpy".to_string(),
@@ -90,6 +137,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["knockpy"]
         )
+        .with_pipx_package("git+https://github.com/guelfoweb/knock.git")
     );
 
     catalog.insert("sublist3r".to_string(),
@@ -99,6 +147,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["sublist3r"]
         )
+        .with_pipx_package("sublist3r")
     );
 
     catalog.insert("dnsrecon".to_string(),
@@ -108,6 +157,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["dnsrecon"]
         )
+        .with_pipx_package("dnsrecon")
     );
 
     catalog.insert("fierce".to_string(),
@@ -117,6 +167,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["fierce"]
         )
+        .with_pipx_package("fierce")
     );
 
     catalog.insert("dnsenum".to_string(),
@@ -126,6 +177,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["dnsenum"]
         )
+        .with_apt_package("dnsenum")
+        .with_install_method("manual")
     );
 
     // === Port Scanning ===
@@ -135,9 +188,12 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Network discovery and security auditing tool",
             "network",
             vec!["nmap"]
-        ).with_version_args(vec!["-V"])
-         .with_output_format("xml")
-         .with_os_dependencies(vec!["libpcap"])
+        )
+        .with_version_args(vec!["-V"])
+        .with_output_format("xml")
+        .with_os_dependencies(vec!["libpcap"])
+        .with_apt_package("nmap")
+        .with_winget_id("Nmap.Nmap")
     );
 
     catalog.insert("naabu".to_string(),
@@ -146,7 +202,9 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Fast port scanner",
             "network",
             vec!["naabu"]
-        ).with_os_dependencies(vec!["libpcap"])
+        )
+        .with_os_dependencies(vec!["libpcap"])
+        .with_go_module("github.com/projectdiscovery/naabu/v2/cmd/naabu")
     );
 
     catalog.insert("masscan".to_string(),
@@ -155,7 +213,10 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "TCP port scanner",
             "network",
             vec!["masscan"]
-        ).with_os_dependencies(vec!["libpcap"])
+        )
+        .with_os_dependencies(vec!["libpcap"])
+        .with_apt_package("masscan")
+        .with_install_method("manual")
     );
 
     catalog.insert("rustscan".to_string(),
@@ -165,6 +226,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "network",
             vec!["rustscan"]
         )
+        .with_install_method("manual")
     );
 
     // === HTTP Probing & Web Analysis ===
@@ -174,7 +236,9 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Fast HTTP probe",
             "web",
             vec!["httpx", "httpx.exe"]
-        ).with_output_format("json")
+        )
+        .with_output_format("json")
+        .with_go_module("github.com/projectdiscovery/httpx/cmd/httpx")
     );
 
     catalog.insert("httprobe".to_string(),
@@ -184,6 +248,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["httprobe"]
         )
+        .with_go_module("github.com/tomnomnom/httprobe")
     );
 
     catalog.insert("meg".to_string(),
@@ -193,6 +258,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["meg"]
         )
+        .with_go_module("github.com/tomnomnom/meg")
     );
 
     // === Web Crawling & Spidering ===
@@ -202,7 +268,9 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Web crawler from ProjectDiscovery",
             "web",
             vec!["katana", "katana.exe"]
-        ).with_output_format("json")
+        )
+        .with_output_format("json")
+        .with_go_module("github.com/projectdiscovery/katana/cmd/katana")
     );
 
     catalog.insert("gospider".to_string(),
@@ -212,6 +280,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["gospider"]
         )
+        .with_go_module("github.com/jaeles-project/gospider")
     );
 
     catalog.insert("hakrawler".to_string(),
@@ -221,6 +290,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["hakrawler"]
         )
+        .with_go_module("github.com/hakluke/hakrawler")
     );
 
     // === URL Discovery ===
@@ -231,6 +301,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["gau"]
         )
+        .with_go_module("github.com/lc/gau/v2/cmd/gau")
     );
 
     catalog.insert("waybackurls".to_string(),
@@ -240,6 +311,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["waybackurls"]
         )
+        .with_go_module("github.com/tomnomnom/waybackurls")
     );
 
     catalog.insert("gauplus".to_string(),
@@ -249,6 +321,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["gauplus"]
         )
+        .with_go_module("github.com/bp0lr/gauplus")
     );
 
     // === Vulnerability Scanning ===
@@ -258,7 +331,9 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Fast and customizable vulnerability scanner",
             "vulnerability",
             vec!["nuclei"]
-        ).with_output_format("jsonl")
+        )
+        .with_output_format("jsonl")
+        .with_go_module("github.com/projectdiscovery/nuclei/v3/cmd/nuclei")
     );
 
     catalog.insert("nikto".to_string(),
@@ -268,6 +343,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "vulnerability",
             vec!["nikto"]
         )
+        .with_apt_package("nikto")
+        .with_install_method("manual")
     );
 
     catalog.insert("wpscan".to_string(),
@@ -277,6 +354,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "vulnerability",
             vec!["wpscan"]
         )
+        .with_apt_package("wpscan")
+        .with_install_method("manual")
     );
 
     catalog.insert("joomscan".to_string(),
@@ -286,6 +365,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "vulnerability",
             vec!["joomscan"]
         )
+        .with_install_method("manual")
     );
 
     // === Directory & File Brute Forcing ===
@@ -295,7 +375,9 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Fast web fuzzer",
             "web",
             vec!["ffuf"]
-        ).with_output_format("json")
+        )
+        .with_output_format("json")
+        .with_go_module("github.com/ffuf/ffuf/v2")
     );
 
     catalog.insert("gobuster".to_string(),
@@ -305,6 +387,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["gobuster"]
         )
+        .with_go_module("github.com/OJ/gobuster/v3")
     );
 
     catalog.insert("dirbuster".to_string(),
@@ -314,6 +397,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["dirbuster"]
         )
+        .with_apt_package("dirbuster")
+        .with_install_method("manual")
     );
 
     catalog.insert("feroxbuster".to_string(),
@@ -323,6 +408,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["feroxbuster"]
         )
+        .with_install_method("manual")
     );
 
     catalog.insert("wfuzz".to_string(),
@@ -332,6 +418,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["wfuzz"]
         )
+        .with_apt_package("wfuzz")
+        .with_install_method("manual")
     );
 
     // === Parameter Discovery & Fuzzing ===
@@ -342,6 +430,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["arjun", "arjun.exe"]
         )
+        .with_pipx_package("arjun")
     );
 
     catalog.insert("param-miner".to_string(),
@@ -351,6 +440,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["param-miner"]
         )
+        .with_install_method("manual")
     );
 
     // === SQL Injection ===
@@ -361,6 +451,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["sqlmap"]
         )
+        .with_pipx_package("sqlmap")
     );
 
     // === XSS Detection ===
@@ -371,6 +462,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["dalfox"]
         )
+        .with_go_module("github.com/hahwul/dalfox/v2")
     );
 
     catalog.insert("xsstrike".to_string(),
@@ -380,6 +472,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["xsstrike"]
         )
+        .with_pipx_package("git+https://github.com/s0md3v/XSStrike.git")
     );
 
     // === Technology Detection ===
@@ -390,6 +483,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["wappalyzer"]
         )
+        .with_install_method("manual")
     );
 
     catalog.insert("whatweb".to_string(),
@@ -399,6 +493,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["whatweb"]
         )
+        .with_apt_package("whatweb")
+        .with_install_method("manual")
     );
 
     // === Screenshot & Visual Recon ===
@@ -409,6 +505,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["gowitness"]
         )
+        .with_go_module("github.com/sensepost/gowitness")
     );
 
     catalog.insert("aquatone".to_string(),
@@ -418,6 +515,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["aquatone"]
         )
+        .with_go_module("github.com/michenriksen/aquatone")
     );
 
     catalog.insert("eyewitness".to_string(),
@@ -427,6 +525,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["eyewitness"]
         )
+        .with_pipx_package("git+https://github.com/FortyNorthSecurity/EyeWitness.git")
     );
 
     // === JavaScript Analysis ===
@@ -437,6 +536,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["linkfinder"]
         )
+        .with_pipx_package("linkfinder")
     );
 
     catalog.insert("subjs".to_string(),
@@ -446,6 +546,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["subjs"]
         )
+        .with_go_module("github.com/lc/subjs")
     );
 
     // === SSRF & Testing ===
@@ -456,6 +557,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "testing",
             vec!["interactsh-client"]
         )
+        .with_go_module("github.com/projectdiscovery/interactsh/cmd/interactsh-client")
     );
 
     // === Exploitation Frameworks ===
@@ -466,6 +568,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "exploitation",
             vec!["msfconsole"]
         )
+        .with_apt_package("metasploit-framework")
+        .with_install_method("manual")
     );
 
     catalog.insert("searchsploit".to_string(),
@@ -475,6 +579,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "exploitation",
             vec!["searchsploit"]
         )
+        .with_apt_package("exploitdb")
+        .with_install_method("manual")
     );
 
     // === Network Tools ===
@@ -484,7 +590,10 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Network utility",
             "network",
             vec!["nc", "netcat"]
-        ).with_version_args(vec!["-h"])
+        )
+        .with_version_args(vec!["-h"])
+        .with_apt_package("netcat-openbsd")
+        .with_winget_id("nmap.ncat")
     );
 
     catalog.insert("socat".to_string(),
@@ -493,7 +602,10 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Multipurpose relay",
             "network",
             vec!["socat"]
-        ).with_version_args(vec!["-V"])
+        )
+        .with_version_args(vec!["-V"])
+        .with_apt_package("socat")
+        .with_install_method("manual")
     );
 
     // === Git Tools ===
@@ -504,6 +616,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "utility",
             vec!["git"]
         )
+        .with_winget_id("Git.Git")
+        .with_install_method("runtime")
     );
 
     catalog.insert("trufflehog".to_string(),
@@ -513,6 +627,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "security",
             vec!["trufflehog"]
         )
+        .with_go_module("github.com/trufflesecurity/trufflehog/v3")
     );
 
     catalog.insert("gitleaks".to_string(),
@@ -522,6 +637,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "security",
             vec!["gitleaks"]
         )
+        .with_go_module("github.com/gitleaks/gitleaks/v8")
     );
 
     // === Cloud Security ===
@@ -532,6 +648,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "cloud",
             vec!["s3scanner"]
         )
+        .with_go_module("github.com/sa7mon/s3scanner")
     );
 
     catalog.insert("cloudfail".to_string(),
@@ -541,6 +658,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "cloud",
             vec!["cloudfail"]
         )
+        .with_pipx_package("git+https://github.com/m0rtem/CloudFail.git")
     );
 
     // === Utilities ===
@@ -551,6 +669,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "utility",
             vec!["curl"]
         )
+        .with_install_method("runtime")
     );
 
     catalog.insert("wget".to_string(),
@@ -560,6 +679,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "utility",
             vec!["wget"]
         )
+        .with_winget_id("GnuWin32.Wget")
+        .with_install_method("runtime")
     );
 
     catalog.insert("jq".to_string(),
@@ -569,6 +690,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "utility",
             vec!["jq"]
         )
+        .with_apt_package("jq")
+        .with_winget_id("jqlang.jq")
     );
 
     catalog.insert("python".to_string(),
@@ -577,7 +700,10 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Python interpreter",
             "utility",
             vec!["python", "python3"]
-        ).with_version_args(vec!["--version"])
+        )
+        .with_version_args(vec!["--version"])
+        .with_winget_id("Python.Python.3.12")
+        .with_install_method("runtime")
     );
 
     catalog.insert("go".to_string(),
@@ -586,7 +712,11 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "Go programming language",
             "utility",
             vec!["go"]
-        ).with_version_args(vec!["version"])
+        )
+        .with_version_args(vec!["version"])
+        .with_apt_package("golang-go")
+        .with_winget_id("GoLang.Go")
+        .with_install_method("runtime")
     );
 
     catalog

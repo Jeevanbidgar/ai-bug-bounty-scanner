@@ -92,6 +92,7 @@ fn main() {
             crate::commands::uninstall_tool,
             crate::commands::check_tool_installed,
             crate::commands::get_tool_version,
+            crate::commands::check_tool_update,
             crate::commands::get_tool_installation_info,
             // Package manager commands
             crate::commands::detect_package_managers,

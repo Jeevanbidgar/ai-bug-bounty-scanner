@@ -7,7 +7,7 @@ use crate::workflow::{engine::WorkflowEngine, loader::WorkflowLoader, types::Wor
 use crate::tools::discovery::ToolDiscoveryService;
 use crate::events::{EventEmitter, SCAN_STARTED, SCAN_COMPLETED, SCAN_FAILED, SCAN_PROGRESS_UPDATE};
 use crate::tools::catalog::get_tool_catalog;
-use crate::tools::package_managers::{GoInstallManager, InstallationResult};
+use crate::tools::package_managers::{GoInstallManager, InstallationResult, VersionCheckResult};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkflowExecuteRequest {
@@ -1240,6 +1240,98 @@ pub async fn get_tool_version(
         },
         _ => {
             Ok(None)
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn check_tool_update(
+    #[allow(non_snake_case)] toolName: String,
+    _state: tauri::State<'_, AppState>
+) -> Result<VersionCheckResult, String> {
+    eprintln!("🔄 Checking for updates: {}", toolName);
+    
+    // Look up tool in catalog
+    let catalog = get_tool_catalog();
+    let tool_def = catalog.get(&toolName)
+        .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
+    
+    // Route to appropriate version checker based on install method
+    match tool_def.install_method.as_str() {
+        "go" => {
+            let manager = GoInstallManager::new();
+            
+            // Get the binary path
+            let binary_path = manager.get_tool_path(&toolName)
+                .ok_or_else(|| format!("Tool '{}' is not installed", toolName))?;
+            
+            // Get the go module path
+            let module_path = tool_def.go_module.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no go_module defined", toolName))?;
+            
+            // Check for updates using go version -m and go list -m -versions
+            let result = crate::tools::package_managers::check_go_update(&binary_path, module_path).await?;
+            
+            if result.has_update {
+                eprintln!("   ⬆️  Update available: {} -> {}", 
+                    result.current_version.as_ref().unwrap_or(&"unknown".to_string()),
+                    result.latest_version.as_ref().unwrap_or(&"unknown".to_string())
+                );
+            } else {
+                eprintln!("   ✅ Up to date: {}", 
+                    result.current_version.as_ref().unwrap_or(&"unknown".to_string())
+                );
+            }
+            
+            Ok(result)
+        },
+        "apt" => {
+            let package_name = tool_def.apt_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no apt_package defined", toolName))?;
+            
+            let result = crate::tools::package_managers::check_apt_update(package_name).await?;
+            
+            if result.has_update {
+                eprintln!("   ⬆️  Update available: {} -> {}", 
+                    result.current_version.as_ref().unwrap_or(&"unknown".to_string()),
+                    result.latest_version.as_ref().unwrap_or(&"unknown".to_string())
+                );
+            }
+            
+            Ok(result)
+        },
+        "winget" => {
+            let winget_id = tool_def.winget_id.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no winget_id defined", toolName))?;
+            
+            let result = crate::tools::package_managers::check_winget_update(winget_id).await?;
+            
+            if result.has_update {
+                eprintln!("   ⬆️  Update available: {} -> {}", 
+                    result.current_version.as_ref().unwrap_or(&"unknown".to_string()),
+                    result.latest_version.as_ref().unwrap_or(&"unknown".to_string())
+                );
+            }
+            
+            Ok(result)
+        },
+        "pipx" => {
+            let package_name = tool_def.pipx_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no pipx_package defined", toolName))?;
+            
+            let result = crate::tools::package_managers::check_pipx_update(package_name).await?;
+            
+            if result.has_update {
+                eprintln!("   ⬆️  Update available: {} -> {}", 
+                    result.current_version.as_ref().unwrap_or(&"unknown".to_string()),
+                    result.latest_version.as_ref().unwrap_or(&"unknown".to_string())
+                );
+            }
+            
+            Ok(result)
+        },
+        _ => {
+            Err(format!("Version check not supported for install method '{}'", tool_def.install_method))
         }
     }
 }

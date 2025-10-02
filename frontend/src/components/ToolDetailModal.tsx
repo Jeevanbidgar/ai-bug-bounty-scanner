@@ -75,9 +75,27 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate }: ToolDetai
       }
     }
     
+    const checkForUpdates = async () => {
+      if (tool.installed) {
+        try {
+          const result = await apiService.checkToolUpdate(tool.name)
+          if (result.has_update) {
+            setUpdateAvailable(true)
+            setLatestVersion(result.latest_version)
+          } else {
+            setUpdateAvailable(false)
+            setLatestVersion(null)
+          }
+        } catch (error) {
+          console.error('Failed to check for updates:', error)
+        }
+      }
+    }
+    
     fetchOsInfo()
     fetchInstallationInfo()
     fetchVersion()
+    checkForUpdates()
   }, [tool.name, tool.installed])
 
   const getInstallCommands = (toolName: string, platform: string): { name: string, command: string, link?: string }[] => {
@@ -321,20 +339,22 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate }: ToolDetai
     try {
       info(`Checking for ${tool.name} updates...`)
       
-      // Get current version
-      const currentVersion = tool.raw_version
-      if (!currentVersion) {
-        showError('Unable to determine current version')
+      const result = await apiService.checkToolUpdate(tool.name)
+      
+      if (result.error) {
+        showError(`Update check failed: ${result.error}`)
         return
       }
       
-      // Update to @latest and compare versions
-      // Since Go doesn't have a "check latest" command, we'll use a different strategy:
-      // For now, we'll enable the button and let users decide
-      // Future: Implement GitHub API check for releases
-      
-      success('Update check feature coming soon! Click Update to get latest version.')
-      setUpdateAvailable(true)
+      if (result.has_update) {
+        setUpdateAvailable(true)
+        setLatestVersion(result.latest_version)
+        success(`Update available! Current: ${result.current_version}, Latest: ${result.latest_version}`)
+      } else {
+        setUpdateAvailable(false)
+        setLatestVersion(null)
+        success(`${tool.name} is up to date (v${result.current_version})`)
+      }
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to check for updates'
@@ -433,9 +453,16 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate }: ToolDetai
 
                 <div>
                   <p className="text-sm text-gray-400 mb-1">Version</p>
-                  <p className="text-white font-mono">
-                    {tool.version || 'Unknown'}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-white font-mono">
+                      {tool.raw_version || tool.version || 'Unknown'}
+                    </p>
+                    {updateAvailable && latestVersion && (
+                      <Badge className="bg-green-700 text-green-100 animate-pulse">
+                        ⬆️ {latestVersion}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -587,13 +614,52 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate }: ToolDetai
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-gray-800 rounded-lg p-4 text-center space-y-2">
-                    <p className="text-gray-300">
-                      No automatic installation commands available for this tool.
-                    </p>
-                    <p className="text-sm text-gray-400">
-                      Please refer to the official documentation for installation instructions.
-                    </p>
+                  <div className="bg-gray-800 rounded-lg p-4 space-y-4">
+                    <div className="text-center space-y-2">
+                      <p className="text-gray-300 font-medium">
+                        🔧 Manual Installation Required
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        {installationInfo?.install_method === 'manual' 
+                          ? `${tool.name} requires manual installation. This tool cannot be automatically installed by our app.`
+                          : `No automatic installation commands are currently configured for ${tool.name}.`
+                        }
+                      </p>
+                    </div>
+                    
+                    <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 space-y-3">
+                      <p className="text-sm text-blue-300 font-medium">
+                        📖 How to Install:
+                      </p>
+                      <ol className="text-sm text-gray-300 space-y-2 list-decimal list-inside">
+                        <li>Search for "{tool.name} installation" in your preferred search engine</li>
+                        <li>Visit the official GitHub repository or documentation</li>
+                        <li>Follow the platform-specific installation instructions</li>
+                        <li>After installation, click "Recheck Status" below to verify</li>
+                      </ol>
+                    </div>
+
+                    {/* Quick search links */}
+                    <div className="flex gap-2 justify-center">
+                      <a
+                        href={`https://github.com/search?q=${encodeURIComponent(tool.name)}&type=repositories`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm transition-colors"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Search GitHub
+                      </a>
+                      <a
+                        href={`https://www.google.com/search?q=${encodeURIComponent(tool.name + ' installation guide')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm transition-colors"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Search Google
+                      </a>
+                    </div>
                   </div>
                 )}
               </CardContent>

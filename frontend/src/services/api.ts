@@ -624,6 +624,28 @@ class ApiService {
     }
   }
 
+  async checkToolUpdate(toolName: string): Promise<{
+    has_update: boolean
+    current_version: string | null
+    latest_version: string | null
+    package_manager: string
+    error: string | null
+  }> {
+    try {
+      const result = await this.invokeCommand('check_tool_update', { toolName }) as {
+        has_update: boolean
+        current_version: string | null
+        latest_version: string | null
+        package_manager: string
+        error: string | null
+      }
+      return result
+    } catch (error) {
+      console.error('Failed to check tool update:', error)
+      throw error
+    }
+  }
+
   async getToolInstallationInfo(toolName: string): Promise<{
     name: string
     install_method: string
