@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { X, Terminal, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { X, Terminal, Check, AlertCircle, Loader2, Minimize2, Maximize2 } from 'lucide-react';
 
 interface InstallationProgressModalProps {
   isOpen: boolean;
@@ -22,6 +22,7 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
   const [status, setStatus] = useState<'installing' | 'completed' | 'failed'>('installing');
   const [outputLines, setOutputLines] = useState<OutputLine[]>([]);
   const [finalMessage, setFinalMessage] = useState<string>('');
+  const [isMinimized, setIsMinimized] = useState(false);
   const outputEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,6 +81,63 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
 
   if (!isOpen) return null;
 
+  // Minimized view (bottom-right corner)
+  if (isMinimized) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50">
+        <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 min-w-[320px]">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 flex-1">
+              <Terminal className="w-5 h-5 text-blue-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-white truncate">
+                  Installing {toolName}
+                </h3>
+                {status === 'installing' && (
+                  <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>{outputLines.length} lines...</span>
+                  </div>
+                )}
+                {status === 'completed' && (
+                  <div className="flex items-center gap-1 text-xs text-green-400 mt-1">
+                    <Check className="w-3 h-3" />
+                    <span>Completed</span>
+                  </div>
+                )}
+                {status === 'failed' && (
+                  <div className="flex items-center gap-1 text-xs text-red-400 mt-1">
+                    <AlertCircle className="w-3 h-3" />
+                    <span>Failed</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setIsMinimized(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                title="Maximize"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </button>
+              {status !== 'installing' && (
+                <button
+                  onClick={onClose}
+                  className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Full modal view
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col">
@@ -106,18 +164,27 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
               </div>
             )}
           </div>
-          <button
-            onClick={onClose}
-            disabled={status === 'installing'}
-            className={`p-1 rounded-lg transition-colors ${
-              status === 'installing'
-                ? 'text-gray-600 cursor-not-allowed'
-                : 'text-gray-400 hover:text-white hover:bg-gray-700'
-            }`}
-            title={status === 'installing' ? 'Please wait for installation to complete' : 'Close'}
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setIsMinimized(true)}
+              className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+              title="Minimize"
+            >
+              <Minimize2 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={onClose}
+              disabled={status === 'installing'}
+              className={`p-1 rounded-lg transition-colors ${
+                status === 'installing'
+                  ? 'text-gray-600 cursor-not-allowed'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+              title={status === 'installing' ? 'Please wait for installation to complete' : 'Close'}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Output Terminal */}
