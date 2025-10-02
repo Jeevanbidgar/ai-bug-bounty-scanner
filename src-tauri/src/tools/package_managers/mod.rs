@@ -6,9 +6,11 @@
 pub mod detection;
 pub mod version;
 pub mod installation;
+pub mod elevation;
 
 pub use detection::{PackageManagerInfo, detect_all_managers, detect_manager};
 pub use installation::{InstallationResult, install_pipx, install_go_windows, install_winget_windows};
+pub use elevation::{ElevationMethod, ElevationResult, execute_with_smart_elevation, execute_elevated, check_elevation_support};
 
 #[cfg(target_os = "linux")]
 pub use installation::install_apt_package;

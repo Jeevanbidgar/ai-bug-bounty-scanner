@@ -93,6 +93,9 @@ fn main() {
             crate::commands::install_package_manager_go,
             crate::commands::install_package_manager_apt,
             crate::commands::install_package_manager_winget,
+            crate::commands::check_elevation_support,
+            crate::commands::execute_elevated_command,
+            crate::commands::try_command_with_elevation,
             // Scan commands
             crate::commands::list_scans,
             crate::commands::create_scan,

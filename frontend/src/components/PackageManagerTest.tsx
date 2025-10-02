@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/tauri'
 import { useState } from 'react'
+import { useElevation } from './ElevationDialog'
 
 interface PackageManager {
   manager_type: 'Go' | 'Pipx' | 'Apt' | 'WinGet'
@@ -29,6 +30,8 @@ export function PackageManagerTest() {
   const [error, setError] = useState<string | null>(null)
   const [installing, setInstalling] = useState<string | null>(null)
   const [installResult, setInstallResult] = useState<InstallationResult | null>(null)
+  
+  const { tryCommandWithElevation, ElevationDialog: ElevationDialogComponent } = useElevation()
 
   const detectManagers = async () => {
     setLoading(true)
@@ -287,6 +290,9 @@ export function PackageManagerTest() {
           )}
         </div>
       )}
+      
+      {/* Elevation Dialog */}
+      <ElevationDialogComponent />
     </div>
   )
 }

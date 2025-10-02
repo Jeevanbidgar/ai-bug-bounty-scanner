@@ -1002,3 +1002,65 @@ pub async fn install_package_manager_winget() -> Result<crate::tools::package_ma
     
     Ok(result)
 }
+
+// Elevation Commands
+
+#[tauri::command]
+pub async fn check_elevation_support() -> Result<crate::tools::package_managers::ElevationMethod, String> {
+    eprintln!("🔐 Checking elevation support...");
+    let method = crate::tools::package_managers::check_elevation_support().await;
+    eprintln!("✓ Elevation method: {:?}", method);
+    Ok(method)
+}
+
+#[tauri::command]
+pub async fn execute_elevated_command(
+    command: String,
+    args: Vec<String>,
+    timeout_secs: u64,
+) -> Result<crate::tools::package_managers::ElevationResult, String> {
+    eprintln!("🔐 Executing elevated command: {} {:?}", command, args);
+    
+    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let result = crate::tools::package_managers::execute_elevated(
+        &command,
+        &args_refs,
+        timeout_secs
+    ).await?;
+    
+    if result.success {
+        eprintln!("✅ Elevated command succeeded");
+    } else {
+        eprintln!("❌ Elevated command failed");
+    }
+    
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn try_command_with_elevation(
+    command: String,
+    args: Vec<String>,
+    reason: String,
+    timeout_secs: u64,
+) -> Result<crate::tools::package_managers::ElevationResult, String> {
+    eprintln!("🔐 Trying command with smart elevation: {} {:?}", command, args);
+    eprintln!("   Reason: {}", reason);
+    
+    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    
+    match crate::tools::package_managers::execute_with_smart_elevation(
+        &command,
+        &args_refs,
+        &reason,
+        timeout_secs
+    ).await {
+        Ok(result) => Ok(result),
+        Err(e) if e.starts_with("ELEVATION_REQUIRED:") => {
+            // Return error to frontend so it can show dialog
+            Err(e)
+        },
+        Err(e) => Err(e)
+    }
+}
+
