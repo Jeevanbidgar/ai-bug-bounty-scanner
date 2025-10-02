@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, CheckCircle, XCircle, AlertTriangle, Loader2, Play, RefreshCw, Copy, ExternalLink, Check } from 'lucide-react'
+import { X, CheckCircle, XCircle, AlertTriangle, Loader2, Play, RefreshCw, Copy, ExternalLink, Check, Download, Trash2, ArrowUpCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/Card'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
@@ -7,6 +7,7 @@ import type { Tool } from '../services/api'
 import { invoke } from '@tauri-apps/api/tauri'
 import { useToast } from '../hooks/useToast'
 import Toast from './ui/Toast'
+import apiService from '../services/api'
 
 interface ToolDetailModalProps {
   tool: Tool
@@ -26,6 +27,16 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
   const [osInfo, setOsInfo] = useState<OsInfo | null>(null)
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [isRechecking, setIsRechecking] = useState(false)
+  const [isInstalling, setIsInstalling] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [isUninstalling, setIsUninstalling] = useState(false)
+  const [installationInfo, setInstallationInfo] = useState<{
+    install_method: string
+    go_module: string | null
+    pipx_package: string | null
+    apt_package: string | null
+    winget_id: string | null
+  } | null>(null)
   const { toasts, success, error: showError, info, removeToast } = useToast()
 
   useEffect(() => {
@@ -37,8 +48,19 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
         console.error('Failed to get OS info:', error)
       }
     }
+    
+    const fetchInstallationInfo = async () => {
+      try {
+        const info = await apiService.getToolInstallationInfo(tool.name)
+        setInstallationInfo(info)
+      } catch (error) {
+        console.error('Failed to get installation info:', error)
+      }
+    }
+    
     fetchOsInfo()
-  }, [])
+    fetchInstallationInfo()
+  }, [tool.name])
 
   const getInstallCommands = (toolName: string, platform: string): { name: string, command: string, link?: string }[] => {
     const commonToolCommands: Record<string, Record<string, { name: string, command: string, link?: string }[]>> = {
@@ -172,6 +194,86 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
     }
   }
 
+  const handleInstall = async () => {
+    setIsInstalling(true)
+    
+    try {
+      info(`Installing ${tool.name}...`)
+      const result = await apiService.installTool(tool.name)
+      
+      if (result.success) {
+        success(result.message)
+        
+        // Recheck tool status after installation
+        const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
+        if (updatedTool) {
+          setTool(updatedTool)
+        }
+      } else {
+        showError(result.message)
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to install tool'
+      showError(errorMessage)
+    } finally {
+      setIsInstalling(false)
+    }
+  }
+
+  const handleUpdate = async () => {
+    setIsUpdating(true)
+    
+    try {
+      info(`Updating ${tool.name}...`)
+      const result = await apiService.updateTool(tool.name)
+      
+      if (result.success) {
+        success(result.message)
+        
+        // Recheck tool status after update
+        const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
+        if (updatedTool) {
+          setTool(updatedTool)
+        }
+      } else {
+        showError(result.message)
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update tool'
+      showError(errorMessage)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const handleUninstall = async () => {
+    if (!confirm(`Are you sure you want to uninstall ${tool.name}?`)) {
+      return
+    }
+    
+    setIsUninstalling(true)
+    
+    try {
+      info(`Uninstalling ${tool.name}...`)
+      const message = await apiService.uninstallTool(tool.name)
+      
+      success(message)
+      
+      // Recheck tool status after uninstallation
+      const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
+      if (updatedTool) {
+        setTool(updatedTool)
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to uninstall tool'
+      showError(errorMessage)
+    } finally {
+      setIsUninstalling(false)
+    }
+  }
+
+  const canInstall = installationInfo && ['go', 'pipx', 'apt', 'winget'].includes(installationInfo.install_method)
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div className="bg-gray-900 rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
@@ -246,6 +348,28 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
                     {tool.output_format}
                   </p>
                 </div>
+
+                {installationInfo && (
+                  <div className="col-span-2">
+                    <p className="text-sm text-gray-400 mb-1">Installation Method</p>
+                    <div className="flex items-center gap-2">
+                      <Badge className={
+                        installationInfo.install_method === 'go' ? 'bg-green-700 text-green-100' :
+                        installationInfo.install_method === 'pipx' ? 'bg-yellow-700 text-yellow-100' :
+                        installationInfo.install_method === 'apt' ? 'bg-blue-700 text-blue-100' :
+                        installationInfo.install_method === 'winget' ? 'bg-blue-700 text-blue-100' :
+                        'bg-gray-700 text-gray-100'
+                      }>
+                        {installationInfo.install_method}
+                      </Badge>
+                      {canInstall ? (
+                        <span className="text-xs text-green-400">• One-click install available</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">• Manual installation required</span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Command Template */}
@@ -452,28 +576,97 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
         </div>
 
         {/* Footer Actions */}
-        <div className="sticky bottom-0 bg-gray-900 border-t border-gray-700 px-6 py-4 flex justify-between gap-3">
-          <Button
-            onClick={handleRecheck}
-            variant="outline"
-            className="flex-1"
-            disabled={isRechecking}
-          >
-            {isRechecking ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Rechecking...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Recheck Status
-              </>
+        <div className="sticky bottom-0 bg-gray-900 border-t border-gray-700 px-6 py-4">
+          <div className="flex flex-col gap-3">
+            {/* Installation Actions Row */}
+            {canInstall && (
+              <div className="flex gap-2">
+                {!tool.installed ? (
+                  <Button
+                    onClick={handleInstall}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                    disabled={isInstalling}
+                  >
+                    {isInstalling ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Installing...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" />
+                        Install {tool.name}
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      onClick={handleUpdate}
+                      variant="outline"
+                      className="flex-1 border-blue-600 text-blue-400 hover:bg-blue-900/30"
+                      disabled={isUpdating}
+                    >
+                      {isUpdating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Updating...
+                        </>
+                      ) : (
+                        <>
+                          <ArrowUpCircle className="mr-2 h-4 w-4" />
+                          Update
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handleUninstall}
+                      variant="outline"
+                      className="flex-1 border-red-600 text-red-400 hover:bg-red-900/30"
+                      disabled={isUninstalling}
+                    >
+                      {isUninstalling ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Uninstalling...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Uninstall
+                        </>
+                      )}
+                    </Button>
+                  </>
+                )}
+              </div>
             )}
-          </Button>
-          <Button onClick={onClose} className="flex-1">
-            Close
-          </Button>
+            
+            {/* General Actions Row */}
+            <div className="flex gap-3">
+              <Button
+                onClick={handleRecheck}
+                variant="outline"
+                className="flex-1"
+                disabled={isRechecking}
+              >
+                {isRechecking ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Rechecking...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Recheck Status
+                  </>
+                )}
+              </Button>
+              <Button onClick={onClose} className="flex-1">
+                Close
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
       

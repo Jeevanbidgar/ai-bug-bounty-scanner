@@ -571,6 +571,86 @@ class ApiService {
   async getSystemMetrics() {
     return { data: await this.invokeCommand('get_system_metrics') }
   }
+
+  // Tool Installation Commands (Phase 8)
+  
+  async installTool(toolName: string): Promise<{ success: boolean; message: string; steps: any[]; requires_restart: boolean }> {
+    try {
+      const result = await this.invokeCommand('install_tool', { toolName }) as { success: boolean; message: string; steps: any[]; requires_restart: boolean }
+      return result
+    } catch (error) {
+      console.error('Failed to install tool:', error)
+      throw error
+    }
+  }
+
+  async updateTool(toolName: string): Promise<{ success: boolean; message: string; steps: any[]; requires_restart: boolean }> {
+    try {
+      const result = await this.invokeCommand('update_tool', { toolName }) as { success: boolean; message: string; steps: any[]; requires_restart: boolean }
+      return result
+    } catch (error) {
+      console.error('Failed to update tool:', error)
+      throw error
+    }
+  }
+
+  async uninstallTool(toolName: string): Promise<string> {
+    try {
+      const message = await this.invokeCommand('uninstall_tool', { toolName }) as string
+      return message
+    } catch (error) {
+      console.error('Failed to uninstall tool:', error)
+      throw error
+    }
+  }
+
+  async checkToolInstalled(toolName: string): Promise<boolean> {
+    try {
+      const result = await this.invokeCommand('check_tool_installed', { toolName }) as boolean
+      return result
+    } catch (error) {
+      console.error('Failed to check tool installation:', error)
+      return false
+    }
+  }
+
+  async getToolVersion(toolName: string): Promise<string | null> {
+    try {
+      const version = await this.invokeCommand('get_tool_version', { toolName }) as string | null
+      return version
+    } catch (error) {
+      console.error('Failed to get tool version:', error)
+      return null
+    }
+  }
+
+  async getToolInstallationInfo(toolName: string): Promise<{
+    name: string
+    install_method: string
+    go_module: string | null
+    pipx_package: string | null
+    apt_package: string | null
+    winget_id: string | null
+    description: string
+    category: string
+  }> {
+    try {
+      const info = await this.invokeCommand('get_tool_installation_info', { toolName }) as {
+        name: string
+        install_method: string
+        go_module: string | null
+        pipx_package: string | null
+        apt_package: string | null
+        winget_id: string | null
+        description: string
+        category: string
+      }
+      return info
+    } catch (error) {
+      console.error('Failed to get tool installation info:', error)
+      throw error
+    }
+  }
 }
 
 // Create singleton instance
