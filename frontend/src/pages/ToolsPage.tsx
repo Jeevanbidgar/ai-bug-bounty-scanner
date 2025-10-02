@@ -512,6 +512,12 @@ const ToolsPage = () => {
         <ToolDetailModal 
           tool={selectedTool}
           onClose={() => setSelectedTool(null)}
+          onToolUpdate={(updatedTool) => {
+            // Update the tool in the local state
+            setSelectedTool(updatedTool)
+            // Optionally refetch the full tools list
+            refetch()
+          }}
         />
       )}
     </div>

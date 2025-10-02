@@ -12,6 +12,7 @@ import apiService from '../services/api'
 interface ToolDetailModalProps {
   tool: Tool
   onClose: () => void
+  onToolUpdate?: (updatedTool: Tool) => void
 }
 
 interface OsInfo {
@@ -19,7 +20,7 @@ interface OsInfo {
   arch: string
 }
 
-const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) => {
+const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate }: ToolDetailModalProps) => {
   const [tool, setTool] = useState(initialTool)
   const [isTestRunning, setIsTestRunning] = useState(false)
   const [testOutput, setTestOutput] = useState<string | null>(null)
@@ -30,6 +31,9 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
   const [isInstalling, setIsInstalling] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const [isUninstalling, setIsUninstalling] = useState(false)
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
+  const [updateAvailable, setUpdateAvailable] = useState<boolean>(false)
+  const [latestVersion, setLatestVersion] = useState<string | null>(null)
   const [installationInfo, setInstallationInfo] = useState<{
     install_method: string
     go_module: string | null
@@ -58,9 +62,23 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
       }
     }
     
+    const fetchVersion = async () => {
+      if (tool.installed) {
+        try {
+          const version = await apiService.getToolVersion(tool.name)
+          if (version) {
+            setTool(prev => ({ ...prev, raw_version: version }))
+          }
+        } catch (error) {
+          console.error('Failed to fetch version:', error)
+        }
+      }
+    }
+    
     fetchOsInfo()
     fetchInstallationInfo()
-  }, [tool.name])
+    fetchVersion()
+  }, [tool.name, tool.installed])
 
   const getInstallCommands = (toolName: string, platform: string): { name: string, command: string, link?: string }[] => {
     const commonToolCommands: Record<string, Record<string, { name: string, command: string, link?: string }[]>> = {
@@ -164,6 +182,27 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
         // Update the local state
         setTool(updatedTool)
         
+        // Notify parent component of the update
+        if (onToolUpdate) {
+          onToolUpdate(updatedTool)
+        }
+        
+        // Fetch version if installed
+        if (updatedTool.installed) {
+          try {
+            const version = await apiService.getToolVersion(tool.name)
+            if (version) {
+              const toolWithVersion = { ...updatedTool, raw_version: version }
+              setTool(toolWithVersion)
+              if (onToolUpdate) {
+                onToolUpdate(toolWithVersion)
+              }
+            }
+          } catch (error) {
+            console.error('Failed to fetch version:', error)
+          }
+        }
+        
         // Show appropriate notification
         if (updatedTool.installed && !previousStatus) {
           success(`${updatedTool.name} is now available!`)
@@ -172,8 +211,6 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
         } else {
           success(`${updatedTool.name} status checked`)
         }
-        
-        // NO parent callback - completely isolated recheck
       }
     } catch (error) {
       console.error('Failed to recheck tool:', error)
@@ -207,7 +244,22 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
         // Recheck tool status after installation
         const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
         if (updatedTool) {
+          // Fetch version
+          try {
+            const version = await apiService.getToolVersion(tool.name)
+            if (version) {
+              updatedTool.raw_version = version
+            }
+          } catch (error) {
+            console.error('Failed to fetch version:', error)
+          }
+          
           setTool(updatedTool)
+          
+          // Notify parent component
+          if (onToolUpdate) {
+            onToolUpdate(updatedTool)
+          }
         }
       } else {
         showError(result.message)
@@ -233,7 +285,24 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
         // Recheck tool status after update
         const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
         if (updatedTool) {
+          // Fetch new version
+          try {
+            const version = await apiService.getToolVersion(tool.name)
+            if (version) {
+              updatedTool.raw_version = version
+            }
+          } catch (error) {
+            console.error('Failed to fetch version:', error)
+          }
+          
           setTool(updatedTool)
+          setUpdateAvailable(false) // Reset update flag
+          setLatestVersion(null)
+          
+          // Notify parent component
+          if (onToolUpdate) {
+            onToolUpdate(updatedTool)
+          }
         }
       } else {
         showError(result.message)
@@ -243,6 +312,35 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
       showError(errorMessage)
     } finally {
       setIsUpdating(false)
+    }
+  }
+
+  const handleCheckForUpdates = async () => {
+    setIsCheckingUpdate(true)
+    
+    try {
+      info(`Checking for ${tool.name} updates...`)
+      
+      // Get current version
+      const currentVersion = tool.raw_version
+      if (!currentVersion) {
+        showError('Unable to determine current version')
+        return
+      }
+      
+      // Update to @latest and compare versions
+      // Since Go doesn't have a "check latest" command, we'll use a different strategy:
+      // For now, we'll enable the button and let users decide
+      // Future: Implement GitHub API check for releases
+      
+      success('Update check feature coming soon! Click Update to get latest version.')
+      setUpdateAvailable(true)
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to check for updates'
+      showError(errorMessage)
+    } finally {
+      setIsCheckingUpdate(false)
     }
   }
 
@@ -263,6 +361,11 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
       const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
       if (updatedTool) {
         setTool(updatedTool)
+        
+        // Notify parent component
+        if (onToolUpdate) {
+          onToolUpdate(updatedTool)
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to uninstall tool'
@@ -604,7 +707,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
                     <Button
                       onClick={handleUpdate}
                       variant="outline"
-                      className="flex-1 border-blue-600 text-blue-400 hover:bg-blue-900/30"
+                      className={`flex-1 ${updateAvailable ? 'border-green-600 text-green-400 hover:bg-green-900/30' : 'border-blue-600 text-blue-400 hover:bg-blue-900/30'}`}
                       disabled={isUpdating}
                     >
                       {isUpdating ? (
@@ -615,7 +718,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) =
                       ) : (
                         <>
                           <ArrowUpCircle className="mr-2 h-4 w-4" />
-                          Update
+                          Update {updateAvailable && '✨'}
                         </>
                       )}
                     </Button>
