@@ -9,11 +9,17 @@ pub mod installation;
 pub mod elevation;
 pub mod go_install;
 pub mod version_checker;
+pub mod pipx_manager;
+pub mod apt_manager;
+pub mod winget_manager;
 
 pub use detection::{PackageManagerInfo, detect_all_managers, detect_manager};
 pub use installation::{InstallationResult, install_pipx, install_go_windows, install_winget_windows};
 pub use elevation::{ElevationMethod, ElevationResult, execute_with_smart_elevation, execute_elevated, check_elevation_support};
 pub use go_install::GoInstallManager;
+pub use pipx_manager::PipxManager;
+pub use apt_manager::AptManager;
+pub use winget_manager::WingetManager;
 pub use version_checker::{
     VersionCheckResult, 
     check_go_update, 

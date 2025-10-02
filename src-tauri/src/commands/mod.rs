@@ -1056,16 +1056,88 @@ pub async fn install_tool(
             })
         },
         "pipx" => {
-            // Future: Use PipxManager
-            Err(format!("pipx installation not yet implemented for '{}'", toolName))
+            let pipx_package = tool_def.pipx_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no pipx_package defined", toolName))?;
+            
+            eprintln!("   Pipx package: {}", pipx_package);
+            
+            let manager = crate::tools::package_managers::PipxManager::new();
+            
+            if !manager.is_pipx_available().await {
+                return Err("pipx is not installed. Please install pipx first.".to_string());
+            }
+            
+            let pipx_result = manager.install(pipx_package, &toolName).await?;
+            
+            if pipx_result.success {
+                eprintln!("✅ Successfully installed {}", toolName);
+                let _ = recheck_tool(toolName.clone(), state).await;
+            } else {
+                eprintln!("❌ Failed to install {}: {}", toolName, pipx_result.message);
+            }
+            
+            Ok(InstallationResult {
+                success: pipx_result.success,
+                message: pipx_result.message,
+                steps: vec![],
+                requires_restart: false,
+            })
         },
         "apt" => {
-            // Future: Use AptManager
-            Err(format!("apt installation not yet implemented for '{}'", toolName))
+            let apt_package = tool_def.apt_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no apt_package defined", toolName))?;
+            
+            eprintln!("   APT package: {}", apt_package);
+            
+            let manager = crate::tools::package_managers::AptManager::new();
+            
+            if !manager.is_apt_available().await {
+                return Err("apt is not available. This system is not Debian/Ubuntu-based.".to_string());
+            }
+            
+            let apt_result = manager.install(apt_package, &toolName).await?;
+            
+            if apt_result.success {
+                eprintln!("✅ Successfully installed {}", toolName);
+                let _ = recheck_tool(toolName.clone(), state).await;
+            } else {
+                eprintln!("❌ Failed to install {}: {}", toolName, apt_result.message);
+            }
+            
+            Ok(InstallationResult {
+                success: apt_result.success,
+                message: apt_result.message,
+                steps: vec![],
+                requires_restart: false,
+            })
         },
         "winget" => {
-            // Future: Use WinGetManager
-            Err(format!("winget installation not yet implemented for '{}'", toolName))
+            let winget_id = tool_def.winget_id.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no winget_id defined", toolName))?;
+            
+            eprintln!("   WinGet ID: {}", winget_id);
+            
+            let manager = crate::tools::package_managers::WingetManager::new();
+            
+            if !manager.is_winget_available().await {
+                return Err("winget is not installed. Please install App Installer from Microsoft Store.".to_string());
+            }
+            
+            let winget_result = manager.install(winget_id, &toolName).await?;
+            
+            if winget_result.success {
+                eprintln!("✅ Successfully installed {}", toolName);
+                let _ = recheck_tool(toolName.clone(), state).await;
+            } else {
+                eprintln!("❌ Failed to install {}: {}", toolName, winget_result.message);
+            }
+            
+            Ok(InstallationResult {
+                success: winget_result.success,
+                message: winget_result.message,
+                steps: vec![],
+                requires_restart: false,
+            })
         },
         "manual" => {
             Err(format!("Tool '{}' requires manual installation. Check documentation.", toolName))
@@ -1125,13 +1197,82 @@ pub async fn update_tool(
             })
         },
         "pipx" => {
-            Err(format!("pipx update not yet implemented for '{}'", toolName))
+            let pipx_package = tool_def.pipx_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no pipx_package defined", toolName))?;
+            
+            let manager = crate::tools::package_managers::PipxManager::new();
+            
+            if !manager.is_pipx_available().await {
+                return Err("pipx is not installed.".to_string());
+            }
+            
+            let pipx_result = manager.update(pipx_package, &toolName).await?;
+            
+            if pipx_result.success {
+                eprintln!("✅ Successfully updated {}", toolName);
+                let _ = recheck_tool(toolName.clone(), state).await;
+            } else {
+                eprintln!("❌ Failed to update {}: {}", toolName, pipx_result.message);
+            }
+            
+            Ok(InstallationResult {
+                success: pipx_result.success,
+                message: pipx_result.message,
+                steps: vec![],
+                requires_restart: false,
+            })
         },
         "apt" => {
-            Err(format!("apt update not yet implemented for '{}'", toolName))
+            let apt_package = tool_def.apt_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no apt_package defined", toolName))?;
+            
+            let manager = crate::tools::package_managers::AptManager::new();
+            
+            if !manager.is_apt_available().await {
+                return Err("apt is not available.".to_string());
+            }
+            
+            let apt_result = manager.update(apt_package, &toolName).await?;
+            
+            if apt_result.success {
+                eprintln!("✅ Successfully updated {}", toolName);
+                let _ = recheck_tool(toolName.clone(), state).await;
+            } else {
+                eprintln!("❌ Failed to update {}: {}", toolName, apt_result.message);
+            }
+            
+            Ok(InstallationResult {
+                success: apt_result.success,
+                message: apt_result.message,
+                steps: vec![],
+                requires_restart: false,
+            })
         },
         "winget" => {
-            Err(format!("winget update not yet implemented for '{}'", toolName))
+            let winget_id = tool_def.winget_id.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no winget_id defined", toolName))?;
+            
+            let manager = crate::tools::package_managers::WingetManager::new();
+            
+            if !manager.is_winget_available().await {
+                return Err("winget is not installed.".to_string());
+            }
+            
+            let winget_result = manager.update(winget_id, &toolName).await?;
+            
+            if winget_result.success {
+                eprintln!("✅ Successfully updated {}", toolName);
+                let _ = recheck_tool(toolName.clone(), state).await;
+            } else {
+                eprintln!("❌ Failed to update {}: {}", toolName, winget_result.message);
+            }
+            
+            Ok(InstallationResult {
+                success: winget_result.success,
+                message: winget_result.message,
+                steps: vec![],
+                requires_restart: false,
+            })
         },
         _ => {
             Err(format!("Cannot update tool '{}' with install method '{}'", toolName, tool_def.install_method))
@@ -1166,13 +1307,46 @@ pub async fn uninstall_tool(
             Ok(message)
         },
         "pipx" => {
-            Err(format!("pipx uninstall not yet implemented for '{}'", toolName))
+            let pipx_package = tool_def.pipx_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no pipx_package defined", toolName))?;
+            
+            let manager = crate::tools::package_managers::PipxManager::new();
+            
+            let message = manager.uninstall(pipx_package, &toolName).await?;
+            
+            eprintln!("✅ {}", message);
+            
+            let _ = recheck_tool(toolName.clone(), state).await;
+            
+            Ok(message)
         },
         "apt" => {
-            Err(format!("apt uninstall not yet implemented for '{}'", toolName))
+            let apt_package = tool_def.apt_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no apt_package defined", toolName))?;
+            
+            let manager = crate::tools::package_managers::AptManager::new();
+            
+            let message = manager.uninstall(apt_package, &toolName).await?;
+            
+            eprintln!("✅ {}", message);
+            
+            let _ = recheck_tool(toolName.clone(), state).await;
+            
+            Ok(message)
         },
         "winget" => {
-            Err(format!("winget uninstall not yet implemented for '{}'", toolName))
+            let winget_id = tool_def.winget_id.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no winget_id defined", toolName))?;
+            
+            let manager = crate::tools::package_managers::WingetManager::new();
+            
+            let message = manager.uninstall(winget_id, &toolName).await?;
+            
+            eprintln!("✅ {}", message);
+            
+            let _ = recheck_tool(toolName.clone(), state).await;
+            
+            Ok(message)
         },
         _ => {
             Err(format!("Cannot uninstall tool '{}' with install method '{}'", toolName, tool_def.install_method))
