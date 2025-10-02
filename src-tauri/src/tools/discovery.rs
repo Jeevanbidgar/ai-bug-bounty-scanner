@@ -292,6 +292,11 @@ impl ToolDiscoveryService {
         Ok(self.registry.resolve_tool_path(tool_name).await.is_some())
     }
 
+    /// Get the path to a tool if it's available (public wrapper for registry method)
+    pub async fn get_tool_path(&self, tool_name: &str) -> Option<String> {
+        self.registry.resolve_tool_path(tool_name).await
+    }
+
     pub async fn get_available_tools(&self) -> Result<Vec<String>> {
         let mut available_tools = Vec::new();
         let definitions = self.definitions.read().await;

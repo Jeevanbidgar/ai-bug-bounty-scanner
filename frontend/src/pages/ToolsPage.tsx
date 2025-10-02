@@ -34,7 +34,7 @@ const ToolsPage = () => {
   const [manualToolCategory, setManualToolCategory] = useState('custom')
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null)
   
-  const { toasts, success, error: showError, removeToast } = useToast()
+  const { toasts, success, error: showError, info, removeToast } = useToast()
 
   const { data: tools, isLoading, error, refetch } = useQuery({
     queryKey: ['tools'],
@@ -119,25 +119,6 @@ const ToolsPage = () => {
       return <CheckCircle className="h-4 w-4 text-green-500" />
     } else {
       return <XCircle className="h-4 w-4 text-red-500" />
-    }
-  }
-
-  const handleToolRefresh = async (toolName: string) => {
-    try {
-      await apiService.getTool(toolName, true) // Force refresh this specific tool
-      await refetch() // Refresh the tool list
-      success(`${toolName} status updated`)
-      
-      // Update the selected tool if it's currently open
-      if (selectedTool && selectedTool.name === toolName) {
-        const updatedTools = await apiService.getTools(false)
-        const updatedTool = updatedTools.data.find(t => t.name === toolName)
-        if (updatedTool) {
-          setSelectedTool(updatedTool)
-        }
-      }
-    } catch (error) {
-      showError(`Failed to refresh ${toolName}`)
     }
   }
 
@@ -531,7 +512,6 @@ const ToolsPage = () => {
         <ToolDetailModal 
           tool={selectedTool}
           onClose={() => setSelectedTool(null)}
-          onRefresh={handleToolRefresh}
         />
       )}
     </div>

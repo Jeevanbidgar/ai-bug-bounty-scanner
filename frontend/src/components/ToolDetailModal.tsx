@@ -5,11 +5,12 @@ import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import type { Tool } from '../services/api'
 import { invoke } from '@tauri-apps/api/tauri'
+import { useToast } from '../hooks/useToast'
+import Toast from './ui/Toast'
 
 interface ToolDetailModalProps {
   tool: Tool
   onClose: () => void
-  onRefresh?: (toolName: string) => void
 }
 
 interface OsInfo {
@@ -17,12 +18,15 @@ interface OsInfo {
   arch: string
 }
 
-const ToolDetailModal = ({ tool, onClose, onRefresh }: ToolDetailModalProps) => {
+const ToolDetailModal = ({ tool: initialTool, onClose }: ToolDetailModalProps) => {
+  const [tool, setTool] = useState(initialTool)
   const [isTestRunning, setIsTestRunning] = useState(false)
   const [testOutput, setTestOutput] = useState<string | null>(null)
   const [testError, setTestError] = useState<string | null>(null)
   const [osInfo, setOsInfo] = useState<OsInfo | null>(null)
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
+  const [isRechecking, setIsRechecking] = useState(false)
+  const { toasts, success, error: showError, info, removeToast } = useToast()
 
   useEffect(() => {
     const fetchOsInfo = async () => {
@@ -126,9 +130,34 @@ const ToolDetailModal = ({ tool, onClose, onRefresh }: ToolDetailModalProps) => 
     }
   }
 
-  const handleRecheck = () => {
-    if (onRefresh) {
-      onRefresh(tool.name)
+  const handleRecheck = async () => {
+    setIsRechecking(true)
+    const previousStatus = tool.installed
+    
+    try {
+      // Call the Tauri command directly to check just this tool
+      const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
+      
+      if (updatedTool) {
+        // Update the local state
+        setTool(updatedTool)
+        
+        // Show appropriate notification
+        if (updatedTool.installed && !previousStatus) {
+          success(`${updatedTool.name} is now available!`)
+        } else if (!updatedTool.installed && previousStatus) {
+          info(`${updatedTool.name} is no longer available`)
+        } else {
+          success(`${updatedTool.name} status checked`)
+        }
+        
+        // NO parent callback - completely isolated recheck
+      }
+    } catch (error) {
+      console.error('Failed to recheck tool:', error)
+      showError(`Failed to recheck ${tool.name}`)
+    } finally {
+      setIsRechecking(false)
     }
   }
 
@@ -428,14 +457,35 @@ const ToolDetailModal = ({ tool, onClose, onRefresh }: ToolDetailModalProps) => 
             onClick={handleRecheck}
             variant="outline"
             className="flex-1"
+            disabled={isRechecking}
           >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Recheck Status
+            {isRechecking ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Rechecking...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Recheck Status
+              </>
+            )}
           </Button>
           <Button onClick={onClose} className="flex-1">
             Close
           </Button>
         </div>
+      </div>
+      
+      {/* Toast Notifications */}
+      <div className="fixed top-4 right-4 z-[60] space-y-2">
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            {...toast}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
       </div>
     </div>
   )

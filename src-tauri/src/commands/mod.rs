@@ -256,6 +256,45 @@ pub async fn get_tool(
 }
 
 #[tauri::command]
+pub async fn recheck_tool(
+    #[allow(non_snake_case)] toolName: String,
+    state: tauri::State<'_, AppState>
+) -> Result<Option<crate::tools::discovery::ToolRecord>, String> {
+    eprintln!("🔄 Rechecking tool: {}", toolName);
+    let discovery_service = state.tool_discovery.read().await;
+    
+    // Get the current cached tool record WITHOUT forcing refresh (avoid cache save that triggers rebuild)
+    let mut record = match discovery_service.get_tool_record(&toolName, false).await {
+        Some(r) => r,
+        None => return Ok(None),
+    };
+    
+    // Manually check if tool is available without saving to cache
+    let tool_path = discovery_service.get_tool_path(&toolName).await;
+    let tool_available = tool_path.is_some();
+    
+    // Update the record in memory
+    if tool_available {
+        record.installed = true;
+        record.status = "available".to_string();
+        if let Some(path) = tool_path {
+            eprintln!("✅ Tool {} found at: {}", toolName, path);
+            record.path = Some(path);
+        }
+    } else {
+        eprintln!("⚠️  Tool {} not found on system", toolName);
+        record.installed = false;
+        record.status = "missing".to_string();
+        record.path = None;
+    }
+    
+    record.last_checked = Some(chrono::Utc::now().to_rfc3339());
+    
+    // Return the updated record WITHOUT saving cache (to avoid triggering dev server reload)
+    Ok(Some(record))
+}
+
+#[tauri::command]
 pub async fn refresh_tools(
     state: tauri::State<'_, AppState>
 ) -> Result<HashMap<String, crate::tools::discovery::ToolRecord>, String> {
