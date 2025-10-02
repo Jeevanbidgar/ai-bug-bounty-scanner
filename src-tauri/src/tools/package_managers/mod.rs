@@ -5,9 +5,13 @@
 
 pub mod detection;
 pub mod version;
+pub mod installation;
 
 pub use detection::{PackageManagerInfo, detect_all_managers, detect_manager};
-pub use version::{probe_version, parse_version};
+pub use installation::{InstallationResult, install_pipx, install_go_windows, install_winget_windows};
+
+#[cfg(target_os = "linux")]
+pub use installation::install_apt_package;
 
 use serde::{Deserialize, Serialize};
 

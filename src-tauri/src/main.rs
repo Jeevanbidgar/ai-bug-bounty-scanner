@@ -89,6 +89,10 @@ fn main() {
             // Package manager commands
             crate::commands::detect_package_managers,
             crate::commands::check_package_manager,
+            crate::commands::install_package_manager_pipx,
+            crate::commands::install_package_manager_go,
+            crate::commands::install_package_manager_apt,
+            crate::commands::install_package_manager_winget,
             // Scan commands
             crate::commands::list_scans,
             crate::commands::create_scan,

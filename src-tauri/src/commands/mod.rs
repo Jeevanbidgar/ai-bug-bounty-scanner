@@ -921,3 +921,84 @@ pub async fn check_package_manager(
     
     Ok(info)
 }
+
+// Package Manager Installation Commands
+
+#[tauri::command]
+pub async fn install_package_manager_pipx() -> Result<crate::tools::package_managers::InstallationResult, String> {
+    eprintln!("📦 Installing pipx...");
+    let result = crate::tools::package_managers::install_pipx().await?;
+    
+    if result.success {
+        eprintln!("✅ pipx installation completed");
+    } else {
+        eprintln!("❌ pipx installation failed: {}", result.message);
+    }
+    
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn install_package_manager_go() -> Result<crate::tools::package_managers::InstallationResult, String> {
+    eprintln!("📦 Installing Go...");
+    
+    #[cfg(target_os = "windows")]
+    let result = crate::tools::package_managers::install_go_windows().await?;
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        return Err("Go installation on Linux should be done via APT. Use: sudo apt install golang-go".to_string());
+    }
+    
+    if result.success {
+        eprintln!("✅ Go installation completed");
+    } else {
+        eprintln!("❌ Go installation failed: {}", result.message);
+    }
+    
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn install_package_manager_apt(package_name: String) -> Result<crate::tools::package_managers::InstallationResult, String> {
+    eprintln!("📦 Installing APT package: {}", package_name);
+    
+    #[cfg(not(target_os = "linux"))]
+    {
+        return Err("APT is only available on Linux systems".to_string());
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        let result = crate::tools::package_managers::install_apt_package(&package_name).await?;
+        
+        if result.success {
+            eprintln!("✅ APT package installed");
+        } else {
+            eprintln!("❌ APT installation failed: {}", result.message);
+        }
+        
+        Ok(result)
+    }
+}
+
+#[tauri::command]
+pub async fn install_package_manager_winget() -> Result<crate::tools::package_managers::InstallationResult, String> {
+    eprintln!("📦 Opening WinGet installation page...");
+    
+    #[cfg(target_os = "windows")]
+    let result = crate::tools::package_managers::install_winget_windows().await?;
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        return Err("WinGet is only available on Windows systems".to_string());
+    }
+    
+    if result.success {
+        eprintln!("✅ Microsoft Store opened");
+    } else {
+        eprintln!("❌ Failed to open Store: {}", result.message);
+    }
+    
+    Ok(result)
+}
