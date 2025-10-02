@@ -6,7 +6,6 @@ import ToolsPage from './pages/ToolsPage'
 import ReportsPage from './pages/ReportsPage'
 import SettingsPage from './pages/SettingsPage'
 import Layout from './components/Layout'
-// import { invoke } from '@tauri-apps/api/tauri' // Will be used when needed
 
 function App() {
   const [backendStarted, setBackendStarted] = useState(false)
@@ -14,58 +13,50 @@ function App() {
   const [isDesktopApp, setIsDesktopApp] = useState(false)
 
   useEffect(() => {
-    // Desktop app - start backend automatically
-    setIsDesktopApp(true)
-
-    const startDesktopApp = async () => {
+    // Check if we're in Tauri environment and try to connect to backend
+    const initializeApp = async () => {
       try {
-        console.log('🚀 Starting AI Bug Bounty Scanner Desktop App...')
+        // Check if we're in a Tauri environment
+        const isTauriEnv = typeof window !== 'undefined' && '__TAURI__' in window
 
-        // Start the backend server using Tauri command
-        try {
-          const { invoke } = await import('@tauri-apps/api/tauri')
-          console.log('🔧 Starting backend server...')
+        console.log('🚀 App initialization started')
+        console.log('Environment check:', {
+          hasTauri: '__TAURI__' in window,
+          isTauriEnv
+        })
 
-          // Execute the Python backend
-          const backendResult = await invoke('start_backend')
-          console.log('✅ Backend started:', backendResult)
+        if (isTauriEnv) {
+          setIsDesktopApp(true)
+          console.log('🖥️ Running in Tauri desktop environment')
 
-          // Wait a moment for backend to initialize
-          await new Promise(resolve => setTimeout(resolve, 2000))
-
-        } catch (tauriError) {
-          console.log('⚠️ Tauri command failed, trying direct backend check:', tauriError)
-        }
-
-        // Check if backend is running
-        let attempts = 0
-        const maxAttempts = 15
-
-        while (attempts < maxAttempts) {
+          // Try to connect to Rust backend via Tauri commands
           try {
-            const response = await fetch('http://localhost:8000/api/health/')
-            const data = await response.json()
-            if (response.ok && data.status === 'healthy') {
-              console.log('✅ Backend connected!', data)
-              setBackendStarted(true)
-              return
-            }
-          } catch (e) {
-            console.log(`Backend not ready yet (attempt ${attempts + 1}/${maxAttempts}):`, e)
+            console.log('🔧 Testing Rust backend connection...')
+            const { invoke } = await import('@tauri-apps/api/tauri')
+            console.log('Tauri invoke imported successfully')
+
+            // Test if we can call a simple Tauri command
+            const health = await invoke('get_system_info')
+            console.log('✅ Rust backend connected!', health)
+
+            setBackendStarted(true)
+          } catch (tauriError) {
+            console.error('❌ Failed to connect to Rust backend:', tauriError)
+            setStartupError('Failed to connect to Rust backend. Please ensure the application is running correctly.')
+            return
           }
-
-          await new Promise(resolve => setTimeout(resolve, 1000))
-          attempts++
+        } else {
+          console.log('🌐 Running in web environment')
+          setIsDesktopApp(false)
+          setBackendStarted(true)
         }
-
-        setStartupError('Backend failed to start. Please check if Python and dependencies are installed.')
       } catch (error) {
-        console.error('Desktop app startup error:', error)
-        setStartupError(`Desktop app error: ${error}`)
+        console.error('App initialization error:', error)
+        setStartupError(error instanceof Error ? error.message : 'Unknown initialization error')
       }
     }
 
-    startDesktopApp()
+    initializeApp()
   }, [])
 
   if (startupError) {
@@ -78,11 +69,11 @@ function App() {
           <div className="bg-gray-800 p-4 rounded-lg text-left">
             <p className="text-sm text-gray-300 mb-2">Troubleshooting:</p>
             <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
-              <li>Ensure Python 3.11+ is installed</li>
+              <li>Ensure the desktop app is properly installed</li>
               <li>Check if all security tools are installed (sqlmap, naabu, nuclei, etc.)</li>
-              <li>Verify backend dependencies: pip install -r requirements.txt</li>
-              <li>Try running manually: python run.py</li>
-              <li>Check if antivirus is blocking the desktop app</li>
+              <li>Verify antivirus is not blocking the desktop app</li>
+              <li>Try restarting the application</li>
+              <li>Check the console for detailed error messages</li>
             </ul>
           </div>
         </div>

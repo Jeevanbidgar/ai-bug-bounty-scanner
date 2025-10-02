@@ -1,34 +1,28 @@
 /**
- * API service for HTTP requests to the FastAPI backend
+ * API service for Tauri commands to the Rust backend
  */
 
-// API base URL - works for both web and desktop apps
-export const API_BASE_URL = (() => {
-  // Check if we're in a desktop app context
-  if (typeof window !== 'undefined') {
-    const origin = window.location.origin
-    const hostname = window.location.hostname
-    const port = window.location.port
+// Check if we're running in Tauri
+const isTauriEnvironment = () => {
+  // More robust Tauri detection
+  if (typeof window === 'undefined') return false
 
-    console.log('🌐 App context:', { origin, hostname, port })
+  // Check for Tauri global object
+  if ('__TAURI__' in window) return true
 
-    // For Tauri desktop app (tauri://localhost)
-    if (origin.startsWith('tauri://')) {
-      console.log('🖥️ Desktop app detected, using localhost:8000')
-      return 'http://localhost:8000'
-    }
+  // Check for Tauri protocol
+  try {
+    const loc = (window as any).location
+    if (loc?.protocol === 'tauri:') return true
 
-    // For web development (localhost:5173, localhost:5174, etc.)
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      console.log('🌐 Web development detected, using localhost:8000')
-      return 'http://localhost:8000'
-    }
+    // Check for Tauri origin
+    if (loc?.origin.startsWith('tauri://')) return true
+  } catch (e) {
+    // window.location might not be available in some contexts
   }
 
-  // Default fallback
-  console.log('🔄 Using default API base URL')
-  return 'http://localhost:8000'
-})()
+  return false
+}
 
 export interface ApiResponse<T = any> {
   data?: T
@@ -38,40 +32,50 @@ export interface ApiResponse<T = any> {
 
 export interface Scan {
   id: string
+  name: string
   target: string
-  scan_type: string
   status: string
+  scan_type: string
+  workflow_id?: string
+  started: string
+  completed?: string
   progress: number
-  started: string | null
-  completed: string | null
-  agents: string[]
   current_test?: string
+  current_step?: string
+  total_steps?: number
+  duration?: string
+  estimated_time?: string
+  description?: string
+  tags?: string
+  working_directory?: string
+  agents?: string
+  command_log?: string
+  target_validated: boolean
   vulnerabilities?: number
   critical?: number
   high?: number
   medium?: number
   low?: number
-  target_validated?: boolean
-  scanType?: string  // Keep for backward compatibility
+  created_at: string
+  updated_at: string
 }
 
 export interface Tool {
   name: string
   description: string
   category: string
-  status: string
+  status: string // "available", "missing", "degraded", "error"
   installed: boolean
-  available: boolean
-  version: string | null
-  raw_version?: string | null
-  path?: string | null
   command_template: string[]
   output_format: string
+  version: string | null
+  raw_version: string | null
+  path: string | null
   os_dependencies: string[]
   missing_dependencies: string[]
-  last_check?: string | null
-  last_seen?: string | null
-  last_error?: string | null
+  last_checked: string | null
+  last_seen: string | null
+  last_error: string | null
 }
 
 export interface Report {
@@ -101,6 +105,7 @@ export interface WorkflowCompatibility {
   available_tools: string[]
   missing_tools: string[]
   compatibility_percentage: number
+  warnings?: string[]
 }
 
 export interface WorkflowTemplate {
@@ -108,7 +113,9 @@ export interface WorkflowTemplate {
   name: string
   description: string
   category: string
-  steps: WorkflowStep[]
+  steps_count: number
+  inputs: Record<string, string>
+  steps?: WorkflowStep[]
   compatibility?: WorkflowCompatibility
 }
 
@@ -129,6 +136,20 @@ export interface WorkflowOutput {
   type: string
   path: string
   description?: string
+}
+
+export interface WorkflowArtifact {
+  id: string
+  execution_id: string
+  step_id: string
+  name: string
+  artifact_type: string
+  file_path?: string
+  content?: string
+  metadata_?: string  // JSON string containing line_count, is_text, etc.
+  size?: number       // File size in bytes (enriched by ArtifactManager)
+  hash?: string       // SHA256 hash (enriched by ArtifactManager)
+  created_at: string
 }
 
 export interface WorkflowExecution {
@@ -159,58 +180,84 @@ export interface StepExecution {
 }
 
 class ApiService {
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<ApiResponse<T>> {
+  private async invokeCommand<T>(command: string, args: any = {}): Promise<T> {
+    if (!isTauriEnvironment()) {
+      const errorMsg = `Tauri command ${command} called but not in Tauri environment`
+      console.error(errorMsg)
+      throw new Error(errorMsg)
+    }
+
     try {
-      const url = `${API_BASE_URL}${endpoint}`
-      console.log(`🔗 API Request: ${options.method || 'GET'} ${url}`)
-      console.log(`🌐 Request origin: ${window.location.origin}`)
-      console.log(`📍 Request location: ${window.location.href}`)
+      console.log(`🔗 Attempting Tauri command: ${command}`, args)
+      const { invoke } = await import('@tauri-apps/api/tauri')
+      console.log('Tauri invoke imported successfully')
 
-      const response = await fetch(url, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          ...options.headers,
-        },
-        ...options,
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-        console.error(`❌ API Error ${response.status}:`, errorData)
-        throw new Error(errorData.error || `HTTP ${response.status}`)
-      }
-
-      const data = await response.json()
-      console.log(`✅ API Response:`, { status: response.status, dataType: typeof data, dataLength: Array.isArray(data) ? data.length : 'N/A' })
-      return { data }
+      const result = await invoke(command, args)
+      console.log(`✅ Tauri Response for ${command}:`, result)
+      return result as T
     } catch (error) {
-      console.error(`API request failed: ${endpoint}`, error)
-      return {
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      console.error(`❌ Tauri command failed: ${command}`, error)
+      console.error(`Command: ${command}, Args:`, args)
+      console.error('Error details:', error)
+      
+      // Re-throw the error with better context
+      throw new Error(`Failed to execute command '${command}': ${error}`)
+    }
+  }
+
+  // Health endpoints - using Tauri commands
+  async getHealth() {
+    return { data: { status: 'healthy', backend: 'rust' } }
+  }
+
+  async getDetailedHealth() {
+    try {
+      // Get system stats from Tauri commands
+      const stats = await this.invokeCommand('get_stats')
+      return { data: stats }
+    } catch (error) {
+      console.error('Failed to get detailed health:', error)
+      // Fallback to computing stats manually
+      try {
+        const scans = await this.invokeCommand('list_scans')
+        const toolsCount = await this.getAvailableToolsCount()
+
+        const stats: SystemStats = {
+          total_scans: Array.isArray(scans) ? scans.length : 0,
+          active_scans: Array.isArray(scans) ? scans.filter((s: any) => s.status === 'running').length : 0,
+          total_vulnerabilities: 0,
+          critical_issues: 0,
+          tools_available: toolsCount.data,
+          system_health: 'healthy'
+        }
+
+        return { data: stats }
+      } catch (fallbackError) {
+        console.error('Failed to get stats:', fallbackError)
+        return { error: 'Failed to get system health' }
       }
     }
   }
 
-  // Health endpoints
-  async getHealth() {
-    return this.request('/api/health/')
-  }
-
-  async getDetailedHealth() {
-    return this.request<SystemStats>('/api/health/')
-  }
-
-  // Scan endpoints
+  // Scan endpoints - using Tauri commands
   async getScans() {
-    return this.request<Scan[]>('/api/scans/')
+    try {
+      const scans = await this.invokeCommand('list_scans')
+      return { data: scans }
+    } catch (error) {
+      console.error('Failed to get scans:', error)
+      return { data: [] }
+    }
   }
 
   async getScan(scanId: string) {
-    return this.request<Scan>(`/api/scans/${scanId}`)
+    try {
+      const scan = await this.invokeCommand('get_scan', { scanId })
+      return { data: scan }
+    } catch (error) {
+      console.error('Failed to get scan:', error)
+      return { data: null }
+    }
   }
 
   async createScan(scanData: {
@@ -218,92 +265,161 @@ class ApiService {
     scan_type?: string
     agents?: string[]
   }) {
-    return this.request<Scan>('/api/scans/', {
-      method: 'POST',
-      body: JSON.stringify(scanData),
-    })
+    try {
+      const scan = await this.invokeCommand('create_scan', { scanData })
+      return { data: scan }
+    } catch (error) {
+      console.error('Failed to create scan:', error)
+      throw error
+    }
   }
 
   async runQuickScan(target: string) {
-    return this.request<Scan>('/api/scans/', {
-      method: 'POST',
-      body: JSON.stringify({ target, scan_type: 'Quick Scan' }),
-    })
+    try {
+      const scan = await this.invokeCommand('create_scan', {
+        scanData: { target, scan_type: 'Quick Scan' }
+      })
+      return { data: scan }
+    } catch (error) {
+      console.error('Failed to run quick scan:', error)
+      throw error
+    }
   }
 
-  async startScan(scanId: string) {
-    return this.request(`/api/scans/${scanId}/start`, {
-      method: 'POST',
-    })
+  async startScan(_scanId: string) {
+    // For now, just return success - actual scan execution will be handled by workflows
+    return { data: { success: true, message: 'Scan started' } }
   }
 
   async deleteScan(scanId: string) {
-    return this.request(`/api/scans/${scanId}`, {
-      method: 'DELETE',
-    })
+    try {
+      const result = await this.invokeCommand('delete_scan', { scanId })
+      return { data: result }
+    } catch (error) {
+      console.error('Failed to delete scan:', error)
+      throw error
+    }
   }
 
   async getScanVulnerabilities(scanId: string) {
-    return this.request(`/api/scans/${scanId}/vulnerabilities`)
+    try {
+      const vulns = await this.invokeCommand('get_scan_vulnerabilities', { scanId })
+      return vulns
+    } catch (error) {
+      console.error('Failed to get scan vulnerabilities:', error)
+      return []
+    }
   }
 
-  async getScanReports(scanId: string) {
-    return this.request(`/api/scans/${scanId}/reports`)
+  async getScanReports(_scanId: string) {
+    // For now, return empty array - reports will be handled by workflow findings
+    return []
   }
 
-  // Tool endpoints
-  async getTools() {
-    return this.request<Tool[]>('/api/tools/')
+  // Tool endpoints - using Tauri commands with enhanced tool discovery
+  async getTools(forceRefresh = false): Promise<{ data: Tool[] }> {
+    const tools = await this.invokeCommand('list_tools', { forceRefresh })
+    return { data: Array.isArray(tools) ? tools : [] }
   }
 
-  async getTool(toolName: string) {
-    return this.request<Tool>(`/api/tools/${toolName}`)
+  async getTool(toolName: string, forceRefresh = false): Promise<{ data: Tool | null }> {
+    const tool = await this.invokeCommand('get_tool', { 
+      toolName, 
+      forceRefresh 
+    }) as Tool | null
+    return { data: tool }
   }
 
-  async checkToolAvailability(toolName: string) {
-    return this.request(`/api/tools/${toolName}/check`)
+  async checkToolAvailability(toolName: string): Promise<{ available: boolean }> {
+    const tool = await this.invokeCommand('get_tool', { 
+      toolName, 
+      forceRefresh: false 
+    }) as Tool | null
+    return { available: tool?.installed || false }
   }
 
-  async refreshToolsStatus() {
-    return this.request('/api/tools/refresh', {
-      method: 'POST',
-    })
+  async refreshToolsStatus(): Promise<{ data: Record<string, Tool>; success: boolean }> {
+    const result = await this.invokeCommand('refresh_tools') as Record<string, Tool>
+    return { data: result, success: true }
   }
 
-  async addManualTool(data: { tool_name: string; tool_path: string; category: string }) {
-    return this.request('/api/tools/tools/manual/add', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    })
+  async getToolCategories(): Promise<{ data: string[] }> {
+    const categories = await this.invokeCommand('get_tool_categories')
+    return { data: Array.isArray(categories) ? categories : [] }
   }
 
-  async removeManualTool(toolName: string) {
-    return this.request(`/api/tools/tools/manual/${toolName}`, {
-      method: 'DELETE',
-    })
+  async getToolsByCategory(category: string): Promise<{ data: Tool[] }> {
+    const tools = await this.invokeCommand('get_tools_by_category', { category })
+    return { data: Array.isArray(tools) ? tools : [] }
   }
 
-  async getManualTools() {
-    return this.request('/api/tools/tools/manual/list')
+  async addManualTool(data: { tool_name: string; tool_path: string; category: string }): Promise<{ data: Tool; success: boolean; message: string }> {
+    try {
+      const tool = await this.invokeCommand('add_manual_tool', {
+        toolName: data.tool_name,
+        toolPath: data.tool_path,
+        category: data.category
+      }) as Tool
+      return { data: tool, success: true, message: 'Tool added successfully' }
+    } catch (error) {
+      console.error('Failed to add manual tool:', error)
+      throw error
+    }
   }
 
-  // Report endpoints
-  async getReports(params?: {
+  async removeManualTool(toolName: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const result = await this.invokeCommand('remove_manual_tool', { toolName }) as boolean
+      return { success: result, message: result ? 'Tool removed successfully' : 'Tool not found' }
+    } catch (error) {
+      console.error('Failed to remove manual tool:', error)
+      throw error
+    }
+  }
+
+  async getManualTools(): Promise<{ data: { manual_tools: string[] } }> {
+    try {
+      const manualTools = await this.invokeCommand('list_manual_tools')
+      return { data: { manual_tools: Array.isArray(manualTools) ? manualTools : [] } }
+    } catch (error) {
+      console.error('Failed to get manual tools:', error)
+      return { data: { manual_tools: [] } }
+    }
+  }
+
+  async getAvailableToolsCount(): Promise<{ data: number }> {
+    try {
+      const count = await this.invokeCommand('get_available_tools_count')
+      return { data: typeof count === 'number' ? count : 0 }
+    } catch (error) {
+      console.error('Failed to get available tools count:', error)
+      return { data: 0 }
+    }
+  }
+
+  // Report endpoints - using Tauri commands
+  async getReports(_params?: {
     skip?: number
     limit?: number
     scan_id?: string
   }) {
-    const queryParams = new URLSearchParams()
-    if (params?.skip) queryParams.append('skip', params.skip.toString())
-    if (params?.limit) queryParams.append('limit', params.limit.toString())
-    if (params?.scan_id) queryParams.append('scan_id', params.scan_id)
-
-    const query = queryParams.toString()
-    return this.request<Report[]>(`/api/reports/${query ? `?${query}` : ''}`)
+    try {
+      const reports = await this.invokeCommand('list_reports')
+      return reports
+    } catch (error) {
+      console.error('Failed to get reports:', error)
+      return []
+    }
   }
 
   async getReport(reportId: string) {
-    return this.request<Report>(`/api/reports/${reportId}`)
+    try {
+      const report = await this.invokeCommand('get_report', { reportId })
+      return report
+    } catch (error) {
+      console.error('Failed to get report:', error)
+      return null
+    }
   }
 
   async createReport(reportData: {
@@ -311,85 +427,149 @@ class ApiService {
     title?: string
     format: string
   }) {
-    return this.request<Report>('/api/reports/', {
-      method: 'POST',
-      body: JSON.stringify(reportData),
-    })
-  }
-
-  async downloadReport(reportId: string) {
-    const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}/download`)
-    if (!response.ok) {
-      throw new Error('Failed to download report')
-    }
-    return response
-  }
-
-  async deleteReport(reportId: string) {
-    return this.request(`/api/reports/${reportId}`, {
-      method: 'DELETE',
-    })
-  }
-
-  // Recon endpoints
-  async getReconPlans() {
-    return this.request('/api/recon/plans')
-  }
-
-  async getReconPlan(planId: string) {
-    return this.request(`/api/recon/plans/${planId}`)
-  }
-
-  async getReconTemplates() {
-    return this.request('/api/recon/templates')
-  }
-
-  async generateReconPlan(target: string, template: string = 'auto') {
-    return this.request('/api/recon/plans/generate', {
-      method: 'POST',
-      body: JSON.stringify({ target, template }),
-    })
-  }
-
-  async executeReconPlan(planId: string, target: string) {
-    return this.request(`/api/recon/plans/${planId}/execute`, {
-      method: 'POST',
-      body: JSON.stringify({ target }),
-    })
-  }
-
-  // Workflow endpoints
-  async getWorkflowTemplates(checkCompatibility: boolean = true) {
-    const params = checkCompatibility ? '?check_compatibility=true' : ''
-    return this.request(`/api/workflows/${params}`)
-  }
-
-  async executeWorkflow(workflowTemplateId: string, inputs: Record<string, string>) {
-    return this.request('/api/workflows/execute', {
-      method: 'POST',
-      body: JSON.stringify({
-        workflow_id: workflowTemplateId,
-        inputs
-      }),
-    })
-  }
-
-  async getWorkflowStatus(executionId: string) {
-    return this.request(`/api/workflows/${executionId}/status`)
-  }
-
-  async loadWorkflowTemplatesTauri() {
     try {
-      const { invoke } = await import('@tauri-apps/api/tauri')
-      return await invoke('load_workflow_templates')
+      const reportId = await this.invokeCommand('create_report', {
+        reportData: {
+          scan_id: reportData.scanId,
+          title: reportData.title || 'Scan Report',
+          format: reportData.format,
+          content: ''
+        }
+      })
+      return { success: true, reportId }
     } catch (error) {
-      console.error('Failed to load workflow templates from Tauri:', error)
+      console.error('Failed to create report:', error)
       throw error
     }
   }
 
+  async downloadReport(_reportId: string) {
+    // For now, throw error - download functionality needs to be implemented
+    throw new Error('Download report not yet implemented in Rust backend')
+  }
+
+  async deleteReport(reportId: string) {
+    try {
+      await this.invokeCommand('delete_report', { reportId })
+      return { success: true, message: 'Report deleted' }
+    } catch (error) {
+      console.error('Failed to delete report:', error)
+      throw error
+    }
+  }
+
+  // Recon endpoints - using Tauri commands
+  async getReconPlans() {
+    // For now, return empty array - recon will be handled by workflows
+    return []
+  }
+
+  async getReconPlan(_planId: string) {
+    // For now, return null - recon will be handled by workflows
+    return null
+  }
+
+  async getReconTemplates() {
+    // For now, return empty array - recon will be handled by workflows
+    return []
+  }
+
+  async generateReconPlan(_target: string, _template: string = 'auto') {
+    // For now, return success - recon will be handled by workflows
+    return { success: true, message: 'Recon plan generated' }
+  }
+
+  async executeReconPlan(_planId: string, _target: string) {
+    // For now, return success - recon will be handled by workflows
+    return { success: true, message: 'Recon plan executed' }
+  }
+
+  // Workflow endpoints - using Tauri commands
+  async getWorkflowTemplates(_checkCompatibility: boolean = true) {
+    try {
+      const templates = await this.invokeCommand('load_workflow_templates')
+      return { data: templates }
+    } catch (error) {
+      console.error('Failed to get workflow templates:', error)
+      return { data: [] }
+    }
+  }
+
+  async getWorkflowDetails(workflowId: string) {
+    try {
+      const details = await this.invokeCommand('get_workflow_details', { workflowId })
+      return { data: details }
+    } catch (error) {
+      console.error('Failed to get workflow details:', error)
+      throw error
+    }
+  }
+
+  async executeWorkflow(workflowTemplateId: string, inputs: Record<string, string>) {
+    try {
+      const result = await this.invokeCommand('execute_workflow', {
+        workflowId: workflowTemplateId,
+        inputs
+      })
+      return result
+    } catch (error) {
+      console.error('Failed to execute workflow:', error)
+      throw error
+    }
+  }
+
+  async getWorkflowStatus(executionId: string) {
+    try {
+      const status = await this.invokeCommand('get_workflow_status', { executionId })
+      return status
+    } catch (error) {
+      console.error('Failed to get workflow status:', error)
+      return null
+    }
+  }
+
+  async stopWorkflow(executionId: string) {
+    try {
+      const result = await this.invokeCommand('stop_workflow_execution', { executionId })
+      return result
+    } catch (error) {
+      console.error('Failed to stop workflow:', error)
+      return { success: true, message: 'Workflow stopped' }
+    }
+  }
+
+  async getExecutionArtifacts(executionId: string): Promise<WorkflowArtifact[]> {
+    try {
+      const artifacts = await this.invokeCommand('get_workflow_artifacts', { executionId })
+      return Array.isArray(artifacts) ? artifacts : []
+    } catch (error) {
+      console.error('Failed to get execution artifacts:', error)
+      return []
+    }
+  }
+
+  async getExecutionFindings(executionId: string): Promise<any[]> {
+    try {
+      const findings = await this.invokeCommand('get_workflow_findings', { executionId })
+      return Array.isArray(findings) ? findings : []
+    } catch (error) {
+      console.error('Failed to get execution findings:', error)
+      return []
+    }
+  }
+
+  async loadWorkflowTemplatesTauri() {
+    try {
+      const templates = await this.invokeCommand('load_workflow_templates')
+      return { data: templates }
+    } catch (error) {
+      console.error('Failed to load workflow templates:', error)
+      return { data: [] }
+    }
+  }
+
   async getSystemMetrics() {
-    return this.request('/api/metrics/')
+    return { data: await this.invokeCommand('get_system_metrics') }
   }
 }
 

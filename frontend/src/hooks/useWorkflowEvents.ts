@@ -7,13 +7,15 @@ import { useEffect, useRef, useCallback } from 'react'
  */
 
 interface WorkflowEventHandlers {
+  onExecutionStarted?: (data: any) => void
+  onExecutionCompleted?: (data: any) => void
+  onExecutionFailed?: (data: any) => void
+  onStatusUpdate?: (data: any) => void
   onStepStarted?: (data: any) => void
   onStepCompleted?: (data: any) => void
   onStepFailed?: (data: any) => void
   onStdout?: (data: any) => void
   onStderr?: (data: any) => void
-  onExecutionCompleted?: (data: any) => void
-  onExecutionFailed?: (data: any) => void
 }
 
 export const useWorkflowEvents = (
@@ -54,13 +56,15 @@ export const useWorkflowEvents = (
 
         // Listen to workflow events with proper cleanup
         const eventNames = [
+          'workflow:execution_started',
+          'workflow:execution_completed',
+          'workflow:execution_failed',
+          'workflow:status_update',
           'workflow:step_started',
           'workflow:step_completed',
           'workflow:step_failed',
           'workflow:stdout',
-          'workflow:stderr',
-          'workflow:execution_completed',
-          'workflow:execution_failed'
+          'workflow:stderr'
         ]
 
         for (const eventName of eventNames) {
@@ -76,6 +80,18 @@ export const useWorkflowEvents = (
 
             // Route to appropriate handler
             switch (eventName) {
+              case 'workflow:execution_started':
+                handlers.onExecutionStarted?.(payload)
+                break
+              case 'workflow:execution_completed':
+                handlers.onExecutionCompleted?.(payload)
+                break
+              case 'workflow:execution_failed':
+                handlers.onExecutionFailed?.(payload)
+                break
+              case 'workflow:status_update':
+                handlers.onStatusUpdate?.(payload)
+                break
               case 'workflow:step_started':
                 handlers.onStepStarted?.(payload)
                 break
@@ -90,12 +106,6 @@ export const useWorkflowEvents = (
                 break
               case 'workflow:stderr':
                 handlers.onStderr?.(payload)
-                break
-              case 'workflow:execution_completed':
-                handlers.onExecutionCompleted?.(payload)
-                break
-              case 'workflow:execution_failed':
-                handlers.onExecutionFailed?.(payload)
                 break
             }
           })

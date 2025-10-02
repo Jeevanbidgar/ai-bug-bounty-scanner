@@ -28,65 +28,43 @@ interface Report {
   severity: string
 }
 
-// Mock data for development
-const mockReports: Report[] = [
-  {
-    id: '1',
-    title: 'Security Assessment Report - example.com',
-    generated: '2025-01-01T10:30:00Z',
-    target: 'example.com',
-    vulnerabilities: 12,
-    format: 'HTML',
-    filePath: null,
-    summary: 'Comprehensive security scan completed with multiple vulnerabilities detected',
-    severity: 'high'
-  },
-  {
-    id: '2',
-    title: 'Security Assessment Report - testsite.org',
-    generated: '2025-01-01T09:15:00Z',
-    target: 'testsite.org',
-    vulnerabilities: 8,
-    format: 'PDF',
-    filePath: '/reports/report_2.pdf',
-    summary: 'Full security assessment with moderate risk findings',
-    severity: 'medium'
-  },
-  {
-    id: '3',
-    title: 'Security Assessment Report - demo.com',
-    generated: '2024-12-31T16:45:00Z',
-    target: 'demo.com',
-    vulnerabilities: 3,
-    format: 'JSON',
-    filePath: null,
-    summary: 'Quick scan with minimal findings',
-    severity: 'low'
-  }
-]
+// API functions using Tauri commands
+import { apiService } from '../services/api'
 
-// API functions
 const fetchReports = async (): Promise<Report[]> => {
-  const response = await fetch('/api/reports')
-  if (!response.ok) throw new Error('Failed to fetch reports')
-  return response.json()
+  try {
+    const reports = await apiService.getReports()
+    return Array.isArray(reports) ? reports : []
+  } catch (error) {
+    console.error('Failed to fetch reports:', error)
+    return []
+  }
 }
 
 const generateReport = async (scanId: string, format: string, title?: string): Promise<Report> => {
-  const response = await fetch('/api/reports', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scanId, format, title })
-  })
-  if (!response.ok) throw new Error('Failed to generate report')
-  return response.json()
+  try {
+    const result = await apiService.createReport({ scanId, format, title })
+    if (result.success && result.reportId) {
+      // Fetch the created report
+      const report = await apiService.getReport(result.reportId as string)
+      if (report) {
+        return report as Report
+      }
+    }
+    throw new Error('Failed to generate report')
+  } catch (error) {
+    console.error('Failed to generate report:', error)
+    throw error
+  }
 }
 
 const deleteReport = async (reportId: string): Promise<void> => {
-  const response = await fetch(`/api/reports/${reportId}`, {
-    method: 'DELETE'
-  })
-  if (!response.ok) throw new Error('Failed to delete report')
+  try {
+    await apiService.deleteReport(reportId)
+  } catch (error) {
+    console.error('Failed to delete report:', error)
+    throw error
+  }
 }
 
 const ReportsPage = () => {
@@ -100,10 +78,9 @@ const ReportsPage = () => {
 
   const queryClient = useQueryClient()
 
-  const { data: reports = [], isLoading } = useQuery({
+  const { data: reports = [], isLoading, error } = useQuery({
     queryKey: ['reports'],
-    queryFn: fetchReports,
-    initialData: mockReports
+    queryFn: fetchReports
   })
 
   const generateReportMutation = useMutation({

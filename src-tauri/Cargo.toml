@@ -18,13 +18,15 @@ tauri-build = { version = "1.5", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
-tauri = { version = "1.6", features = [ "shell-open", "shell-execute", "shell-sidecar", "process-relaunch", "process-exit", "fs-rename-file", "fs-remove-file", "fs-read-file", "fs-exists", "fs-copy-file", "os-all", "http-all", "fs-read-dir", "fs-remove-dir", "fs-create-dir", "fs-write-file", "path-all"] }
+tauri = { version = "1.6", features = [ "shell-open", "shell-execute", "shell-sidecar", "process-relaunch", "process-exit", "fs-rename-file", "fs-remove-file", "fs-read-file", "fs-exists", "fs-copy-file", "os-all", "http-request", "fs-read-dir", "fs-remove-dir", "fs-create-dir", "fs-write-file"] }
 reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1.0", features = ["full"] }
-sys-info = "0.9"
+sysinfo = "0.29"
 regex = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 which = "4.4"
+sha2 = "0.10"
+semver = "1.0"
 
 # Database dependencies
 sqlx = { version = "0.7", features = [ "runtime-tokio-rustls", "sqlite", "chrono", "uuid", "migrate" ] }

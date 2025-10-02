@@ -25,10 +25,12 @@ import { Input } from '../components/ui/Input'
 import { Progress } from '../components/ui/Progress'
 import { Badge } from '../components/ui/Badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/Select'
+import { WorkflowDetailsModal } from '../components/WorkflowDetailsModal'
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/tauri'
 import { useNavigate } from 'react-router-dom'
 import apiService, { WorkflowTemplate } from '../services/api'
+import { useWorkflowEvents } from '../hooks/useWorkflowEvents'
 
 // Types for Rust integration
 interface SystemInfo {
@@ -63,51 +65,66 @@ const Dashboard = () => {
   const navigate = useNavigate()
   const [targetUrl, setTargetUrl] = useState('')
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('')
+  const [selectedWorkflowDetails, setSelectedWorkflowDetails] = useState<WorkflowTemplate | null>(null)
+  const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false)
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
 
   // Fetch data using our API service and Rust backend
-  const { data: health } = useQuery({
+  const { data: health, error: healthError } = useQuery({
     queryKey: ['health'],
     queryFn: () => apiService.getHealth(),
     refetchInterval: 10000,
   })
 
-  const { data: scans, isLoading: scansLoading } = useQuery({
+  const { data: scansResponse, isLoading: scansLoading, error: scansError } = useQuery({
     queryKey: ['scans'],
-    queryFn: () => apiService.getScans(),
+    queryFn: async () => {
+      const response = await apiService.getScans()
+      return response.data || []
+    },
     refetchInterval: 5000,
   })
 
-  const { data: tools } = useQuery({
+  const scans = Array.isArray(scansResponse) ? scansResponse : []
+
+  const { data: toolsResponse, error: toolsError } = useQuery({
     queryKey: ['tools'],
-    queryFn: () => apiService.getTools(),
+    queryFn: async () => {
+      const response = await apiService.getTools()
+      return response.data || []
+    },
     refetchInterval: 30000,
   })
 
-  // Fetch workflow templates
-  const { data: workflowTemplates } = useQuery({
+  const tools = Array.isArray(toolsResponse) ? toolsResponse : []
+
+  // Fetch workflow templates with compatibility info
+  const { data: workflowTemplatesResponse, error: workflowsError } = useQuery({
     queryKey: ['workflow-templates'],
     queryFn: async () => {
-      const result = await apiService.loadWorkflowTemplatesTauri()
-      return result as WorkflowTemplate[]
+      const response = await apiService.getWorkflowTemplates(true) // Check compatibility
+      return (response as any).data || []
     },
     retry: 3,
   })
 
+  const workflowTemplates: WorkflowTemplate[] = Array.isArray(workflowTemplatesResponse) ? workflowTemplatesResponse : []
+
   // Fetch system metrics
-  const { data: systemMetricsResponse } = useQuery({
+  const { data: systemMetrics } = useQuery({
     queryKey: ['system-metrics'],
-    queryFn: () => apiService.getSystemMetrics(),
+    queryFn: async () => {
+      const response = await apiService.getSystemMetrics()
+      return (response as any).data
+    },
     refetchInterval: 30000, // Update every 30 seconds
   })
-
-  const systemMetrics = systemMetricsResponse?.data as SystemMetrics | undefined
 
   // Workflow execution mutation
   const workflowMutation = useMutation({
     mutationFn: async ({ workflowId, inputs }: { workflowId: string, inputs: Record<string, string> }) => {
-      const result = await apiService.executeWorkflow(workflowId, inputs)
-      return result.data
+      const response = await apiService.executeWorkflow(workflowId, inputs)
+      return (response as any).data
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
@@ -139,6 +156,40 @@ const Dashboard = () => {
 
     return () => clearInterval(interval)
   }, [])
+
+  // Listen to workflow events for real-time updates
+  useWorkflowEvents(null, {
+    onExecutionStarted: (event) => {
+      console.log('📡 Workflow started:', event.execution_id)
+      queryClient.invalidateQueries({ queryKey: ['scans'] })
+    },
+    onStatusUpdate: (event) => {
+      console.log('📊 Workflow progress:', event.execution_id, `${event.progress}%`)
+      // Update scan progress in cache
+      queryClient.setQueryData(['scans'], (oldData: any) => {
+        if (!Array.isArray(oldData)) return oldData
+        return oldData.map((scan: any) =>
+          scan.id === event.execution_id
+            ? { ...scan, progress: event.progress, status: event.status }
+            : scan
+        )
+      })
+    },
+    onExecutionCompleted: (event) => {
+      console.log('✅ Workflow completed:', event.execution_id)
+      queryClient.invalidateQueries({ queryKey: ['scans'] })
+    },
+    onExecutionFailed: (event) => {
+      console.log('❌ Workflow failed:', event.execution_id)
+      queryClient.invalidateQueries({ queryKey: ['scans'] })
+    },
+    onStepStarted: (event) => {
+      console.log('🔧 Step started:', event.step_name)
+    },
+    onStepCompleted: (event) => {
+      console.log('✓ Step completed:', event.step_name)
+    }
+  })
 
   const handleWorkflowExecution = () => {
     if (targetUrl.trim() && selectedWorkflow) {
@@ -260,6 +311,39 @@ const Dashboard = () => {
       </div>
 
       {/* Quick Workflow Execution Card - Enhanced Design */}
+      {(healthError || scansError || toolsError || workflowsError) && (
+        <Card className="bg-red-900/20 border-red-700">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-400">
+              <AlertTriangle className="h-5 w-5" />
+              Connection Issues Detected
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {healthError && (
+              <p className="text-red-300 text-sm">
+                <strong>Health:</strong> {healthError instanceof Error ? healthError.message : 'Failed to load'}
+              </p>
+            )}
+            {scansError && (
+              <p className="text-red-300 text-sm">
+                <strong>Scans:</strong> {scansError instanceof Error ? scansError.message : 'Failed to load'}
+              </p>
+            )}
+            {toolsError && (
+              <p className="text-red-300 text-sm">
+                <strong>Tools:</strong> {toolsError instanceof Error ? toolsError.message : 'Failed to load'}
+              </p>
+            )}
+            {workflowsError && (
+              <p className="text-red-300 text-sm">
+                <strong>Workflows:</strong> {workflowsError instanceof Error ? workflowsError.message : 'Failed to load'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="border-blue-500/30 bg-gradient-to-br from-gray-800 to-gray-900 shadow-xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-blue-400 text-lg">
@@ -420,7 +504,7 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-white">
-              {scansLoading ? '...' : scans?.data?.length || 0}
+              {scansLoading ? '...' : (scans.length || 0)}
             </div>
             <p className="text-xs text-gray-400 mt-1">
               Security assessments
@@ -435,10 +519,10 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-white">
-              {tools?.data?.filter(tool => tool.status === 'available').length || 0}
+              {tools.filter((tool: any) => tool.installed).length}
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              {tools?.data?.length || 0} total discovered
+              {tools.length} total discovered
             </p>
           </CardContent>
         </Card>
@@ -465,7 +549,7 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-white">
-              {scans?.data?.filter((scan: any) => scan.status === 'running').length || 0}
+              {scans.filter((scan: any) => scan.status === 'running').length}
             </div>
             <p className="text-xs text-gray-400 mt-1">
               Currently executing
@@ -497,7 +581,7 @@ const Dashboard = () => {
               </div>
             ) : (
               <div className="space-y-3">
-                {scans?.data?.slice(0, 5).map((scan: any) => (
+                {scans.slice(0, 5).map((scan: any) => (
                   <div key={scan.id} className="p-3 bg-gray-900 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -533,7 +617,7 @@ const Dashboard = () => {
                   </div>
                 ))}
 
-                {(!scans?.data || scans.data.length === 0) && (
+                {scans.length === 0 && (
                   <div className="text-center text-gray-400 py-8">
                     <Target className="h-10 w-10 mx-auto mb-3 opacity-50" />
                     <h3 className="text-base font-medium text-white mb-1">No scans yet</h3>
@@ -545,50 +629,84 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Available Tools - Enhanced */}
+        {/* Available Workflows - Show compatibility status */}
         <Card className="bg-gray-800 border-gray-700">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Settings className="h-5 w-5 text-green-400" />
-              Available Tools
+              <Workflow className="h-5 w-5 text-purple-400" />
+              Available Workflows
             </CardTitle>
             <CardDescription className="text-sm">
-              Security tools ready for use
+              Workflows and their tool requirements
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {(tools?.data || []).slice(0, 8).map((tool: any) => (
-                <div key={tool.name} className="flex items-center justify-between p-2.5 bg-gray-900 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors">
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${tool.installed ? 'bg-green-500' : 'bg-red-500'}`} />
-                    <div className="min-w-0">
-                      <div className="font-medium text-white text-sm truncate">{tool.name}</div>
-                      <div className="text-xs text-gray-400 truncate">{tool.description}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                    <Badge className={`text-xs ${
-                      tool.category === 'recon' ? 'bg-blue-600' :
-                      tool.category === 'vulnerability' ? 'bg-red-600' :
-                      tool.category === 'network' ? 'bg-green-600' : 'bg-gray-600'
-                    }`}>
-                      {tool.category}
-                    </Badge>
-                    {tool.version && (
-                      <span className="text-xs text-gray-400">v{tool.version}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
+              {workflowTemplates.length > 0 ? (
+                workflowTemplates.map((workflow: WorkflowTemplate) => {
+                  // Check if workflow has compatibility info
+                  const hasCompatibility = workflow.compatibility !== undefined
+                  const isCompatible = hasCompatibility ? workflow.compatibility.compatible : false
+                  const missingTools = hasCompatibility ? workflow.compatibility.missing_tools : []
+                  const requiredTools = hasCompatibility ? workflow.compatibility.required_tools.length : 0
+                  const availableToolsCount = hasCompatibility ? workflow.compatibility.available_tools.length : 0
 
-              {(tools?.data || []).length === 0 && (
+                  return (
+                    <div 
+                      key={workflow.id} 
+                      className={`flex items-center justify-between p-2.5 bg-gray-900 rounded-lg border transition-colors cursor-pointer ${
+                        isCompatible 
+                          ? 'border-green-700 hover:border-green-600 hover:bg-gray-850' 
+                          : 'border-gray-700 hover:border-gray-600 hover:bg-gray-850'
+                      }`}
+                      onClick={() => {
+                        setSelectedWorkflowDetails(workflow)
+                        setIsWorkflowModalOpen(true)
+                      }}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          isCompatible ? 'bg-green-500' : 'bg-red-500'
+                        }`} />
+                        <div className="min-w-0">
+                          <div className="font-medium text-white text-sm truncate">{workflow.name}</div>
+                          <div className="text-xs text-gray-400 truncate">
+                            {isCompatible ? (
+                              <span className="text-green-400">✓ All tools available</span>
+                            ) : (
+                              <span className="text-red-400">
+                                Missing: {missingTools.slice(0, 2).join(', ')}
+                                {missingTools.length > 2 && ` +${missingTools.length - 2} more`}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                        <Badge className={`text-xs ${
+                          isCompatible ? 'bg-green-600' : 'bg-red-600/70'
+                        }`}>
+                          {hasCompatibility ? `${availableToolsCount}/${requiredTools}` : 'N/A'}
+                        </Badge>
+                        {isCompatible && (
+                          <Play className="h-4 w-4 text-green-400" />
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              ) : (
                 <div className="text-center text-gray-400 py-8">
-                  <Settings className="h-10 w-10 mx-auto mb-3 opacity-50" />
-                  <p className="text-xs">No tools detected yet</p>
-                  <Button variant="outline" size="sm" className="mt-3 text-xs">
+                  <Workflow className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                  <p className="text-xs">No workflows found</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-3 text-xs"
+                    onClick={() => queryClient.invalidateQueries({ queryKey: ['workflow-templates'] })}
+                  >
                     <RefreshCw className="h-3 w-3 mr-1.5" />
-                    Refresh Tools
+                    Refresh Workflows
                   </Button>
                 </div>
               )}
@@ -650,6 +768,16 @@ const Dashboard = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Workflow Details Modal */}
+      <WorkflowDetailsModal
+        workflow={selectedWorkflowDetails}
+        isOpen={isWorkflowModalOpen}
+        onClose={() => {
+          setIsWorkflowModalOpen(false)
+          setSelectedWorkflowDetails(null)
+        }}
+      />
     </div>
   )
 }

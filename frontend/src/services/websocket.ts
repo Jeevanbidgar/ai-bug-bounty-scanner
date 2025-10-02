@@ -1,9 +1,9 @@
 /**
- * WebSocket service for real-time communication
+ * Event service for real-time communication using Tauri events
  * Handles live progress updates, scan status changes, and system notifications
  */
 
-import { io, Socket } from 'socket.io-client'
+import { listen, UnlistenFn } from '@tauri-apps/api/event'
 
 export interface ScanProgressUpdate {
   scan_id: string
@@ -20,74 +20,104 @@ export interface SystemNotification {
   timestamp: string
 }
 
+export interface WorkflowProgressUpdate {
+  execution_id: string
+  progress: number
+  current_step: string | null
+  status: string
+  timestamp: string
+}
+
 class WebSocketService {
-  private socket: Socket | null = null
-  // Removed unused reconnectAttempts property
-  private maxReconnectAttempts = 5
-  private reconnectDelay = 1000 // Start with 1 second
   private listeners: Map<string, Function[]> = new Map()
+  private tauriUnlisteners: UnlistenFn[] = []
+  private connected = false
 
-  connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        this.socket = io('http://localhost:8000', {
-          transports: ['websocket', 'polling'],
-          timeout: 10000,
-          reconnection: true,
-          reconnectionAttempts: this.maxReconnectAttempts,
-          reconnectionDelay: this.reconnectDelay
+  async connect(): Promise<void> {
+    try {
+      console.log('Setting up Tauri event listeners...')
+
+      // Listen for workflow progress updates
+      const workflowProgressUnlisten = await listen<WorkflowProgressUpdate>('workflow-progress', (event) => {
+        console.log('Workflow progress event received:', event.payload)
+        this.emit('workflow_progress_update', event.payload)
+        
+        // Also emit as scan progress for backward compatibility
+        this.emit('scan_progress_update', {
+          scan_id: event.payload.execution_id,
+          progress: event.payload.progress,
+          current_test: event.payload.current_step || 'N/A',
+          status: event.payload.status,
+          timestamp: event.payload.timestamp
         })
+      })
+      this.tauriUnlisteners.push(workflowProgressUnlisten)
 
-        this.socket.on('connect', () => {
-          console.log('WebSocket connected')
-          // Reset reconnection tracking
-          this.emit('connection_status', { status: 'connected', timestamp: new Date().toISOString() })
-          resolve()
+      // Listen for workflow step completion
+      const stepCompleteUnlisten = await listen('workflow-step-complete', (event) => {
+        console.log('Workflow step complete event:', event.payload)
+        this.emit('step_complete', event.payload)
+      })
+      this.tauriUnlisteners.push(stepCompleteUnlisten)
+
+      // Listen for workflow step failed
+      const stepFailedUnlisten = await listen('workflow-step-failed', (event) => {
+        console.log('Workflow step failed event:', event.payload)
+        this.emit('step_failed', event.payload)
+        this.emit('scan_error', {
+          scan_id: (event.payload as any).execution_id,
+          error: (event.payload as any).error_message || 'Step failed'
         })
+      })
+      this.tauriUnlisteners.push(stepFailedUnlisten)
 
-        this.socket.on('disconnect', (reason) => {
-          console.log('WebSocket disconnected:', reason)
-          this.emit('connection_status', { status: 'disconnected', reason, timestamp: new Date().toISOString() })
+      // Listen for workflow completion
+      const workflowCompleteUnlisten = await listen('workflow-complete', (event) => {
+        console.log('Workflow complete event:', event.payload)
+        this.emit('workflow_complete', event.payload)
+        this.emit('scan_completed', {
+          scan_id: (event.payload as any).execution_id,
+          result: event.payload
         })
+      })
+      this.tauriUnlisteners.push(workflowCompleteUnlisten)
 
-        this.socket.on('connect_error', (error) => {
-          console.error('WebSocket connection error:', error)
-          reject(error)
+      // Listen for workflow errors
+      const workflowErrorUnlisten = await listen('workflow-error', (event) => {
+        console.error('Workflow error event:', event.payload)
+        this.emit('workflow_error', event.payload)
+        this.emit('scan_error', {
+          scan_id: (event.payload as any).execution_id,
+          error: (event.payload as any).error_message || 'Workflow error'
         })
+      })
+      this.tauriUnlisteners.push(workflowErrorUnlisten)
 
-        // Handle scan progress updates
-        this.socket.on('scan_progress_update', (data: ScanProgressUpdate) => {
-          this.emit('scan_progress_update', data)
-        })
+      // Listen for system notifications
+      const notificationUnlisten = await listen<SystemNotification>('system-notification', (event) => {
+        console.log('System notification event:', event.payload)
+        this.emit('system_notification', event.payload)
+      })
+      this.tauriUnlisteners.push(notificationUnlisten)
 
-        // Handle system notifications
-        this.socket.on('system_notification', (notification: SystemNotification) => {
-          this.emit('system_notification', notification)
-        })
-
-        // Handle scan completion
-        this.socket.on('scan_completed', (data: { scan_id: string; result: any }) => {
-          this.emit('scan_completed', data)
-        })
-
-        // Handle scan errors
-        this.socket.on('scan_error', (data: { scan_id: string; error: string }) => {
-          this.emit('scan_error', data)
-        })
-
-      } catch (error) {
-        console.error('Failed to initialize WebSocket:', error)
-        reject(error)
-      }
-    })
+      this.connected = true
+      this.emit('connection_status', { status: 'connected', timestamp: new Date().toISOString() })
+      console.log('✅ Tauri event listeners set up successfully')
+    } catch (error) {
+      console.error('Failed to set up Tauri event listeners:', error)
+      this.connected = false
+      throw error
+    }
   }
 
   disconnect(): void {
-    if (this.socket) {
-      this.socket.disconnect()
-      this.socket = null
-    }
+    console.log('Removing Tauri event listeners...')
+    // Unlisten from all Tauri events
+    this.tauriUnlisteners.forEach(unlisten => unlisten())
+    this.tauriUnlisteners = []
     this.listeners.clear()
+    this.connected = false
+    this.emit('connection_status', { status: 'disconnected', timestamp: new Date().toISOString() })
   }
 
   // Event subscription system
@@ -122,25 +152,23 @@ class WebSocketService {
   }
 
   // API methods
-  requestScanProgress(scanId: string): void {
-    if (this.socket) {
-      this.socket.emit('scan_progress_request', { scan_id: scanId })
-    }
+  requestScanProgress(_scanId: string): void {
+    // With Tauri events, progress is automatically pushed from backend
+    // No need to request - just listen for events
+    console.log('Tauri event system automatically pushes progress updates')
   }
 
   sendPing(): void {
-    if (this.socket) {
-      this.socket.emit('ping', { timestamp: new Date().toISOString() })
-    }
+    // Tauri doesn't need ping/pong - it's a native IPC system
+    console.log('Tauri IPC does not require ping/pong')
   }
 
   isConnected(): boolean {
-    return this.socket?.connected || false
+    return this.connected
   }
 
   getConnectionState(): string {
-    if (!this.socket) return 'disconnected'
-    return this.socket.connected ? 'connected' : 'connecting'
+    return this.connected ? 'connected' : 'disconnected'
   }
 }
 

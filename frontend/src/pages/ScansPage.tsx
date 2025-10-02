@@ -22,10 +22,9 @@ import { Badge } from '../components/ui/Badge'
 import { Progress } from '../components/ui/Progress'
 import { Input } from '../components/ui/Input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/Select'
-// Import API_BASE_URL for debugging
-import { API_BASE_URL } from '../services/api'
-import { apiService, Scan, WorkflowTemplate, WorkflowCompatibility } from '../services/api'
-// WebSocket integration will be added later
+import { apiService, Scan, WorkflowTemplate } from '../services/api'
+import { ScanDetailsModal } from '../components/ScanDetailsModal'
+import { useScanEvents } from '../hooks/useScanEvents'
 
 // API functions
 const fetchScans = async (): Promise<Scan[]> => {
@@ -36,25 +35,9 @@ const fetchScans = async (): Promise<Scan[]> => {
     const response = await apiService.getScans()
     console.log('📡 Raw API response:', response)
 
-    if (response.error) {
-      console.error('❌ API returned error:', response.error)
-      throw new Error(`API Error: ${response.error}`)
-    }
-
-    if (!response.data) {
-      console.warn('⚠️ API response has no data property')
-      return []
-    }
-
-    const scans = response.data
-    console.log('✅ Successfully fetched scans:', Array.isArray(scans) ? scans.length : 'not array')
-
-    if (!Array.isArray(scans)) {
-      console.error('❌ API response data is not an array:', typeof scans)
-      throw new Error('API response data is not an array')
-    }
-
-    return scans
+    const scans = response.data || []
+    console.log('✅ Successfully fetched scans:', Array.isArray(scans) ? scans.length : 0)
+    return Array.isArray(scans) ? scans : []
   } catch (error) {
     console.error('❌ Error in fetchScans:', error)
     console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack')
@@ -64,11 +47,8 @@ const fetchScans = async (): Promise<Scan[]> => {
 
 const createScan = async (scanData: any): Promise<Scan> => {
   try {
-    const response = await apiService.createScan(scanData)
-    if (response.error) {
-      throw new Error(response.error)
-    }
-    return response.data!
+  const response = await apiService.createScan(scanData)
+  return response.data as Scan
   } catch (error) {
     console.error('Error creating scan:', error)
     throw error
@@ -77,10 +57,7 @@ const createScan = async (scanData: any): Promise<Scan> => {
 
 const startScan = async (scanId: string): Promise<void> => {
   try {
-    const response = await apiService.startScan(scanId)
-    if (response.error) {
-      throw new Error(response.error)
-    }
+  const response = await apiService.startScan(scanId)
     // These operations don't return data, just success/error
   } catch (error) {
     console.error('Error starting scan:', error)
@@ -90,10 +67,7 @@ const startScan = async (scanId: string): Promise<void> => {
 
 const deleteScan = async (scanId: string): Promise<void> => {
   try {
-    const response = await apiService.deleteScan(scanId)
-    if (response.error) {
-      throw new Error(response.error)
-    }
+  const response = await apiService.deleteScan(scanId)
     // These operations don't return data, just success/error
   } catch (error) {
     console.error('Error deleting scan:', error)
@@ -119,29 +93,60 @@ const ScansPage = () => {
   const [selectedScan, setSelectedScan] = useState<Scan | null>(null)
   const [showScanDetails, setShowScanDetails] = useState(false)
   const [scanLogs, setScanLogs] = useState<string[]>([])
-  const [scanArtifacts, setScanArtifacts] = useState<any[]>([])
-  const [scanFindings, setScanFindings] = useState<any[]>([])
 
-  // Debug logging for navigation
+  // Debug logging
   console.log('🚀 ScansPage component rendered!')
-  console.log('📍 Location:', window.location.href)
-  console.log('🌐 Origin:', window.location.origin)
-  console.log('🔗 API Base URL:', API_BASE_URL)
-  console.log('🎯 Expected scan URL:', `${API_BASE_URL}/api/scans/`)
+  console.log('🖥️ Running in Tauri environment:', typeof window !== 'undefined' && '__TAURI__' in window)
 
-  // React Query for data fetching with real-time updates
-  const { data: scans, isLoading, error, refetch } = useQuery({
-    queryKey: ['scans'],
-    queryFn: fetchScans,
-    refetchInterval: 3000, // Poll every 3 seconds for real-time updates
-    staleTime: 1000, // Consider data stale after 1 second
+  // Listen to scan events for real-time updates
+  useScanEvents({
+    onScanStarted: (event) => {
+      console.log('📡 Scan started:', event.scan_id)
+      queryClient.invalidateQueries({ queryKey: ['scans'] })
+    },
+    onProgressUpdate: (event) => {
+      console.log('📊 Scan progress:', event.scan_id, `${event.progress}%`)
+      // Update the scan in the cache
+      queryClient.setQueryData(['scans'], (oldData: any) => {
+        if (!Array.isArray(oldData)) return oldData
+        return oldData.map((scan: Scan) =>
+          scan.id === event.scan_id
+            ? { ...scan, progress: event.progress, status: event.status, current_test: event.current_test }
+            : scan
+        )
+      })
+    },
+    onScanCompleted: (event) => {
+      console.log('✅ Scan completed:', event.scan_id)
+      queryClient.invalidateQueries({ queryKey: ['scans'] })
+    },
+    onScanFailed: (event) => {
+      console.log('❌ Scan failed:', event.scan_id)
+      queryClient.invalidateQueries({ queryKey: ['scans'] })
+    },
+    onError: (event) => {
+      console.error('⚠️ Scan error:', event.scan_id, event.error)
+    }
   })
+
+  // React Query for data fetching with Tauri event updates
+  const { data: scansResponse, isLoading, error, refetch } = useQuery({
+    queryKey: ['scans'],
+    queryFn: async () => {
+      const response = await apiService.getScans()
+      return response.data || []
+    },
+    refetchInterval: 10000, // Poll every 10 seconds as fallback
+    staleTime: 5000, // Consider data stale after 5 seconds
+  })
+
+  const scans = scansResponse || []
 
   const { data: workflowTemplates } = useQuery<WorkflowTemplate[]>({
     queryKey: ['workflow-templates'],
     queryFn: async () => {
-      const result = await apiService.getWorkflowTemplates(true) // Include compatibility info
-      return result.data as WorkflowTemplate[]
+      const response = await apiService.getWorkflowTemplates(true) // Include compatibility info
+      return (response as any).data || []
     },
     retry: 3,
   })
@@ -150,8 +155,7 @@ const ScansPage = () => {
   const executeWorkflowMutation = useMutation({
     mutationFn: async (data: { workflow_id: string; inputs: Record<string, string>; working_directory?: string }) => {
       const response = await apiService.executeWorkflow(data.workflow_id, data.inputs)
-      if (response.error) throw new Error(response.error)
-      return response.data
+      return (response as any).data
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
@@ -174,7 +178,10 @@ const ScansPage = () => {
   })
 
   const stopScanMutation = useMutation({
-    mutationFn: (scanId: string) => apiService.stopScan(scanId),
+    mutationFn: async (scanId: string) => {
+      const response = await apiService.stopWorkflow(scanId)
+      return (response as any).data
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
     },
@@ -184,7 +191,10 @@ const ScansPage = () => {
   })
 
   const deleteScanMutation = useMutation({
-    mutationFn: (scanId: string) => apiService.deleteScan(scanId),
+    mutationFn: async (scanId: string) => {
+      const response = await apiService.deleteScan(scanId)
+      return (response as any).data
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
     },
@@ -196,11 +206,10 @@ const ScansPage = () => {
   const getWorkflowStatusMutation = useMutation({
     mutationFn: async (executionId: string) => {
       const response = await apiService.getWorkflowStatus(executionId)
-      if (response.error) throw new Error(response.error)
-      return response.data
+      return response
     },
-    onSuccess: (data) => {
-      setScanLogs(data?.logs || [])
+    onSuccess: (data: any) => {
+      setScanLogs((data && Array.isArray(data.logs)) ? data.logs : [])
       // Note: artifacts and findings would need separate API calls
       // For now, we'll show basic workflow status
     }
@@ -220,12 +229,12 @@ const ScansPage = () => {
   console.log('ScansPage state:', {
     isLoading,
     error,
-    scansLength: scans?.length || 0,
+    scansLength: (scans && Array.isArray(scans)) ? scans.length : 0,
     workflowTemplatesLength: workflowTemplates?.length || 0,
   })
 
   // Handle loading state - show loading if loading or no scans yet
-  if (isLoading || (scans?.length === 0 && !error)) {
+  if (isLoading || ((scans && Array.isArray(scans) && scans.length === 0) && !error)) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -250,7 +259,7 @@ const ScansPage = () => {
           <div className="text-center">
             <div className="text-red-500 text-4xl mb-4">⚠️</div>
             <h3 className="text-lg font-semibold text-white mb-2">Failed to Load Scans</h3>
-            <p className="text-gray-400 mb-4">Error: {error || 'Unknown error'}</p>
+            <p className="text-gray-400 mb-4">Error: {error?.message || 'Unknown error'}</p>
             <Button onClick={() => refetch()} variant="outline">
               Try Again
             </Button>
@@ -303,8 +312,9 @@ const ScansPage = () => {
   }
 
   // Filter scans based on search and status
-  const filteredScans = (scans || []).filter((scan: Scan) => {
-    const matchesSearch = scan.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  const scansArray = Array.isArray(scans) ? scans : []
+  const filteredScans = scansArray.filter((scan: Scan) => {
+    const matchesSearch = (scan.name || scan.target || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                          scan.target.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || scan.status === statusFilter
     return matchesSearch && matchesStatus
@@ -335,7 +345,7 @@ const ScansPage = () => {
   // Removed unused getStatusIcon function
 
   const handleCreateScanClick = () => {
-    if (!newScanTarget.trim()) return
+    if (!scanTarget.trim()) return
     handleCreateScan()
   }
 
@@ -383,15 +393,15 @@ const ScansPage = () => {
       {showCreateDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <Card className="w-full max-w-2xl bg-gray-900 border-gray-700 max-h-[90vh] overflow-y-auto">
-            <CardHeader>
+          <CardHeader>
               <CardTitle className="flex items-center gap-2 text-blue-400">
                 <Target className="h-5 w-5" />
                 Create New Scan
               </CardTitle>
               <CardDescription className="text-gray-400">
                 Configure a new security scanning operation with workflow templates
-              </CardDescription>
-            </CardHeader>
+            </CardDescription>
+          </CardHeader>
             <CardContent className="space-y-6">
               {/* Workflow Template Selection */}
               <div className="space-y-2">
@@ -399,8 +409,8 @@ const ScansPage = () => {
                 <Select value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
                   <SelectTrigger className="h-11 bg-gray-800 border-gray-600 text-white">
                     <SelectValue placeholder="Select a workflow template" />
-                  </SelectTrigger>
-                  <SelectContent>
+                </SelectTrigger>
+                <SelectContent>
                     {workflowTemplates?.map((template: WorkflowTemplate) => {
                       const isCompatible = template.compatibility?.compatible !== false
                       const missingTools = template.compatibility?.missing_tools || []
@@ -433,9 +443,9 @@ const ScansPage = () => {
                         </SelectItem>
                       )
                     })}
-                  </SelectContent>
-                </Select>
-              </div>
+                </SelectContent>
+              </Select>
+            </div>
 
               {/* Target Configuration */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -554,17 +564,17 @@ const ScansPage = () => {
                       Execute Workflow
                     </>
                   )}
-                </Button>
+              </Button>
                 <Button
                   variant="outline"
                   onClick={() => setShowCreateDialog(false)}
                   className="flex-1"
                 >
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
         </div>
       )}
 
@@ -587,7 +597,7 @@ const ScansPage = () => {
             <CardContent className="p-12 text-center">
               <div className="text-red-400">
                 <h3 className="text-lg font-medium mb-2">Error Loading Scans</h3>
-                <p className="text-sm">{error}</p>
+                <p className="text-sm">{error instanceof Error ? error.message : 'Unknown error'}</p>
               </div>
             </CardContent>
           </Card>
@@ -612,7 +622,7 @@ const ScansPage = () => {
                   <div className="flex items-center space-x-3 min-w-0">
                     <div className={`w-3 h-3 rounded-full ${getStatusColor(scan.status)} flex-shrink-0 animate-pulse`}></div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-white truncate">{scan.name || scan.target}</h3>
+                      <h3 className="font-semibold text-white truncate">{scan.name || scan.target || 'Unnamed Scan'}</h3>
                       <div className="flex items-center gap-2 text-sm text-gray-400">
                         <Badge className={`text-xs ${getStatusBadgeColor(scan.status)}`}>
                           {scan.status.charAt(0).toUpperCase() + scan.status.slice(1)}
@@ -621,7 +631,7 @@ const ScansPage = () => {
                         <span className="truncate">
                           {scan.workflow_id ?
                             `Workflow: ${workflowTemplates?.find(w => w.id === scan.workflow_id)?.name || scan.workflow_id}` :
-                            (scan.scan_type || scan.scanType || 'Custom Scan')
+                            (scan.scan_type || 'Custom Scan')
                           }
                         </span>
                         <span>•</span>
@@ -729,21 +739,20 @@ const ScansPage = () => {
                         </Badge>
                       </>
                     )}
-                    {scan.tags && scan.tags.length > 0 && (
+                    {scan.tags && (
                       <>
                         <span className="text-sm text-gray-400 flex-shrink-0">Tags:</span>
-                        <div className="flex flex-wrap gap-1 min-w-0">
-                          {scan.tags.slice(0, 3).map((tag: string) => (
+                    <div className="flex flex-wrap gap-1 min-w-0">
+                          {Array.isArray(scan.tags) ? scan.tags.slice(0, 3).map((tag: string) => (
                             <Badge key={tag} variant="secondary" className="text-xs">
                               {tag}
-                            </Badge>
-                          ))}
-                          {scan.tags.length > 3 && (
-                            <Badge variant="secondary" className="text-xs">
-                              +{scan.tags.length - 3}
-                            </Badge>
-                          )}
-                        </div>
+                        </Badge>
+                      )) : (
+                        <Badge variant="secondary" className="text-xs">
+                              {scan.tags}
+                        </Badge>
+                      )}
+                    </div>
                       </>
                     )}
                   </div>
@@ -782,186 +791,14 @@ const ScansPage = () => {
 
       {/* Scan Details Modal */}
       {showScanDetails && selectedScan && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-4xl bg-gray-900 border-gray-700 max-h-[90vh] overflow-hidden flex flex-col">
-            <CardHeader className="flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-blue-400">
-                    <Eye className="h-5 w-5" />
-                    Scan Details: {selectedScan.name || selectedScan.target}
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">
-                    {selectedScan.workflow_id ?
-                      `Workflow: ${workflowTemplates?.find(w => w.id === selectedScan.workflow_id)?.name || selectedScan.workflow_id}` :
-                      (selectedScan.scan_type || selectedScan.scanType || 'Custom Scan')
-                    }
-                  </CardDescription>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowScanDetails(false)
-                    setSelectedScan(null)
-                    setScanLogs([])
-                    setScanArtifacts([])
-                    setScanFindings([])
-                  }}
-                >
-                  Close
-                </Button>
-              </div>
-            </CardHeader>
-
-            <CardContent className="flex-1 overflow-hidden flex flex-col">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-                {/* Logs Panel */}
-                <div className="lg:col-span-2 flex flex-col">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-medium text-white">Execution Logs</h3>
-                    <div className="flex items-center gap-2">
-                      <Badge className={getStatusBadgeColor(selectedScan.status)}>
-                        {selectedScan.status.charAt(0).toUpperCase() + selectedScan.status.slice(1)}
-                      </Badge>
-                      {selectedScan.progress !== undefined && (
-                        <span className="text-sm text-gray-400">
-                          {selectedScan.progress}%
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex-1 bg-gray-800 rounded-lg p-4 overflow-y-auto border border-gray-700">
-                    {scanLogs.length > 0 ? (
-                      <div className="space-y-2 font-mono text-sm">
-                        {scanLogs.map((log, index) => (
-                          <div key={index} className="text-gray-300">
-                            {log}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-gray-500 text-center py-8">
-                        {getWorkflowStatusMutation.isPending ? (
-                          <div className="flex items-center justify-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Loading logs...
-                          </div>
-                        ) : (
-                          'No logs available'
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Sidebar */}
-                <div className="space-y-6">
-                  {/* Scan Info */}
-                  <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <h4 className="text-sm font-medium text-gray-300 mb-3">Scan Information</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Target:</span>
-                        <span className="text-white truncate">{selectedScan.target}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Status:</span>
-                        <Badge className={getStatusBadgeColor(selectedScan.status)}>
-                          {selectedScan.status}
-                        </Badge>
-                      </div>
-                      {selectedScan.started && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Started:</span>
-                          <span className="text-white">{new Date(selectedScan.started).toLocaleString()}</span>
-                        </div>
-                      )}
-                      {selectedScan.finished && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Finished:</span>
-                          <span className="text-white">{new Date(selectedScan.finished).toLocaleString()}</span>
-                        </div>
-                      )}
-                      {selectedScan.duration && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Duration:</span>
-                          <span className="text-white">{selectedScan.duration}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Artifacts */}
-                  <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <h4 className="text-sm font-medium text-gray-300 mb-3">Artifacts</h4>
-                    {scanArtifacts.length > 0 ? (
-                      <div className="space-y-2">
-                        {scanArtifacts.map((artifact, index) => (
-                          <div key={index} className="flex items-center justify-between p-2 bg-gray-700 rounded">
-                            <div>
-                              <div className="text-sm text-white">{artifact.name}</div>
-                              <div className="text-xs text-gray-400">{artifact.type}</div>
-                            </div>
-                            <Button size="sm" variant="outline">
-                              Download
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-gray-500 text-sm">No artifacts available</div>
-                    )}
-                  </div>
-
-                  {/* Findings Summary */}
-                  <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <h4 className="text-sm font-medium text-gray-300 mb-3">Findings Summary</h4>
-                    <div className="grid grid-cols-2 gap-2">
-                      {['Critical', 'High', 'Medium', 'Low'].map((severity) => {
-                        const count = selectedScan[severity.toLowerCase() as keyof Scan] as number || 0
-                        return (
-                          <div key={severity} className="text-center">
-                            <div className={`text-lg font-bold ${
-                              severity === 'Critical' ? 'text-red-400' :
-                              severity === 'High' ? 'text-orange-400' :
-                              severity === 'Medium' ? 'text-yellow-400' : 'text-blue-400'
-                            }`}>
-                              {count}
-                            </div>
-                            <div className="text-xs text-gray-400">{severity}</div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <h4 className="text-sm font-medium text-gray-300 mb-3">Actions</h4>
-                    <div className="space-y-2">
-                      <Button className="w-full" variant="outline">
-                        Export Results
-                      </Button>
-                      <Button className="w-full" variant="outline">
-                        Download All Artifacts
-                      </Button>
-                      {selectedScan.status === 'running' && (
-                        <Button
-                          className="w-full"
-                          variant="outline"
-                          onClick={() => handleStopScan(selectedScan.id)}
-                        >
-                          Stop Scan
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <ScanDetailsModal
+          scan={selectedScan}
+          workflowTemplates={workflowTemplates}
+          onClose={() => {
+            setShowScanDetails(false)
+            setSelectedScan(null)
+          }}
+        />
       )}
     </div>
   )

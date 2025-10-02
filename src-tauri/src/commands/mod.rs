@@ -1,0 +1,828 @@
+use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use tauri::Manager;
+
+use crate::database::Database;
+use crate::workflow::{engine::WorkflowEngine, loader::WorkflowLoader, types::WorkflowCompatibility};
+use crate::tools::discovery::ToolDiscoveryService;
+use crate::events::{EventEmitter, SCAN_STARTED, SCAN_COMPLETED, SCAN_FAILED, SCAN_PROGRESS_UPDATE};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkflowExecuteRequest {
+    pub workflow_id: String,
+    pub inputs: HashMap<String, String>,
+    pub working_directory: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkflowExecuteResponse {
+    pub execution_id: String,
+    pub status: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkflowStatusResponse {
+    pub execution_id: String,
+    pub status: String,
+    pub progress: u32,
+    pub current_step: Option<String>,
+    pub logs: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolInfo {
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub available: bool,
+    pub path: Option<String>,
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkflowSummary {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub steps_count: usize,
+    pub inputs: HashMap<String, String>,
+    pub compatibility: Option<WorkflowCompatibility>,
+}
+
+// App state structure
+pub struct AppState {
+    pub db: std::sync::Arc<Database>,
+    pub workflow_engine: std::sync::Arc<WorkflowEngine>,
+    pub tool_discovery: std::sync::Arc<tokio::sync::RwLock<ToolDiscoveryService>>,
+    pub tool_registry: std::sync::Arc<crate::tools::registry::ToolRegistry>,
+}
+
+// Commands for workflow management
+#[tauri::command]
+pub async fn load_workflow_templates(
+    state: tauri::State<'_, AppState>
+) -> Result<Vec<WorkflowSummary>, String> {
+    // Try multiple paths: relative, from project root, from current dir
+    let possible_paths = vec![
+        std::path::PathBuf::from("app/workflows"),
+        std::path::PathBuf::from("../app/workflows"),
+        std::path::PathBuf::from("../../app/workflows"),
+        std::env::current_dir().unwrap_or_default().join("app/workflows"),
+        std::env::current_dir().unwrap_or_default().parent().unwrap_or(std::path::Path::new(".")).join("app/workflows"),
+    ];
+    
+    let workflows_dir = possible_paths.iter()
+        .find(|p| p.exists())
+        .cloned()
+        .unwrap_or_else(|| std::path::PathBuf::from("app/workflows"));
+    
+    eprintln!("Loading workflows from: {:?}", workflows_dir);
+    eprintln!("Workflows directory exists: {}", workflows_dir.exists());
+    let workflow_loader = WorkflowLoader::new(workflows_dir.clone());
+
+    match workflow_loader.load_all_workflows().await {
+        Ok(workflows) => {
+            eprintln!("Successfully loaded {} workflows", workflows.len());
+            let mut summaries = Vec::new();
+
+            for (id, workflow) in workflows {
+                eprintln!("Processing workflow: {} ({})", workflow.name, id);
+                let discovery_service = state.tool_discovery.read().await;
+                let compatibility = discovery_service.get_tool_compatibility(&workflow).await
+                    .map_err(|e| {
+                        eprintln!("Failed to check compatibility for {}: {}", id, e);
+                        format!("Failed to check compatibility: {}", e)
+                    })?;
+                drop(discovery_service);
+
+                eprintln!("Workflow {} compatibility: {} ({}%)", 
+                    id, compatibility.compatible, compatibility.compatibility_percentage);
+
+                summaries.push(WorkflowSummary {
+                    id: id.clone(),
+                    name: workflow.name,
+                    description: workflow.description,
+                    category: workflow.category,
+                    steps_count: workflow.steps.len(),
+                    inputs: workflow.inputs,
+                    compatibility: Some(compatibility),
+                });
+            }
+
+            eprintln!("Returning {} workflow summaries", summaries.len());
+            Ok(summaries)
+        }
+        Err(e) => {
+            eprintln!("Failed to load workflows: {}", e);
+            Err(format!("Failed to load workflows: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_workflow_details(
+    state: tauri::State<'_, AppState>,
+    workflow_id: String,
+) -> Result<serde_json::Value, String> {
+    let possible_paths = vec![
+        std::path::PathBuf::from("app/workflows"),
+        std::path::PathBuf::from("../app/workflows"),
+        std::path::PathBuf::from("../../app/workflows"),
+        std::env::current_dir().unwrap_or_default().join("app/workflows"),
+        std::env::current_dir().unwrap_or_default().parent().unwrap_or(std::path::Path::new(".")).join("app/workflows"),
+    ];
+    
+    let workflows_dir = possible_paths.iter()
+        .find(|p| p.exists())
+        .cloned()
+        .unwrap_or_else(|| std::path::PathBuf::from("app/workflows"));
+    
+    let workflow_loader = WorkflowLoader::new(workflows_dir.clone());
+
+    match workflow_loader.load_workflow(&workflow_id).await {
+        Ok(workflow) => {
+            let discovery_service = state.tool_discovery.read().await;
+            let compatibility = discovery_service.get_tool_compatibility(&workflow).await
+                .map_err(|e| format!("Failed to check compatibility: {}", e))?;
+            drop(discovery_service);
+
+            // Convert workflow steps to a serializable format
+            let steps_json: Vec<serde_json::Value> = workflow.steps.iter().map(|step| {
+                serde_json::json!({
+                    "id": step.id,
+                    "name": step.name,
+                    "description": step.description,
+                    "run": step.run,
+                    "needs": step.needs,
+                    "timeout": step.timeout,
+                })
+            }).collect();
+
+            let details = serde_json::json!({
+                "id": workflow.id,
+                "name": workflow.name,
+                "description": workflow.description,
+                "category": workflow.category,
+                "inputs": workflow.inputs,
+                "steps": steps_json,
+                "compatibility": compatibility,
+            });
+
+            Ok(details)
+        }
+        Err(e) => Err(format!("Failed to load workflow details: {}", e)),
+    }
+}
+
+#[tauri::command]
+pub async fn execute_workflow(
+    state: tauri::State<'_, AppState>,
+    request: WorkflowExecuteRequest,
+) -> Result<WorkflowExecuteResponse, String> {
+    let execution_id = state.workflow_engine.execute_workflow(
+        request.workflow_id,
+        request.inputs,
+        request.working_directory.unwrap_or_else(|| "./results".to_string()),
+    ).await
+    .map_err(|e| format!("Failed to execute workflow: {}", e))?;
+
+    Ok(WorkflowExecuteResponse {
+        execution_id,
+        status: "running".to_string(),
+        message: "Workflow execution started".to_string(),
+    })
+}
+
+#[tauri::command]
+pub async fn get_workflow_status(
+    state: tauri::State<'_, AppState>,
+    #[allow(non_snake_case)] executionId: String,
+) -> Result<WorkflowStatusResponse, String> {
+    let execution = state.workflow_engine.get_execution_status(&executionId).await
+        .map_err(|e| format!("Failed to get execution status: {}", e))?
+        .ok_or_else(|| format!("Execution '{}' not found", executionId))?;
+
+    Ok(WorkflowStatusResponse {
+        execution_id: execution.id,
+        status: format!("{:?}", execution.status),
+        progress: execution.progress,
+        current_step: execution.current_step,
+        logs: execution.logs.iter().map(|log| log.message.clone()).collect(),
+    })
+}
+
+#[tauri::command]
+pub async fn stop_workflow_execution(
+    state: tauri::State<'_, AppState>,
+    #[allow(non_snake_case)] executionId: String,
+) -> Result<String, String> {
+    state.workflow_engine.stop_execution(&executionId).await
+        .map_err(|e| format!("Failed to stop execution: {}", e))?;
+
+    Ok("Execution stopped".to_string())
+}
+
+// Commands for tool management
+#[tauri::command]
+pub async fn list_tools(
+    #[allow(non_snake_case)] forceRefresh: bool,
+    state: tauri::State<'_, AppState>
+) -> Result<Vec<crate::tools::discovery::ToolRecord>, String> {
+    let discovery_service = state.tool_discovery.read().await;
+    
+    let tools = discovery_service.get_all_tool_records(forceRefresh).await;
+    
+    eprintln!("list_tools called: force_refresh={}, found {} tools", forceRefresh, tools.len());
+    if tools.len() > 0 {
+        eprintln!("First 5 tools: {:?}", tools.iter().take(5).map(|t| &t.name).collect::<Vec<_>>());
+    }
+    
+    Ok(tools)
+}
+
+#[tauri::command]
+pub async fn get_tool(
+    #[allow(non_snake_case)] toolName: String,
+    #[allow(non_snake_case)] forceRefresh: bool,
+    state: tauri::State<'_, AppState>
+) -> Result<Option<crate::tools::discovery::ToolRecord>, String> {
+    let discovery_service = state.tool_discovery.read().await;
+    
+    let tool = discovery_service.get_tool_record(&toolName, forceRefresh).await;
+    
+    Ok(tool)
+}
+
+#[tauri::command]
+pub async fn refresh_tools(
+    state: tauri::State<'_, AppState>
+) -> Result<HashMap<String, crate::tools::discovery::ToolRecord>, String> {
+    let discovery_service = state.tool_discovery.read().await;
+    
+    let results = discovery_service.refresh_all_tools().await;
+    
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn get_tool_categories(
+    state: tauri::State<'_, AppState>
+) -> Result<Vec<String>, String> {
+    let discovery_service = state.tool_discovery.read().await;
+    
+    let categories = discovery_service.get_categories();
+    
+    Ok(categories)
+}
+
+#[tauri::command]
+pub async fn get_tools_by_category(
+    category: String,
+    state: tauri::State<'_, AppState>
+) -> Result<Vec<crate::tools::discovery::ToolRecord>, String> {
+    let discovery_service = state.tool_discovery.read().await;
+    
+    let tools = discovery_service.get_tools_by_category(&category).await;
+    
+    Ok(tools)
+}
+
+#[tauri::command]
+pub async fn add_manual_tool(
+    #[allow(non_snake_case)] toolName: String,
+    #[allow(non_snake_case)] toolPath: String,
+    category: String,
+    state: tauri::State<'_, AppState>
+) -> Result<crate::tools::discovery::ToolRecord, String> {
+    let discovery_service = state.tool_discovery.write().await;
+    
+    let tool = discovery_service.add_manual_tool(&toolName, &toolPath, &category).await
+        .map_err(|e| format!("Failed to add manual tool: {}", e))?;
+    
+    Ok(tool)
+}
+
+#[tauri::command]
+pub async fn remove_manual_tool(
+    #[allow(non_snake_case)] toolName: String,
+    state: tauri::State<'_, AppState>
+) -> Result<bool, String> {
+    let discovery_service = state.tool_discovery.write().await;
+    
+    let success = discovery_service.remove_manual_tool(&toolName).await
+        .map_err(|e| format!("Failed to remove manual tool: {}", e))?;
+    
+    Ok(success)
+}
+
+#[tauri::command]
+pub async fn list_manual_tools(
+    state: tauri::State<'_, AppState>
+) -> Result<Vec<String>, String> {
+    let discovery_service = state.tool_discovery.read().await;
+    
+    let manual_tools = discovery_service.list_manual_tools();
+    
+    Ok(manual_tools)
+}
+
+#[tauri::command]
+pub async fn get_available_tools_count(
+    state: tauri::State<'_, AppState>
+) -> Result<usize, String> {
+    let discovery_service = state.tool_discovery.read().await;
+    
+    let count = discovery_service.get_available_count().await;
+    
+    Ok(count)
+}
+
+// Commands for scan management
+#[tauri::command]
+pub async fn list_scans(
+    state: tauri::State<'_, AppState>
+) -> Result<Vec<serde_json::Value>, String> {
+    let scans = state.db.list_scans().await
+        .map_err(|e| format!("Failed to list scans: {}", e))?;
+
+    let mut scan_data = Vec::new();
+    for scan in scans {
+        scan_data.push(serde_json::to_value(&scan).unwrap_or_default());
+    }
+
+    Ok(scan_data)
+}
+
+#[tauri::command]
+pub async fn create_scan(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    scan_data: HashMap<String, serde_json::Value>,
+) -> Result<String, String> {
+    // Extract required fields
+    let name = scan_data.get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Unnamed Scan")
+        .to_string();
+
+    let target = scan_data.get("target")
+        .and_then(|v| v.as_str())
+        .ok_or("Target is required")?
+        .to_string();
+
+    let scan_type = scan_data.get("scan_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Custom Scan")
+        .to_string();
+
+    let workflow_id = scan_data.get("workflow_id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let description = scan_data.get("description")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let working_directory = scan_data.get("working_directory")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    // Create scan object
+    let scan = crate::database::Scan {
+        id: uuid::Uuid::new_v4().to_string(),
+        name,
+        target,
+        status: "pending".to_string(),
+        scan_type,
+        workflow_id,
+        started: chrono::Utc::now(),
+        completed: None,
+        progress: 0,
+        current_test: None,
+        current_step: None,
+        total_steps: None,
+        duration: None,
+        estimated_time: None,
+        description,
+        tags: None,
+        working_directory,
+        agents: None,
+        command_log: None,
+        target_validated: false,
+        vulnerabilities: None,
+        critical: None,
+        high: None,
+        medium: None,
+        low: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    state.db.create_scan(&scan).await
+        .map_err(|e| format!("Failed to create scan: {}", e))?;
+
+    // Emit scan started event
+    let event = EventEmitter::scan_started(&scan.id);
+    let _ = app.emit_all(SCAN_STARTED, event);
+
+    Ok(scan.id)
+}
+
+#[tauri::command]
+pub async fn get_scan(
+    state: tauri::State<'_, AppState>,
+    #[allow(non_snake_case)] scanId: String,
+) -> Result<Option<serde_json::Value>, String> {
+    let scan = state.db.get_scan(&scanId).await
+        .map_err(|e| format!("Failed to get scan: {}", e))?;
+
+    if let Some(scan) = scan {
+        Ok(Some(serde_json::to_value(&scan).unwrap_or_default()))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn update_scan(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    scan: crate::database::Scan,
+) -> Result<(), String> {
+    // Store old status for comparison
+    let old_scan = state.db.get_scan(&scan.id).await
+        .map_err(|e| format!("Failed to get scan: {}", e))?;
+
+    state.db.update_scan(&scan).await
+        .map_err(|e| format!("Failed to update scan: {}", e))?;
+
+    // Emit events based on status changes
+    if let Some(old) = old_scan {
+        if old.status != scan.status {
+            match scan.status.as_str() {
+                "completed" => {
+                    let event = EventEmitter::scan_completed(&scan.id);
+                    let _ = app.emit_all(SCAN_COMPLETED, event);
+                }
+                "failed" => {
+                    let event = EventEmitter::scan_failed(&scan.id);
+                    let _ = app.emit_all(SCAN_FAILED, event);
+                }
+                _ => {}
+            }
+        }
+        
+        // Emit progress update if progress changed
+        if old.progress != scan.progress {
+            let event = EventEmitter::scan_progress_update(
+                &scan.id,
+                scan.progress,
+                scan.current_test.clone(),
+                &scan.status
+            );
+            let _ = app.emit_all(SCAN_PROGRESS_UPDATE, event);
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_scan(
+    state: tauri::State<'_, AppState>,
+    #[allow(non_snake_case)] scanId: String,
+) -> Result<(), String> {
+    state.db.delete_scan(&scanId).await
+        .map_err(|e| format!("Failed to delete scan: {}", e))?;
+
+    Ok(())
+}
+
+// Commands for system information
+#[tauri::command]
+pub async fn get_system_info() -> Result<serde_json::Value, String> {
+    use sysinfo::{System, SystemExt};
+
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    
+    let info = serde_json::json!({
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "total_memory_mb": sys.total_memory(),
+        "available_memory_mb": sys.available_memory(),
+        "cpu_cores": sys.cpus().len()
+    });
+    
+    Ok(info)
+}
+
+// Commands for workflow artifacts and findings
+#[tauri::command]
+pub async fn get_workflow_artifacts(
+    state: tauri::State<'_, AppState>,
+    #[allow(non_snake_case)] executionId: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let artifacts = state.db.get_workflow_artifacts(&executionId).await
+        .map_err(|e| format!("Failed to get artifacts: {}", e))?;
+
+    let mut artifact_data = Vec::new();
+    for artifact in artifacts {
+        artifact_data.push(serde_json::to_value(&artifact).unwrap_or_default());
+    }
+
+    Ok(artifact_data)
+}
+
+#[tauri::command]
+pub async fn get_workflow_findings(
+    state: tauri::State<'_, AppState>,
+    #[allow(non_snake_case)] executionId: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let findings = state.db.get_workflow_findings(&executionId).await
+        .map_err(|e| format!("Failed to get findings: {}", e))?;
+
+    let mut finding_data = Vec::new();
+    for finding in findings {
+        finding_data.push(serde_json::to_value(&finding).unwrap_or_default());
+    }
+
+    Ok(finding_data)
+}
+
+// Commands for vulnerability management
+#[tauri::command]
+pub async fn list_vulnerabilities(
+    state: tauri::State<'_, AppState>
+) -> Result<Vec<serde_json::Value>, String> {
+    let vulns = state.db.list_vulnerabilities().await
+        .map_err(|e| format!("Failed to list vulnerabilities: {}", e))?;
+
+    let mut vuln_data = Vec::new();
+    for vuln in vulns {
+        vuln_data.push(serde_json::to_value(&vuln).unwrap_or_default());
+    }
+
+    Ok(vuln_data)
+}
+
+#[tauri::command]
+pub async fn get_scan_vulnerabilities(
+    state: tauri::State<'_, AppState>,
+    scan_id: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let vulns = state.db.get_vulnerabilities_by_scan(&scan_id).await
+        .map_err(|e| format!("Failed to get vulnerabilities: {}", e))?;
+
+    let mut vuln_data = Vec::new();
+    for vuln in vulns {
+        vuln_data.push(serde_json::to_value(&vuln).unwrap_or_default());
+    }
+
+    Ok(vuln_data)
+}
+
+#[tauri::command]
+pub async fn create_vulnerability(
+    state: tauri::State<'_, AppState>,
+    vuln_data: HashMap<String, serde_json::Value>,
+) -> Result<String, String> {
+    let vuln = crate::database::Vulnerability {
+        id: uuid::Uuid::new_v4().to_string(),
+        scan_id: vuln_data.get("scan_id")
+            .and_then(|v| v.as_str())
+            .ok_or("scan_id is required")?
+            .to_string(),
+        title: vuln_data.get("title")
+            .and_then(|v| v.as_str())
+            .ok_or("title is required")?
+            .to_string(),
+        severity: vuln_data.get("severity")
+            .and_then(|v| v.as_str())
+            .ok_or("severity is required")?
+            .to_string(),
+        cvss: vuln_data.get("cvss")
+            .and_then(|v| v.as_f64()),
+        description: vuln_data.get("description")
+            .and_then(|v| v.as_str())
+            .ok_or("description is required")?
+            .to_string(),
+        url: vuln_data.get("url")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        parameter: vuln_data.get("parameter")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        payload: vuln_data.get("payload")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        remediation: vuln_data.get("remediation")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        discovered_by: vuln_data.get("discovered_by")
+            .and_then(|v| v.as_str())
+            .ok_or("discovered_by is required")?
+            .to_string(),
+        timestamp: chrono::Utc::now(),
+        false_positive: vuln_data.get("false_positive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        confirmed: vuln_data.get("confirmed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        evidence: vuln_data.get("evidence")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+    };
+
+    state.db.create_vulnerability(&vuln).await
+        .map_err(|e| format!("Failed to create vulnerability: {}", e))?;
+
+    Ok(vuln.id)
+}
+
+#[tauri::command]
+pub async fn delete_vulnerability(
+    state: tauri::State<'_, AppState>,
+    vuln_id: String,
+) -> Result<(), String> {
+    state.db.delete_vulnerability(&vuln_id).await
+        .map_err(|e| format!("Failed to delete vulnerability: {}", e))?;
+
+    Ok(())
+}
+
+// Commands for report management
+#[tauri::command]
+pub async fn list_reports(
+    state: tauri::State<'_, AppState>
+) -> Result<Vec<serde_json::Value>, String> {
+    let reports = state.db.list_reports().await
+        .map_err(|e| format!("Failed to list reports: {}", e))?;
+
+    let mut report_data = Vec::new();
+    for report in reports {
+        report_data.push(serde_json::to_value(&report).unwrap_or_default());
+    }
+
+    Ok(report_data)
+}
+
+#[tauri::command]
+pub async fn get_report(
+    state: tauri::State<'_, AppState>,
+    report_id: String,
+) -> Result<Option<serde_json::Value>, String> {
+    let report = state.db.get_report(&report_id).await
+        .map_err(|e| format!("Failed to get report: {}", e))?;
+
+    if let Some(report) = report {
+        Ok(Some(serde_json::to_value(&report).unwrap_or_default()))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn create_report(
+    state: tauri::State<'_, AppState>,
+    report_data: HashMap<String, serde_json::Value>,
+) -> Result<String, String> {
+    let report = crate::database::Report {
+        id: uuid::Uuid::new_v4().to_string(),
+        scan_id: report_data.get("scan_id")
+            .and_then(|v| v.as_str())
+            .ok_or("scan_id is required")?
+            .to_string(),
+        title: report_data.get("title")
+            .and_then(|v| v.as_str())
+            .ok_or("title is required")?
+            .to_string(),
+        content: report_data.get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        format: report_data.get("format")
+            .and_then(|v| v.as_str())
+            .unwrap_or("html")
+            .to_string(),
+        created_at: chrono::Utc::now(),
+    };
+
+    state.db.create_report(&report).await
+        .map_err(|e| format!("Failed to create report: {}", e))?;
+
+    Ok(report.id)
+}
+
+#[tauri::command]
+pub async fn delete_report(
+    state: tauri::State<'_, AppState>,
+    report_id: String,
+) -> Result<(), String> {
+    state.db.delete_report(&report_id).await
+        .map_err(|e| format!("Failed to delete report: {}", e))?;
+
+    Ok(())
+}
+
+// Commands for statistics
+#[tauri::command]
+pub async fn get_stats(
+    state: tauri::State<'_, AppState>
+) -> Result<serde_json::Value, String> {
+    let scans = state.db.list_scans().await
+        .map_err(|e| format!("Failed to get scans: {}", e))?;
+    let vulns = state.db.list_vulnerabilities().await
+        .map_err(|e| format!("Failed to get vulnerabilities: {}", e))?;
+    
+    let discovery_service = state.tool_discovery.read().await;
+    let tools = discovery_service.get_all_tool_records(false).await;
+
+    let active_scans = scans.iter().filter(|s| s.status == "running").count();
+    let critical_vulns = vulns.iter().filter(|v| v.severity.to_lowercase() == "critical").count();
+    let available_tools = tools.iter().filter(|t| t.installed).count();
+
+    let stats = serde_json::json!({
+        "totalScans": scans.len(),
+        "activeScans": active_scans,
+        "vulnerabilitiesFound": vulns.len(),
+        "criticalIssues": critical_vulns,
+        "toolsAvailable": available_tools,
+        "systemHealth": "healthy"
+    });
+
+    Ok(stats)
+}
+
+#[tauri::command]
+pub async fn get_system_metrics(
+    state: tauri::State<'_, AppState>
+) -> Result<serde_json::Value, String> {
+    let scans = state.db.list_scans().await
+        .map_err(|e| format!("Failed to get scans: {}", e))?;
+    let vulns = state.db.list_vulnerabilities().await
+        .map_err(|e| format!("Failed to get vulnerabilities: {}", e))?;
+    
+    let discovery_service = state.tool_discovery.read().await;
+    let tools = discovery_service.get_all_tool_records(false).await;
+
+    let total_scans = scans.len();
+    let active_scans = scans.iter().filter(|s| s.status == "running").count();
+    let completed_scans = scans.iter().filter(|s| s.status == "completed").count();
+    let total_vulnerabilities = vulns.len();
+    let critical_issues = vulns.iter().filter(|v| v.severity.to_lowercase() == "critical").count();
+    let tools_available = tools.iter().filter(|t| t.installed).count();
+    let tools_total = tools.len();
+    let tools_unavailable = tools_total - tools_available;
+
+    // Determine system health based on multiple factors
+    let system_health = if tools_available >= tools_total / 2 && active_scans < 10 {
+        "healthy"
+    } else if tools_available >= tools_total / 3 && active_scans < 20 {
+        "warning"
+    } else {
+        "degraded"
+    };
+
+    let metrics = serde_json::json!({
+        "total_scans": total_scans,
+        "active_scans": active_scans,
+        "completed_scans": completed_scans,
+        "total_vulnerabilities": total_vulnerabilities,
+        "critical_issues": critical_issues,
+        "tools_available": tools_available,
+        "tools_total": tools_total,
+        "tools_unavailable": tools_unavailable,
+        "system_health": system_health,
+        "health_details": {
+            "scan_capacity": if active_scans < 10 { "good" } else { "limited" },
+            "tool_availability": if tools_available >= tools_total / 2 { "good" } else { "poor" },
+            "database": "connected"
+        }
+    });
+
+    Ok(metrics)
+}
+
+#[tauri::command]
+pub fn get_os_info() -> Result<serde_json::Value, String> {
+    let os_type = if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(target_os = "linux") {
+        "linux"
+    } else {
+        "unknown"
+    };
+
+    let os_info = serde_json::json!({
+        "platform": os_type,
+        "arch": std::env::consts::ARCH,
+    });
+
+    Ok(os_info)
+}

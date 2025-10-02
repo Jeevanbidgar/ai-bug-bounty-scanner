@@ -6,13 +6,18 @@ import {
   XCircle,
   Search,
   Plus,
-  Trash2
+  Trash2,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Input } from '../components/ui/Input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/Select'
+import { ToastContainer } from '../components/ui/Toast'
+import { useToast } from '../hooks/useToast'
+import ToolDetailModal from '../components/ToolDetailModal'
 
 import type { Tool } from '../services/api'
 
@@ -27,16 +32,32 @@ const ToolsPage = () => {
   const [manualToolName, setManualToolName] = useState('')
   const [manualToolPath, setManualToolPath] = useState('')
   const [manualToolCategory, setManualToolCategory] = useState('custom')
+  const [selectedTool, setSelectedTool] = useState<Tool | null>(null)
+  
+  const { toasts, success, error: showError, removeToast } = useToast()
 
-  const { data: tools, isLoading, refetch } = useQuery({
+  const { data: tools, isLoading, error, refetch } = useQuery({
     queryKey: ['tools'],
-    queryFn: () => apiService.getTools(),
+    queryFn: async () => {
+      const result = await apiService.getTools(false)
+      return result
+    },
   })
 
   const refreshMutation = useMutation({
-    mutationFn: () => apiService.refreshToolsStatus(),
-    onSuccess: () => {
+    mutationFn: async () => {
+      // Call getTools with forceRefresh=true to trigger tool discovery
+      const result = await apiService.getTools(true)
+      return result
+    },
+    onSuccess: (data) => {
       refetch()
+      const toolCount = data.data?.length || 0
+      const installedCount = data.data?.filter(t => t.installed).length || 0
+      success(`Tools refreshed! Found ${installedCount} of ${toolCount} tools installed`)
+    },
+    onError: (err) => {
+      showError(err instanceof Error ? err.message : 'Failed to refresh tools')
     }
   })
 
@@ -101,10 +122,73 @@ const ToolsPage = () => {
     }
   }
 
+  const handleToolRefresh = async (toolName: string) => {
+    try {
+      await apiService.getTool(toolName, true) // Force refresh this specific tool
+      await refetch() // Refresh the tool list
+      success(`${toolName} status updated`)
+      
+      // Update the selected tool if it's currently open
+      if (selectedTool && selectedTool.name === toolName) {
+        const updatedTools = await apiService.getTools(false)
+        const updatedTool = updatedTools.data.find(t => t.name === toolName)
+        if (updatedTool) {
+          setSelectedTool(updatedTool)
+        }
+      }
+    } catch (error) {
+      showError(`Failed to refresh ${toolName}`)
+    }
+  }
+
   const categories = Array.from(new Set((tools?.data || []).map(tool => tool.category)))
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto" />
+          <p className="text-gray-400">Loading tools...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-red-900/20 border-red-700">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-400">
+              <AlertTriangle className="h-5 w-5" />
+              Failed to Load Tools
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-red-300 mb-4">
+              {error instanceof Error ? error.message : 'An unexpected error occurred'}
+            </p>
+            <Button 
+              onClick={() => refetch()} 
+              variant="outline"
+              className="border-red-600 text-red-400 hover:bg-red-900/30"
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
@@ -113,9 +197,22 @@ const ToolsPage = () => {
             Manage and monitor available security scanning tools
           </p>
         </div>
-        <Button onClick={() => refreshMutation.mutate()} className="w-fit">
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh Status
+        <Button 
+          onClick={() => refreshMutation.mutate()} 
+          className="w-fit"
+          disabled={refreshMutation.isPending}
+        >
+          {refreshMutation.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Refreshing...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh Status
+            </>
+          )}
         </Button>
       </div>
 
@@ -177,11 +274,11 @@ const ToolsPage = () => {
           </div>
         </CardHeader>
         <CardContent>
-          {manualTools?.data?.manual_tools?.length > 0 ? (
+          {(manualTools?.data?.manual_tools?.length ?? 0) > 0 ? (
             <div className="space-y-3">
               <h4 className="text-sm font-medium text-gray-300">Manually Added Tools:</h4>
               <div className="grid gap-3">
-                {manualTools.data.manual_tools.map((toolName: string) => {
+                {(manualTools?.data?.manual_tools ?? []).map((toolName: string) => {
                   const tool = tools?.data?.find((t: Tool) => t.name === toolName)
                   return (
                     <div key={toolName} className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-700">
@@ -304,16 +401,21 @@ const ToolsPage = () => {
         ) : (
           filteredTools.map((tool: Tool) => {
             return (
-              <Card key={tool.name}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(tool)}
-                      <CardTitle className="text-lg">{tool.name}</CardTitle>
+              <div 
+                key={tool.name}
+                className="cursor-pointer"
+                onClick={() => setSelectedTool(tool)}
+              >
+                <Card className="hover:border-blue-500 transition-colors">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        {getStatusIcon(tool)}
+                        <CardTitle className="text-lg">{tool.name}</CardTitle>
+                      </div>
                     </div>
-                  </div>
-                  <CardDescription>{tool.description}</CardDescription>
-                </CardHeader>
+                    <CardDescription>{tool.description}</CardDescription>
+                  </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-400">Category:</span>
@@ -343,11 +445,11 @@ const ToolsPage = () => {
                     </div>
                   </div>
 
-                  {tool.last_check && (
+                  {tool.last_checked && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-400">Last Check:</span>
                       <span className="text-gray-300">
-                        {new Date(tool.last_check).toLocaleDateString()}
+                        {new Date(tool.last_checked).toLocaleDateString()}
                       </span>
                     </div>
                   )}
@@ -372,6 +474,7 @@ const ToolsPage = () => {
                   </div>
                 </CardContent>
               </Card>
+              </div>
             )
           })
         )}
@@ -422,6 +525,15 @@ const ToolsPage = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Tool Detail Modal */}
+      {selectedTool && (
+        <ToolDetailModal 
+          tool={selectedTool}
+          onClose={() => setSelectedTool(null)}
+          onRefresh={handleToolRefresh}
+        />
+      )}
     </div>
   )
 }

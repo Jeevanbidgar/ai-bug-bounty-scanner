@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { apiService } from '../services/api'
 import {
   Save,
   RefreshCw,
@@ -16,8 +17,8 @@ import { Input } from '../components/ui/Input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
 
-// Mock system configuration
-const mockConfig = {
+// Default configuration structure
+const defaultConfig = {
   database: {
     url: 'sqlite+aiosqlite:///./ai_bug_bounty_scanner.db',
     max_connections: 10,
@@ -45,15 +46,15 @@ const mockConfig = {
 }
 
 const SettingsPage = () => {
-  const [config, setConfig] = useState(mockConfig)
+  const [config, setConfig] = useState(defaultConfig)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   const { data: systemStats } = useQuery({
     queryKey: ['system-stats'],
     queryFn: async () => {
-      const response = await fetch('/api/health/detailed')
-      if (!response.ok) throw new Error('Failed to fetch system stats')
-      return response.json()
+      const health = await apiService.getDetailedHealth()
+      if (!health.data) throw new Error('Failed to fetch system stats')
+      return health.data
     },
     refetchInterval: 10000 // Refresh every 10 seconds
   })
@@ -310,21 +311,21 @@ const SettingsPage = () => {
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Status:</span>
-                <Badge className={systemStats?.system_health === 'healthy' ? 'bg-green-600' : 'bg-yellow-600'}>
-                  {systemStats?.system_health || 'Unknown'}
+                <Badge className={(systemStats as any)?.system_health === 'healthy' ? 'bg-green-600' : 'bg-yellow-600'}>
+                  {(systemStats as any)?.system_health || 'Unknown'}
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Active Scans:</span>
-                <span className="text-white">{systemStats?.active_scans || 0}</span>
+                <span className="text-white">{(systemStats as any)?.active_scans || 0}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Available Tools:</span>
-                <span className="text-white">{systemStats?.tools_available || 0}</span>
+                <span className="text-white">{(systemStats as any)?.tools_available || 0}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Critical Issues:</span>
-                <span className="text-red-400">{systemStats?.critical_issues || 0}</span>
+                <span className="text-red-400">{(systemStats as any)?.critical_issues || 0}</span>
               </div>
             </CardContent>
           </Card>
