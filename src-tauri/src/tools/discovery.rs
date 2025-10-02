@@ -129,6 +129,12 @@ impl ToolDiscoveryService {
             if let Ok(home) = std::env::var("USERPROFILE") {
                 paths.push(PathBuf::from(&home).join("scoop\\shims"));
                 paths.push(PathBuf::from(&home).join("AppData\\Local\\Microsoft\\WindowsApps"));
+                
+                // Add pipx bin directory (where pipx installs executables)
+                paths.push(PathBuf::from(&home).join(".local\\bin"));
+                
+                // Add Go bin directory
+                paths.push(PathBuf::from(&home).join("go\\bin"));
             }
         }
 

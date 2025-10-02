@@ -152,17 +152,43 @@ async fn detect_winget() -> PackageManagerInfo {
 
     #[cfg(target_os = "windows")]
     {
+        // Try multiple methods to detect winget
+        // Method 1: Try direct command execution
         match execute_detection_command("winget", &["--version"]).await {
             Ok((stdout, _stderr)) => {
                 // Output is like "v1.6.2721"
                 let version = parse_simple_version(&stdout);
-                PackageManagerInfo::available(PackageManagerType::WinGet, version, None)
+                return PackageManagerInfo::available(PackageManagerType::WinGet, version, None);
             }
-            Err(_e) => {
-                let error_msg = "WinGet is not installed. Install 'App Installer' from Microsoft Store or update Windows 10/11 to the latest version.".to_string();
-                PackageManagerInfo::unavailable(PackageManagerType::WinGet, error_msg)
+            Err(_) => {
+                // Method 2: Try with .exe extension (some systems require this)
+                if let Ok((stdout, _stderr)) = execute_detection_command("winget.exe", &["--version"]).await {
+                    let version = parse_simple_version(&stdout);
+                    return PackageManagerInfo::available(PackageManagerType::WinGet, version, None);
+                }
+                
+                // Method 3: Check if App Installer package is installed using PowerShell
+                let check_cmd = "powershell";
+                let check_args = vec![
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "Get-AppxPackage Microsoft.DesktopAppInstaller | Select-Object -ExpandProperty Version"
+                ];
+                
+                if let Ok((stdout, _stderr)) = execute_detection_command(check_cmd, &check_args).await {
+                    if !stdout.trim().is_empty() {
+                        // App Installer is installed, winget should be available
+                        let version = parse_simple_version(&stdout);
+                        return PackageManagerInfo::available(PackageManagerType::WinGet, version, Some("Note: winget may require running in a regular terminal (not IDE terminal)".to_string()));
+                    }
+                }
             }
         }
+        
+        // WinGet not found
+        let error_msg = "WinGet is not installed. Install 'App Installer' from Microsoft Store or update Windows 10/11 to the latest version.".to_string();
+        PackageManagerInfo::unavailable(PackageManagerType::WinGet, error_msg)
     }
 }
 
