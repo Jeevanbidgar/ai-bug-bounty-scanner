@@ -86,6 +86,9 @@ fn main() {
             crate::commands::list_manual_tools,
             crate::commands::get_available_tools_count,
             crate::commands::get_os_info,
+            // Package manager commands
+            crate::commands::detect_package_managers,
+            crate::commands::check_package_manager,
             // Scan commands
             crate::commands::list_scans,
             crate::commands::create_scan,

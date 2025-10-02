@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Input } from '../components/ui/Input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
+import { PackageManagerTest } from '../components/PackageManagerTest'
 
 // Default configuration structure
 const defaultConfig = {
@@ -98,6 +99,13 @@ const SettingsPage = () => {
           </Button>
         </div>
       </div>
+
+      {/* Package Manager Test (Development) */}
+      <Card className="border-2 border-blue-500">
+        <CardContent className="p-0">
+          <PackageManagerTest />
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Main Settings */}

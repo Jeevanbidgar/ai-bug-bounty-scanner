@@ -865,3 +865,59 @@ pub fn get_os_info() -> Result<serde_json::Value, String> {
 
     Ok(os_info)
 }
+
+// Package manager detection commands
+#[tauri::command]
+pub async fn detect_package_managers() -> Result<Vec<crate::tools::package_managers::PackageManagerInfo>, String> {
+    eprintln!("🔍 Detecting available package managers...");
+    
+    let managers = crate::tools::package_managers::detect_all_managers().await;
+    
+    eprintln!("✅ Detection complete:");
+    for manager in &managers {
+        if manager.available {
+            eprintln!("  ✓ {} - v{}", 
+                manager.manager_type.display_name(),
+                manager.version.as_ref().unwrap_or(&"unknown".to_string())
+            );
+        } else {
+            eprintln!("  ✗ {} - {}", 
+                manager.manager_type.display_name(),
+                manager.error.as_ref().unwrap_or(&"not found".to_string())
+            );
+        }
+    }
+    
+    Ok(managers)
+}
+
+#[tauri::command]
+pub async fn check_package_manager(
+    manager_name: String
+) -> Result<crate::tools::package_managers::PackageManagerInfo, String> {
+    eprintln!("🔍 Checking package manager: {}", manager_name);
+    
+    let manager_type = match manager_name.to_lowercase().as_str() {
+        "go" => crate::tools::package_managers::PackageManagerType::Go,
+        "pipx" => crate::tools::package_managers::PackageManagerType::Pipx,
+        "apt" => crate::tools::package_managers::PackageManagerType::Apt,
+        "winget" => crate::tools::package_managers::PackageManagerType::WinGet,
+        _ => return Err(format!("Unknown package manager: {}", manager_name)),
+    };
+    
+    let info = crate::tools::package_managers::detect_manager(manager_type).await;
+    
+    if info.available {
+        eprintln!("✅ {} is available (v{})", 
+            info.manager_type.display_name(),
+            info.version.as_ref().unwrap_or(&"unknown".to_string())
+        );
+    } else {
+        eprintln!("❌ {} is not available: {}", 
+            info.manager_type.display_name(),
+            info.error.as_ref().unwrap_or(&"not found".to_string())
+        );
+    }
+    
+    Ok(info)
+}
