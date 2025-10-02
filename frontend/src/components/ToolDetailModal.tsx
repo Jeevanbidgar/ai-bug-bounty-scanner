@@ -13,6 +13,7 @@ interface ToolDetailModalProps {
   tool: Tool
   onClose: () => void
   onToolUpdate?: (updatedTool: Tool) => void
+  onInstallStart?: (toolName: string) => void
 }
 
 interface OsInfo {
@@ -20,7 +21,7 @@ interface OsInfo {
   arch: string
 }
 
-const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate }: ToolDetailModalProps) => {
+const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallStart }: ToolDetailModalProps) => {
   const [tool, setTool] = useState(initialTool)
   const [isTestRunning, setIsTestRunning] = useState(false)
   const [testOutput, setTestOutput] = useState<string | null>(null)
@@ -251,6 +252,11 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate }: ToolDetai
 
   const handleInstall = async () => {
     setIsInstalling(true)
+    
+    // Notify parent to show installation progress modal
+    if (onInstallStart) {
+      onInstallStart(tool.name)
+    }
     
     try {
       info(`Installing ${tool.name}...`)

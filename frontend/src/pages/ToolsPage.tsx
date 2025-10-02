@@ -19,6 +19,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { ToastContainer } from '../components/ui/Toast'
 import { useToast } from '../hooks/useToast'
 import ToolDetailModal from '../components/ToolDetailModal'
+import { InstallationProgressModal } from '../components/InstallationProgressModal'
+import { PipxPathWarning } from '../components/PipxPathWarning'
 
 import type { Tool } from '../services/api'
 
@@ -37,6 +39,10 @@ const ToolsPage = () => {
   const [toolUpdates, setToolUpdates] = useState<Record<string, { hasUpdate: boolean; latestVersion: string | null }>>({})
   const [isInitialDiscovery, setIsInitialDiscovery] = useState(false)
   const [discoveryProgress, setDiscoveryProgress] = useState(0)
+  
+  // State for installation progress modal
+  const [isInstalling, setIsInstalling] = useState(false)
+  const [installingTool, setInstallingTool] = useState<string | null>(null)
   
   const queryClient = useQueryClient()
   const { toasts, success, error: showError, info, removeToast } = useToast()
@@ -275,6 +281,9 @@ const ToolsPage = () => {
     <div className="space-y-6">
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
+      
+      {/* PipxPathWarning Banner */}
+      <PipxPathWarning />
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -632,6 +641,11 @@ const ToolsPage = () => {
         <ToolDetailModal 
           tool={selectedTool}
           onClose={() => setSelectedTool(null)}
+          onInstallStart={(toolName) => {
+            // Show installation progress modal
+            setInstallingTool(toolName)
+            setIsInstalling(true)
+          }}
           onToolUpdate={(updatedTool) => {
             // Update the selected tool in local state
             setSelectedTool(updatedTool)
@@ -648,6 +662,20 @@ const ToolsPage = () => {
                 )
               }
             })
+          }}
+        />
+      )}
+
+      {/* Installation Progress Modal */}
+      {isInstalling && installingTool && (
+        <InstallationProgressModal
+          isOpen={isInstalling}
+          toolName={installingTool}
+          onClose={() => {
+            setIsInstalling(false)
+            setInstallingTool(null)
+            // Refetch tools to update status
+            refetch()
           }}
         />
       )}
