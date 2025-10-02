@@ -88,7 +88,14 @@ async fn detect_go() -> PackageManagerInfo {
             let version = parse_go_version(&stdout);
             PackageManagerInfo::available(PackageManagerType::Go, version, None)
         }
-        Err(e) => PackageManagerInfo::unavailable(PackageManagerType::Go, e),
+        Err(_e) => {
+            let error_msg = if cfg!(target_os = "windows") {
+                "Go is not installed. Install from: https://go.dev/dl/ or run: winget install GoLang.Go".to_string()
+            } else {
+                "Go is not installed. Run: sudo apt install golang-go (Debian/Ubuntu) or download from https://go.dev/dl/".to_string()
+            };
+            PackageManagerInfo::unavailable(PackageManagerType::Go, error_msg)
+        }
     }
 }
 
@@ -100,7 +107,10 @@ async fn detect_pipx() -> PackageManagerInfo {
             let version = parse_simple_version(&stdout);
             PackageManagerInfo::available(PackageManagerType::Pipx, version, None)
         }
-        Err(e) => PackageManagerInfo::unavailable(PackageManagerType::Pipx, e),
+        Err(_e) => {
+            let error_msg = "pipx is not installed. Run: pip install --user pipx (then restart terminal) or python -m pip install --user pipx".to_string();
+            PackageManagerInfo::unavailable(PackageManagerType::Pipx, error_msg)
+        }
     }
 }
 
@@ -148,7 +158,10 @@ async fn detect_winget() -> PackageManagerInfo {
                 let version = parse_simple_version(&stdout);
                 PackageManagerInfo::available(PackageManagerType::WinGet, version, None)
             }
-            Err(e) => PackageManagerInfo::unavailable(PackageManagerType::WinGet, e),
+            Err(_e) => {
+                let error_msg = "WinGet is not installed. Install 'App Installer' from Microsoft Store or update Windows 10/11 to the latest version.".to_string();
+                PackageManagerInfo::unavailable(PackageManagerType::WinGet, error_msg)
+            }
         }
     }
 }

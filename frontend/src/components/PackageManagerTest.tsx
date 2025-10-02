@@ -47,13 +47,27 @@ export function PackageManagerTest() {
           Test the package manager detection for Phase 1 implementation
         </p>
         
-        <button
-          onClick={detectManagers}
-          disabled={loading}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded text-white font-medium"
-        >
-          {loading ? 'Detecting...' : 'Detect Package Managers'}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={detectManagers}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded text-white font-medium transition-colors"
+          >
+            {loading ? 'Detecting...' : managers.length > 0 ? 'Refresh Detection' : 'Detect Package Managers'}
+          </button>
+          
+          {managers.length > 0 && !loading && (
+            <button
+              onClick={() => {
+                setManagers([])
+                setError(null)
+              }}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white font-medium transition-colors"
+            >
+              Clear Results
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -96,9 +110,12 @@ export function PackageManagerTest() {
                 </div>
                 
                 {manager.error && (
-                  <p className="text-sm text-gray-400 mt-2">
-                    {manager.error}
-                  </p>
+                  <div className="mt-3 p-3 bg-gray-900/50 rounded border border-gray-700">
+                    <p className="text-sm text-gray-300 font-medium mb-1">How to install:</p>
+                    <p className="text-sm text-gray-400 whitespace-pre-wrap">
+                      {manager.error}
+                    </p>
+                  </div>
                 )}
               </div>
             ))}
