@@ -6,6 +6,8 @@ use crate::database::Database;
 use crate::workflow::{engine::WorkflowEngine, loader::WorkflowLoader, types::WorkflowCompatibility};
 use crate::tools::discovery::ToolDiscoveryService;
 use crate::events::{EventEmitter, SCAN_STARTED, SCAN_COMPLETED, SCAN_FAILED, SCAN_PROGRESS_UPDATE};
+use crate::tools::catalog::get_tool_catalog;
+use crate::tools::package_managers::{GoInstallManager, InstallationResult};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkflowExecuteRequest {
@@ -1001,6 +1003,271 @@ pub async fn install_package_manager_winget() -> Result<crate::tools::package_ma
     }
     
     Ok(result)
+}
+
+// Tool Installation Commands (Phase 7)
+
+#[tauri::command]
+pub async fn install_tool(
+    #[allow(non_snake_case)] toolName: String,
+    state: tauri::State<'_, AppState>
+) -> Result<InstallationResult, String> {
+    eprintln!("📦 Installing tool: {}", toolName);
+    
+    // Look up tool in catalog
+    let catalog = get_tool_catalog();
+    let tool_def = catalog.get(&toolName)
+        .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
+    
+    eprintln!("   Installation method: {}", tool_def.install_method);
+    
+    // Route to appropriate installer based on install_method
+    match tool_def.install_method.as_str() {
+        "go" => {
+            // Install via Go
+            let go_module = tool_def.go_module.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no go_module defined", toolName))?;
+            
+            eprintln!("   Go module: {}", go_module);
+            
+            let manager = GoInstallManager::new();
+            
+            if !manager.is_go_available().await {
+                return Err("Go is not installed. Please install Go first.".to_string());
+            }
+            
+            let go_result = manager.install(go_module, &toolName).await?;
+            
+            if go_result.success {
+                eprintln!("✅ Successfully installed {}", toolName);
+                
+                // Trigger tool recheck to update UI
+                let _ = recheck_tool(toolName.clone(), state).await;
+            } else {
+                eprintln!("❌ Failed to install {}: {}", toolName, go_result.message);
+            }
+            
+            // Convert go_install::InstallationResult to installation::InstallationResult
+            Ok(InstallationResult {
+                success: go_result.success,
+                message: go_result.message,
+                steps: vec![],
+                requires_restart: false,
+            })
+        },
+        "pipx" => {
+            // Future: Use PipxManager
+            Err(format!("pipx installation not yet implemented for '{}'", toolName))
+        },
+        "apt" => {
+            // Future: Use AptManager
+            Err(format!("apt installation not yet implemented for '{}'", toolName))
+        },
+        "winget" => {
+            // Future: Use WinGetManager
+            Err(format!("winget installation not yet implemented for '{}'", toolName))
+        },
+        "manual" => {
+            Err(format!("Tool '{}' requires manual installation. Check documentation.", toolName))
+        },
+        "runtime" => {
+            Err(format!("Tool '{}' is a runtime environment (e.g. Python, Node.js). Install via system package manager.", toolName))
+        },
+        _ => {
+            Err(format!("Unknown installation method '{}' for tool '{}'", tool_def.install_method, toolName))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn update_tool(
+    #[allow(non_snake_case)] toolName: String,
+    state: tauri::State<'_, AppState>
+) -> Result<InstallationResult, String> {
+    eprintln!("🔄 Updating tool: {}", toolName);
+    
+    // Look up tool in catalog
+    let catalog = get_tool_catalog();
+    let tool_def = catalog.get(&toolName)
+        .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
+    
+    eprintln!("   Installation method: {}", tool_def.install_method);
+    
+    // Route to appropriate installer
+    match tool_def.install_method.as_str() {
+        "go" => {
+            let go_module = tool_def.go_module.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no go_module defined", toolName))?;
+            
+            let manager = GoInstallManager::new();
+            
+            if !manager.is_go_available().await {
+                return Err("Go is not installed. Please install Go first.".to_string());
+            }
+            
+            let go_result = manager.update(go_module, &toolName).await?;
+            
+            if go_result.success {
+                eprintln!("✅ Successfully updated {}", toolName);
+                
+                // Trigger tool recheck
+                let _ = recheck_tool(toolName.clone(), state).await;
+            } else {
+                eprintln!("❌ Failed to update {}: {}", toolName, go_result.message);
+            }
+            
+            // Convert go_install::InstallationResult to installation::InstallationResult
+            Ok(InstallationResult {
+                success: go_result.success,
+                message: go_result.message,
+                steps: vec![],
+                requires_restart: false,
+            })
+        },
+        "pipx" => {
+            Err(format!("pipx update not yet implemented for '{}'", toolName))
+        },
+        "apt" => {
+            Err(format!("apt update not yet implemented for '{}'", toolName))
+        },
+        "winget" => {
+            Err(format!("winget update not yet implemented for '{}'", toolName))
+        },
+        _ => {
+            Err(format!("Cannot update tool '{}' with install method '{}'", toolName, tool_def.install_method))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn uninstall_tool(
+    #[allow(non_snake_case)] toolName: String,
+    state: tauri::State<'_, AppState>
+) -> Result<String, String> {
+    eprintln!("🗑️  Uninstalling tool: {}", toolName);
+    
+    // Look up tool in catalog
+    let catalog = get_tool_catalog();
+    let tool_def = catalog.get(&toolName)
+        .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
+    
+    // Route to appropriate installer
+    match tool_def.install_method.as_str() {
+        "go" => {
+            let manager = GoInstallManager::new();
+            
+            let message = manager.uninstall(&toolName).await?;
+            
+            eprintln!("✅ {}", message);
+            
+            // Trigger tool recheck
+            let _ = recheck_tool(toolName.clone(), state).await;
+            
+            Ok(message)
+        },
+        "pipx" => {
+            Err(format!("pipx uninstall not yet implemented for '{}'", toolName))
+        },
+        "apt" => {
+            Err(format!("apt uninstall not yet implemented for '{}'", toolName))
+        },
+        "winget" => {
+            Err(format!("winget uninstall not yet implemented for '{}'", toolName))
+        },
+        _ => {
+            Err(format!("Cannot uninstall tool '{}' with install method '{}'", toolName, tool_def.install_method))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn check_tool_installed(
+    #[allow(non_snake_case)] toolName: String,
+    _state: tauri::State<'_, AppState>
+) -> Result<bool, String> {
+    eprintln!("🔍 Checking if tool is installed: {}", toolName);
+    
+    // Look up tool in catalog
+    let catalog = get_tool_catalog();
+    let tool_def = catalog.get(&toolName)
+        .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
+    
+    // Route to appropriate installer
+    match tool_def.install_method.as_str() {
+        "go" => {
+            let manager = GoInstallManager::new();
+            let installed = manager.is_installed(&toolName);
+            
+            eprintln!("   Installed: {}", installed);
+            
+            Ok(installed)
+        },
+        "pipx" => {
+            Err(format!("pipx check not yet implemented for '{}'", toolName))
+        },
+        _ => {
+            // For other methods, assume not installed via this command
+            Ok(false)
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_tool_version(
+    #[allow(non_snake_case)] toolName: String,
+    _state: tauri::State<'_, AppState>
+) -> Result<Option<String>, String> {
+    eprintln!("🔍 Getting tool version: {}", toolName);
+    
+    // Look up tool in catalog
+    let catalog = get_tool_catalog();
+    let tool_def = catalog.get(&toolName)
+        .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
+    
+    // Route to appropriate installer
+    match tool_def.install_method.as_str() {
+        "go" => {
+            let manager = GoInstallManager::new();
+            let version = manager.get_version(&toolName).await;
+            
+            if let Some(ref v) = version {
+                eprintln!("   Version: {}", v);
+            } else {
+                eprintln!("   Version: unknown");
+            }
+            
+            Ok(version)
+        },
+        _ => {
+            Ok(None)
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_tool_installation_info(
+    #[allow(non_snake_case)] toolName: String,
+    _state: tauri::State<'_, AppState>
+) -> Result<serde_json::Value, String> {
+    eprintln!("ℹ️  Getting installation info for: {}", toolName);
+    
+    // Look up tool in catalog
+    let catalog = get_tool_catalog();
+    let tool_def = catalog.get(&toolName)
+        .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
+    
+    let info = serde_json::json!({
+        "name": tool_def.name,
+        "install_method": tool_def.install_method,
+        "go_module": tool_def.go_module,
+        "pipx_package": tool_def.pipx_package,
+        "apt_package": tool_def.apt_package,
+        "winget_id": tool_def.winget_id,
+        "description": tool_def.description,
+        "category": tool_def.category,
+    });
+    
+    Ok(info)
 }
 
 // Elevation Commands

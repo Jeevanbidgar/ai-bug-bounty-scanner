@@ -86,6 +86,13 @@ fn main() {
             crate::commands::list_manual_tools,
             crate::commands::get_available_tools_count,
             crate::commands::get_os_info,
+            // Tool installation commands (Phase 7)
+            crate::commands::install_tool,
+            crate::commands::update_tool,
+            crate::commands::uninstall_tool,
+            crate::commands::check_tool_installed,
+            crate::commands::get_tool_version,
+            crate::commands::get_tool_installation_info,
             // Package manager commands
             crate::commands::detect_package_managers,
             crate::commands::check_package_manager,
