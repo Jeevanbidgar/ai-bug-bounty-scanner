@@ -104,6 +104,9 @@ fn main() {
             crate::commands::check_elevation_support,
             crate::commands::execute_elevated_command,
             crate::commands::try_command_with_elevation,
+            crate::commands::check_pipx_path,
+            crate::commands::fix_pipx_path,
+            crate::commands::cleanup_old_pipx,
             // Scan commands
             crate::commands::list_scans,
             crate::commands::create_scan,

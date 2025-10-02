@@ -57,6 +57,12 @@ pub const SCAN_FAILED: &str = "scan:failed";
 pub const SCAN_ERROR: &str = "scan:error";
 pub const SYSTEM_NOTIFICATION: &str = "system:notification";
 
+// Tool installation event constants
+pub const TOOL_INSTALLATION_STARTED: &str = "tool:installation_started";
+pub const TOOL_INSTALLATION_OUTPUT: &str = "tool:installation_output";
+pub const TOOL_INSTALLATION_COMPLETED: &str = "tool:installation_completed";
+pub const TOOL_INSTALLATION_FAILED: &str = "tool:installation_failed";
+
 // Scan event structures
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanProgressEvent {
@@ -85,6 +91,30 @@ pub struct ScanErrorEvent {
 pub struct SystemNotificationEvent {
     pub notification_type: String, // "info", "success", "warning", "error"
     pub title: String,
+    pub message: String,
+    pub timestamp: String,
+}
+
+// Tool installation event structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolInstallationStartedEvent {
+    pub tool_name: String,
+    pub installation_method: String, // "pipx", "apt", "winget", "go"
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolInstallationOutputEvent {
+    pub tool_name: String,
+    pub output_type: String, // "stdout" or "stderr"
+    pub line: String,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolInstallationCompletedEvent {
+    pub tool_name: String,
+    pub success: bool,
     pub message: String,
     pub timestamp: String,
 }
@@ -230,6 +260,44 @@ impl EventEmitter {
         SystemNotificationEvent {
             notification_type: notification_type.to_string(),
             title: title.to_string(),
+            message: message.to_string(),
+            timestamp: Utc::now().to_rfc3339(),
+        }
+    }
+
+    // Tool installation events
+    pub fn tool_installation_started(
+        tool_name: &str,
+        installation_method: &str,
+    ) -> ToolInstallationStartedEvent {
+        ToolInstallationStartedEvent {
+            tool_name: tool_name.to_string(),
+            installation_method: installation_method.to_string(),
+            timestamp: Utc::now().to_rfc3339(),
+        }
+    }
+
+    pub fn tool_installation_output(
+        tool_name: &str,
+        output_type: &str,
+        line: &str,
+    ) -> ToolInstallationOutputEvent {
+        ToolInstallationOutputEvent {
+            tool_name: tool_name.to_string(),
+            output_type: output_type.to_string(),
+            line: line.to_string(),
+            timestamp: Utc::now().to_rfc3339(),
+        }
+    }
+
+    pub fn tool_installation_completed(
+        tool_name: &str,
+        success: bool,
+        message: &str,
+    ) -> ToolInstallationCompletedEvent {
+        ToolInstallationCompletedEvent {
+            tool_name: tool_name.to_string(),
+            success,
             message: message.to_string(),
             timestamp: Utc::now().to_rfc3339(),
         }

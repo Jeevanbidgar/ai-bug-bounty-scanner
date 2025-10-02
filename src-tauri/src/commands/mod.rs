@@ -1010,6 +1010,7 @@ pub async fn install_package_manager_winget() -> Result<crate::tools::package_ma
 #[tauri::command]
 pub async fn install_tool(
     #[allow(non_snake_case)] toolName: String,
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>
 ) -> Result<InstallationResult, String> {
     eprintln!("📦 Installing tool: {}", toolName);
@@ -1067,7 +1068,7 @@ pub async fn install_tool(
                 return Err("pipx is not installed. Please install pipx first.".to_string());
             }
             
-            let pipx_result = manager.install(pipx_package, &toolName).await?;
+            let pipx_result = manager.install(pipx_package, &toolName, Some(&app_handle)).await?;
             
             if pipx_result.success {
                 eprintln!("✅ Successfully installed {}", toolName);
@@ -1594,6 +1595,138 @@ pub async fn try_command_with_elevation(
             Err(e)
         },
         Err(e) => Err(e)
+    }
+}
+
+/// Check if pipx .local\bin is in PATH
+#[tauri::command]
+pub async fn check_pipx_path() -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let local_bin = std::env::var("USERPROFILE")
+            .map(|p| format!(r"{p}\.local\bin"))
+            .unwrap_or_default();
+        
+        let path = std::env::var("PATH").unwrap_or_default();
+        let in_path = path.split(';').any(|p| p.trim().eq_ignore_ascii_case(&local_bin));
+        
+        // Check for multiple pipx installations
+        let old_pipx = std::env::var("USERPROFILE")
+            .map(|p| format!(r"{p}\pipx"))
+            .unwrap_or_default();
+        let new_pipx = std::env::var("LOCALAPPDATA")
+            .map(|p| format!(r"{p}\pipx"))
+            .unwrap_or_default();
+        
+        let old_exists = std::path::Path::new(&old_pipx).exists();
+        let new_exists = std::path::Path::new(&new_pipx).exists();
+        
+        Ok(serde_json::json!({
+            "in_path": in_path,
+            "local_bin": local_bin,
+            "multiple_installations": old_exists && new_exists,
+            "old_location": old_pipx,
+            "new_location": new_pipx,
+            "old_exists": old_exists,
+            "new_exists": new_exists
+        }))
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        let local_bin = std::env::var("HOME")
+            .map(|p| format!("{p}/.local/bin"))
+            .unwrap_or_default();
+        
+        let path = std::env::var("PATH").unwrap_or_default();
+        let in_path = path.split(':').any(|p| p == local_bin);
+        
+        Ok(serde_json::json!({
+            "in_path": in_path,
+            "local_bin": local_bin,
+            "multiple_installations": false
+        }))
+    }
+}
+
+/// Fix pipx PATH by running pipx ensurepath
+#[tauri::command]
+pub async fn fix_pipx_path() -> Result<String, String> {
+    match tokio::process::Command::new("pipx")
+        .arg("ensurepath")
+        .output()
+        .await
+    {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            
+            if output.status.success() {
+                Ok(format!("✅ PATH updated successfully!\n\n{}\n\n⚠️ Please restart your terminal and this app for changes to take effect.", stdout))
+            } else {
+                Err(format!("Failed to fix PATH: {}", stderr))
+            }
+        }
+        Err(e) => Err(format!("Failed to execute pipx ensurepath: {}", e))
+    }
+}
+
+/// Clean up old pipx installation
+#[tauri::command]
+pub async fn cleanup_old_pipx() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let old_pipx = std::env::var("USERPROFILE")
+            .map(|p| format!(r"{p}\pipx"))
+            .map_err(|e| format!("Failed to get USERPROFILE: {}", e))?;
+        
+        if !std::path::Path::new(&old_pipx).exists() {
+            return Ok("No old pipx installation found.".to_string());
+        }
+        
+        // First, try to uninstall all tools from old pipx
+        let mut cleanup_messages = Vec::new();
+        
+        // List tools in old venvs directory
+        let old_venvs = format!(r"{}\venvs", old_pipx);
+        if let Ok(entries) = std::fs::read_dir(&old_venvs) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    if let Some(tool_name) = entry.file_name().to_str() {
+                        eprintln!("Uninstalling old tool: {}", tool_name);
+                        match tokio::process::Command::new("pipx")
+                            .arg("uninstall")
+                            .arg(tool_name)
+                            .output()
+                            .await
+                        {
+                            Ok(output) if output.status.success() => {
+                                cleanup_messages.push(format!("✅ Uninstalled {}", tool_name));
+                            }
+                            _ => {
+                                cleanup_messages.push(format!("⚠️  Could not uninstall {}", tool_name));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Remove the old directory
+        match std::fs::remove_dir_all(&old_pipx) {
+            Ok(_) => {
+                cleanup_messages.push(format!("✅ Removed old pipx directory: {}", old_pipx));
+                Ok(cleanup_messages.join("\n"))
+            }
+            Err(e) => {
+                Err(format!("Failed to remove old pipx directory: {}", e))
+            }
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok("This feature is only needed on Windows.".to_string())
     }
 }
 
