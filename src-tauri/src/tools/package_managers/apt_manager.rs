@@ -1,7 +1,5 @@
-use std::process::Stdio;
 use tokio::process::Command;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncReadExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AptManager;
@@ -27,16 +25,10 @@ impl AptManager {
 
         match Command::new("apt")
             .arg("--version")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .output()
+            .await
         {
-            Ok(mut child) => {
-                if let Ok(status) = child.wait().await {
-                    return status.success();
-                }
-                false
-            }
+            Ok(output) => output.status.success(),
             Err(_) => false,
         }
     }
@@ -69,53 +61,32 @@ impl AptManager {
             .arg("install")
             .arg("-y")
             .arg(package_name)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .output()
+            .await
         {
-            Ok(mut child) => {
-                match child.wait().await {
-                    Ok(status) => {
-                        if status.success() {
-                            Ok(InstallationResult {
-                                success: true,
-                                message: format!("Successfully installed {} via apt", tool_name),
-                                tool_name: tool_name.to_string(),
-                                installed_path: None, // apt installs to /usr/bin typically
-                            })
-                        } else {
-                            // Get error output
-                            let stderr = child.stderr.take();
-                            let error_msg = if let Some(mut stderr) = stderr {
-                                let mut buf = String::new();
-                                let _ = stderr.read_to_string(&mut buf).await;
-                                buf
-                            } else {
-                                "Unknown error".to_string()
-                            };
-
-                            Ok(InstallationResult {
-                                success: false,
-                                message: format!("Failed to install {}: {}", tool_name, error_msg),
-                                tool_name: tool_name.to_string(),
-                                installed_path: None,
-                            })
-                        }
-                    }
-                    Err(e) => {
-                        Ok(InstallationResult {
-                            success: false,
-                            message: format!("Failed to execute apt install: {}", e),
-                            tool_name: tool_name.to_string(),
-                            installed_path: None,
-                        })
-                    }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                
+                if output.status.success() {
+                    Ok(InstallationResult {
+                        success: true,
+                        message: format!("Successfully installed {} via apt", tool_name),
+                        tool_name: tool_name.to_string(),
+                        installed_path: None, // apt installs to /usr/bin typically
+                    })
+                } else {
+                    Ok(InstallationResult {
+                        success: false,
+                        message: format!("Failed to install {}: {}", tool_name, stderr.trim()),
+                        tool_name: tool_name.to_string(),
+                        installed_path: None,
+                    })
                 }
             }
             Err(e) => {
                 Ok(InstallationResult {
                     success: false,
-                    message: format!("Failed to spawn apt command: {}. Check if sudo is available.", e),
+                    message: format!("Failed to execute apt install: {}. Check if sudo is available.", e),
                     tool_name: tool_name.to_string(),
                     installed_path: None,
                 })
@@ -142,52 +113,32 @@ impl AptManager {
             .arg("--only-upgrade")
             .arg("-y")
             .arg(package_name)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .output()
+            .await
         {
-            Ok(mut child) => {
-                match child.wait().await {
-                    Ok(status) => {
-                        if status.success() {
-                            Ok(InstallationResult {
-                                success: true,
-                                message: format!("Successfully updated {} via apt", tool_name),
-                                tool_name: tool_name.to_string(),
-                                installed_path: None,
-                            })
-                        } else {
-                            let stderr = child.stderr.take();
-                            let error_msg = if let Some(mut stderr) = stderr {
-                                let mut buf = String::new();
-                                let _ = stderr.read_to_string(&mut buf).await;
-                                buf
-                            } else {
-                                "Unknown error".to_string()
-                            };
-
-                            Ok(InstallationResult {
-                                success: false,
-                                message: format!("Failed to update {}: {}", tool_name, error_msg),
-                                tool_name: tool_name.to_string(),
-                                installed_path: None,
-                            })
-                        }
-                    }
-                    Err(e) => {
-                        Ok(InstallationResult {
-                            success: false,
-                            message: format!("Failed to execute apt upgrade: {}", e),
-                            tool_name: tool_name.to_string(),
-                            installed_path: None,
-                        })
-                    }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                
+                if output.status.success() {
+                    Ok(InstallationResult {
+                        success: true,
+                        message: format!("Successfully updated {} via apt", tool_name),
+                        tool_name: tool_name.to_string(),
+                        installed_path: None,
+                    })
+                } else {
+                    Ok(InstallationResult {
+                        success: false,
+                        message: format!("Failed to update {}: {}", tool_name, stderr.trim()),
+                        tool_name: tool_name.to_string(),
+                        installed_path: None,
+                    })
                 }
             }
             Err(e) => {
                 Ok(InstallationResult {
                     success: false,
-                    message: format!("Failed to spawn apt command: {}", e),
+                    message: format!("Failed to execute apt upgrade: {}", e),
                     tool_name: tool_name.to_string(),
                     installed_path: None,
                 })
@@ -208,35 +159,20 @@ impl AptManager {
             .arg("remove")
             .arg("-y")
             .arg(package_name)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .output()
+            .await
         {
-            Ok(mut child) => {
-                match child.wait().await {
-                    Ok(status) => {
-                        if status.success() {
-                            Ok(format!("Successfully uninstalled {}", tool_name))
-                        } else {
-                            let stderr = child.stderr.take();
-                            let error_msg = if let Some(mut stderr) = stderr {
-                                let mut buf = String::new();
-                                let _ = stderr.read_to_string(&mut buf).await;
-                                buf
-                            } else {
-                                "Unknown error".to_string()
-                            };
-
-                            Err(format!("Failed to uninstall {}: {}", tool_name, error_msg))
-                        }
-                    }
-                    Err(e) => {
-                        Err(format!("Failed to execute apt remove: {}", e))
-                    }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                
+                if output.status.success() {
+                    Ok(format!("Successfully uninstalled {}", tool_name))
+                } else {
+                    Err(format!("Failed to uninstall {}: {}", tool_name, stderr.trim()))
                 }
             }
             Err(e) => {
-                Err(format!("Failed to spawn apt command: {}", e))
+                Err(format!("Failed to execute apt remove: {}", e))
             }
         }
     }

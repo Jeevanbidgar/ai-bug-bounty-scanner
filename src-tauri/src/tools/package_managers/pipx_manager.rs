@@ -1,7 +1,5 @@
-use std::process::Stdio;
 use tokio::process::Command;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncReadExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipxManager;
@@ -23,16 +21,10 @@ impl PipxManager {
     pub async fn is_pipx_available(&self) -> bool {
         match Command::new("pipx")
             .arg("--version")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .output()
+            .await
         {
-            Ok(mut child) => {
-                if let Ok(status) = child.wait().await {
-                    return status.success();
-                }
-                false
-            }
+            Ok(output) => output.status.success(),
             Err(_) => false,
         }
     }
@@ -58,56 +50,40 @@ impl PipxManager {
 
         eprintln!("📦 Installing {} via pipx install {}", tool_name, package_name);
 
+        // Use .output() instead of spawn+wait to properly capture stdout/stderr
         match Command::new("pipx")
             .arg("install")
             .arg(package_name)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .output()
+            .await
         {
-            Ok(mut child) => {
-                match child.wait().await {
-                    Ok(status) => {
-                        if status.success() {
-                            Ok(InstallationResult {
-                                success: true,
-                                message: format!("Successfully installed {} via pipx", tool_name),
-                                tool_name: tool_name.to_string(),
-                                installed_path: None, // pipx manages paths internally
-                            })
-                        } else {
-                            // Get error output
-                            let stderr = child.stderr.take();
-                            let error_msg = if let Some(mut stderr) = stderr {
-                                let mut buf = String::new();
-                                let _ = stderr.read_to_string(&mut buf).await;
-                                buf
-                            } else {
-                                "Unknown error".to_string()
-                            };
-
-                            Ok(InstallationResult {
-                                success: false,
-                                message: format!("Failed to install {}: {}", tool_name, error_msg),
-                                tool_name: tool_name.to_string(),
-                                installed_path: None,
-                            })
-                        }
-                    }
-                    Err(e) => {
-                        Ok(InstallationResult {
-                            success: false,
-                            message: format!("Failed to execute pipx install: {}", e),
-                            tool_name: tool_name.to_string(),
-                            installed_path: None,
-                        })
-                    }
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                
+                if output.status.success() {
+                    eprintln!("✅ pipx install succeeded");
+                    Ok(InstallationResult {
+                        success: true,
+                        message: format!("Successfully installed {} via pipx", tool_name),
+                        tool_name: tool_name.to_string(),
+                        installed_path: None, // pipx manages paths internally
+                    })
+                } else {
+                    eprintln!("❌ pipx install failed: {}", stderr);
+                    Ok(InstallationResult {
+                        success: false,
+                        message: format!("Failed to install {}: {}", tool_name, stderr.trim()),
+                        tool_name: tool_name.to_string(),
+                        installed_path: None,
+                    })
                 }
             }
             Err(e) => {
+                eprintln!("❌ Failed to execute pipx: {}", e);
                 Ok(InstallationResult {
                     success: false,
-                    message: format!("Failed to spawn pipx command: {}", e),
+                    message: format!("Failed to execute pipx install: {}", e),
                     tool_name: tool_name.to_string(),
                     installed_path: None,
                 })
@@ -131,52 +107,32 @@ impl PipxManager {
         match Command::new("pipx")
             .arg("upgrade")
             .arg(package_name)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .output()
+            .await
         {
-            Ok(mut child) => {
-                match child.wait().await {
-                    Ok(status) => {
-                        if status.success() {
-                            Ok(InstallationResult {
-                                success: true,
-                                message: format!("Successfully updated {} via pipx", tool_name),
-                                tool_name: tool_name.to_string(),
-                                installed_path: None,
-                            })
-                        } else {
-                            let stderr = child.stderr.take();
-                            let error_msg = if let Some(mut stderr) = stderr {
-                                let mut buf = String::new();
-                                let _ = stderr.read_to_string(&mut buf).await;
-                                buf
-                            } else {
-                                "Unknown error".to_string()
-                            };
-
-                            Ok(InstallationResult {
-                                success: false,
-                                message: format!("Failed to update {}: {}", tool_name, error_msg),
-                                tool_name: tool_name.to_string(),
-                                installed_path: None,
-                            })
-                        }
-                    }
-                    Err(e) => {
-                        Ok(InstallationResult {
-                            success: false,
-                            message: format!("Failed to execute pipx upgrade: {}", e),
-                            tool_name: tool_name.to_string(),
-                            installed_path: None,
-                        })
-                    }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                
+                if output.status.success() {
+                    Ok(InstallationResult {
+                        success: true,
+                        message: format!("Successfully updated {} via pipx", tool_name),
+                        tool_name: tool_name.to_string(),
+                        installed_path: None,
+                    })
+                } else {
+                    Ok(InstallationResult {
+                        success: false,
+                        message: format!("Failed to update {}: {}", tool_name, stderr.trim()),
+                        tool_name: tool_name.to_string(),
+                        installed_path: None,
+                    })
                 }
             }
             Err(e) => {
                 Ok(InstallationResult {
                     success: false,
-                    message: format!("Failed to spawn pipx command: {}", e),
+                    message: format!("Failed to execute pipx upgrade: {}", e),
                     tool_name: tool_name.to_string(),
                     installed_path: None,
                 })
@@ -195,35 +151,20 @@ impl PipxManager {
         match Command::new("pipx")
             .arg("uninstall")
             .arg(package_name)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .output()
+            .await
         {
-            Ok(mut child) => {
-                match child.wait().await {
-                    Ok(status) => {
-                        if status.success() {
-                            Ok(format!("Successfully uninstalled {}", tool_name))
-                        } else {
-                            let stderr = child.stderr.take();
-                            let error_msg = if let Some(mut stderr) = stderr {
-                                let mut buf = String::new();
-                                let _ = stderr.read_to_string(&mut buf).await;
-                                buf
-                            } else {
-                                "Unknown error".to_string()
-                            };
-
-                            Err(format!("Failed to uninstall {}: {}", tool_name, error_msg))
-                        }
-                    }
-                    Err(e) => {
-                        Err(format!("Failed to execute pipx uninstall: {}", e))
-                    }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                
+                if output.status.success() {
+                    Ok(format!("Successfully uninstalled {}", tool_name))
+                } else {
+                    Err(format!("Failed to uninstall {}: {}", tool_name, stderr.trim()))
                 }
             }
             Err(e) => {
-                Err(format!("Failed to spawn pipx command: {}", e))
+                Err(format!("Failed to execute pipx uninstall: {}", e))
             }
         }
     }
