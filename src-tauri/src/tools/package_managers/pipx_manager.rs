@@ -141,21 +141,71 @@ impl PipxManager {
             error_output
         });
 
-        // Wait for process to complete
-        let status = child.wait().await;
+        // CRITICAL: Use tokio::join! to wait for process AND output tasks concurrently
+        // This prevents deadlock when pipe buffers fill up
+        let (status, _, stderr_result) = tokio::join!(
+            child.wait(),
+            stdout_task,
+            stderr_task
+        );
         
-        // Wait for output tasks to complete
-        let _ = stdout_task.await;
-        let stderr_output = stderr_task.await.unwrap_or_default();
+        let stderr_output = stderr_result.unwrap_or_default();
 
         // Check result
         match status {
             Ok(exit_status) => {
-                let success = exit_status.success();
-                let message = if success {
-                    format!("✅ Successfully installed {} via pipx", tool_name)
+                let exit_success = exit_status.success();
+                let error_msg = stderr_output.join("\n");
+                
+                // WORKAROUND: pipx returns exit code 1 when PATH is not configured
+                // even though installation succeeds. Check if it's just a PATH warning.
+                let is_path_warning_only = !exit_success && 
+                    error_msg.contains("is not on your PATH") &&
+                    !error_msg.contains("failed") &&
+                    !error_msg.contains("error") &&
+                    !error_msg.to_lowercase().contains("exception");
+                
+                // If exit failed but it's just PATH warning, check if tool actually installed
+                let actual_success = if is_path_warning_only {
+                    eprintln!("⚠️  pipx returned non-zero exit but only PATH warning detected");
+                    eprintln!("   Verifying if {} was actually installed...", tool_name);
+                    
+                    // Verify installation by checking pipx list
+                    match Command::new("pipx")
+                        .arg("list")
+                        .arg("--short")
+                        .output()
+                        .await
+                    {
+                        Ok(list_output) => {
+                            let installed_tools = String::from_utf8_lossy(&list_output.stdout);
+                            let is_installed = installed_tools.lines()
+                                .any(|line| line.trim() == tool_name);
+                            
+                            if is_installed {
+                                eprintln!("✅ Confirmed: {} is installed via pipx", tool_name);
+                                true
+                            } else {
+                                eprintln!("❌ {} not found in pipx list", tool_name);
+                                false
+                            }
+                        }
+                        Err(_) => {
+                            eprintln!("⚠️  Could not verify installation, assuming failure");
+                            false
+                        }
+                    }
                 } else {
-                    let error_msg = stderr_output.join("\n");
+                    exit_success
+                };
+                
+                let message = if actual_success {
+                    let mut msg = format!("✅ Successfully installed {} via pipx", tool_name);
+                    if is_path_warning_only {
+                        msg.push_str("\n⚠️  Note: .local\\bin is not in PATH. Run 'pipx ensurepath' and restart terminal.");
+                    }
+                    msg
+                } else {
                     format!("❌ Failed to install {}: {}", tool_name, error_msg)
                 };
 
@@ -165,12 +215,12 @@ impl PipxManager {
                 if let Some(handle) = app_handle {
                     let _ = handle.emit_all(
                         TOOL_INSTALLATION_COMPLETED,
-                        EventEmitter::tool_installation_completed(tool_name, success, &message)
+                        EventEmitter::tool_installation_completed(tool_name, actual_success, &message)
                     );
                 }
 
                 Ok(InstallationResult {
-                    success,
+                    success: actual_success,
                     message,
                     tool_name: tool_name.to_string(),
                     installed_path: None,
