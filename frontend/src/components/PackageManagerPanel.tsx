@@ -10,7 +10,9 @@ import {
   AlertTriangle,
   Loader2,
   Terminal,
-  Package
+  Package,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import apiService, { PackageManagerInfo } from '../services/api'
 import { useToast } from '../hooks/useToast'
@@ -26,6 +28,7 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
   const [loading, setLoading] = useState(true)
   const [installing, setInstalling] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isExpanded, setIsExpanded] = useState(false)
   const { success, error: showError, info } = useToast()
 
   const loadPackageManagers = async () => {
@@ -176,8 +179,15 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Package Managers</CardTitle>
+          <div className="flex-1 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
+            <div className="flex items-center gap-2">
+              <CardTitle>Package Managers</CardTitle>
+              {isExpanded ? (
+                <ChevronUp className="h-5 w-5 text-gray-400" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-gray-400" />
+              )}
+            </div>
             <CardDescription>
               {availableCount} of {managers.length} package managers available
             </CardDescription>
@@ -188,106 +198,108 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Available Managers */}
-        <div className="space-y-2">
-          {managers.filter(m => m.available).map((manager) => {
-            const name = getManagerName(manager)
-            return (
-              <div
-                key={name}
-                className="flex items-center justify-between p-3 border rounded-lg bg-background"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-md bg-primary/10 text-primary">
-                    {getIcon(name)}
-                  </div>
-                  <div>
-                    <div className="font-medium">{name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {manager.version || 'Version unknown'}
-                    </div>
-                    {manager.path && (
-                      <div className="text-xs text-muted-foreground font-mono">
-                        {manager.path}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {getStatusBadge(manager)}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Unavailable Managers */}
-        {unavailableManagers.length > 0 && (
-          <div className="space-y-2 pt-4 border-t">
-            <h4 className="text-sm font-medium text-muted-foreground mb-2">
-              Not Installed
-            </h4>
-            {unavailableManagers.map((manager) => {
+      
+      {isExpanded && (
+        <CardContent className="space-y-4">\n          {/* Available Managers */}
+          <div className="space-y-2">
+            {managers.filter(m => m.available).map((manager) => {
               const name = getManagerName(manager)
-              const isInstalling = installing === name
-              const canInstall = ['Go', 'Pipx', 'WinGet'].includes(name)
-
               return (
                 <div
                   key={name}
-                  className="flex items-center justify-between p-3 border rounded-lg bg-muted/50"
+                  className="flex items-center justify-between p-3 border rounded-lg bg-background"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-md bg-muted text-muted-foreground">
+                    <div className="p-2 rounded-md bg-primary/10 text-primary">
                       {getIcon(name)}
                     </div>
                     <div>
                       <div className="font-medium">{name}</div>
                       <div className="text-sm text-muted-foreground">
-                        {manager.error || 'Not found on system'}
+                        {manager.version || 'Version unknown'}
                       </div>
+                      {manager.path && (
+                        <div className="text-xs text-muted-foreground font-mono">
+                          {manager.path}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {getStatusBadge(manager)}
-                    {canInstall && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => installManager(name)}
-                        disabled={isInstalling}
-                      >
-                        {isInstalling ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Installing...
-                          </>
-                        ) : (
-                          <>
-                            <Download className="h-4 w-4 mr-2" />
-                            Install
-                          </>
-                        )}
-                      </Button>
-                    )}
                   </div>
                 </div>
               )
             })}
           </div>
-        )}
 
-        {/* Info Alert */}
-        <div className="rounded-md border border-blue-700 bg-blue-900/20 p-4">
-          <p className="text-sm text-blue-300">
-            Package managers are required to install security tools automatically. 
-            Supported managers: <strong>Go</strong> (Go tools), <strong>Pipx</strong> (Python tools), 
-            <strong>Cargo</strong> (Rust tools), <strong>npm</strong> (Node.js tools), 
-            <strong>gem</strong> (Ruby tools), <strong>APT</strong> (Linux), <strong>WinGet</strong> (Windows).
-          </p>
-        </div>
-      </CardContent>
+          {/* Unavailable Managers */}
+          {unavailableManagers.length > 0 && (
+            <div className="space-y-2 pt-4 border-t">
+              <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                Not Installed
+              </h4>
+              {unavailableManagers.map((manager) => {
+                const name = getManagerName(manager)
+                const isInstalling = installing === name
+                const canInstall = ['Go', 'Pipx', 'WinGet'].includes(name)
+
+                return (
+                  <div
+                    key={name}
+                    className="flex items-center justify-between p-3 border rounded-lg bg-muted/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-md bg-muted text-muted-foreground">
+                        {getIcon(name)}
+                      </div>
+                      <div>
+                        <div className="font-medium">{name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {manager.error || 'Not found on system'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {getStatusBadge(manager)}
+                      {canInstall && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => installManager(name)}
+                          disabled={isInstalling}
+                        >
+                          {isInstalling ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Installing...
+                            </>
+                          ) : (
+                            <>
+                              <Download className="h-4 w-4 mr-2" />
+                              Install
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Info Alert */}
+          <div className="rounded-md border border-blue-700 bg-blue-900/20 p-4">
+            <p className="text-sm text-blue-300">
+              Package managers are required to install security tools automatically. 
+              Supported managers: <strong>Go</strong> (Go tools), <strong>Pipx</strong> (Python tools), 
+              <strong>Cargo</strong> (Rust tools), <strong>npm</strong> (Node.js tools), 
+              <strong>gem</strong> (Ruby tools), <strong>APT</strong> (Linux), <strong>WinGet</strong> (Windows).
+            </p>
+          </div>
+        </CardContent>
+      )}
     </Card>
   )
 }

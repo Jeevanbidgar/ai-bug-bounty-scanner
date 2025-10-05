@@ -124,10 +124,14 @@ async fn get_go_binary_version(tool_binary: &str) -> Result<String, String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     
-    // Parse output: look for "mod	<module>	v<version>"
+    // Parse output: look for "mod	<module>	v<version>	<hash>"
+    // The actual format uses mixed whitespace (tabs and spaces)
+    // Example: "mod     github.com/ffuf/ffuf/v2 v2.1.0  h1:..."
     for line in stdout.lines() {
-        if line.contains("mod") && line.contains("\t") {
-            let parts: Vec<&str> = line.split('\t').collect();
+        if line.trim_start().starts_with("mod") {
+            // Split on any whitespace and filter out empty strings
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            // parts[0] = "mod", parts[1] = module, parts[2] = version, parts[3] = hash
             if parts.len() >= 3 {
                 let version = parts[2].trim().trim_start_matches('v');
                 return Ok(version.to_string());

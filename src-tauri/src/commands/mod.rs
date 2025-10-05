@@ -297,6 +297,35 @@ pub async fn recheck_tool(
 }
 
 #[tauri::command]
+pub async fn recheck_tool_enhanced(
+    #[allow(non_snake_case)] toolName: String,
+    install_method: Option<String>,
+    state: tauri::State<'_, AppState>
+) -> Result<Option<crate::tools::discovery::ToolRecord>, String> {
+    eprintln!("🔍 Enhanced recheck for tool: {} (method: {:?})", toolName, install_method);
+    let discovery_service = state.tool_discovery.read().await;
+    
+    // Use enhanced search with package-manager-specific paths
+    let record = discovery_service.recheck_tool_enhanced(
+        &toolName,
+        install_method.as_deref()
+    ).await;
+    
+    if let Some(ref r) = record {
+        if r.installed {
+            eprintln!("✅ Enhanced search found {} at: {}", 
+                toolName, 
+                r.path.as_deref().unwrap_or("unknown")
+            );
+        } else {
+            eprintln!("❌ Enhanced search did not find {}", toolName);
+        }
+    }
+    
+    Ok(record)
+}
+
+#[tauri::command]
 pub async fn refresh_tools(
     state: tauri::State<'_, AppState>
 ) -> Result<HashMap<String, crate::tools::discovery::ToolRecord>, String> {
@@ -1160,7 +1189,25 @@ pub async fn install_tool(
             match manager.install(winget_id, &toolName).await {
                 Ok(message) => {
                     eprintln!("✅ Successfully installed {}", toolName);
-                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    // Use enhanced recheck for winget tools
+                    let discovery_service = state.tool_discovery.read().await;
+                    let updated_record = discovery_service.recheck_tool_enhanced(
+                        &toolName, 
+                        Some("winget")
+                    ).await;
+                    drop(discovery_service);
+                    
+                    if let Some(record) = updated_record {
+                        if record.installed {
+                            eprintln!("✅ Verified: {} at {}", 
+                                toolName, 
+                                record.path.as_deref().unwrap_or("unknown")
+                            );
+                        } else {
+                            eprintln!("⚠️  Tool installed but not found in PATH. Restart may be required.");
+                        }
+                    }
                     
                     let completed_event = EventEmitter::tool_installation_completed(&toolName, true, &message);
                     let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
@@ -1323,7 +1370,25 @@ pub async fn install_tool(
             match manager.install(tool_def, &toolName).await {
                 Ok(message) => {
                     eprintln!("✅ {}", message);
-                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    // Use enhanced recheck for npm tools
+                    let discovery_service = state.tool_discovery.read().await;
+                    let updated_record = discovery_service.recheck_tool_enhanced(
+                        &toolName, 
+                        Some("npm")
+                    ).await;
+                    drop(discovery_service);
+                    
+                    if let Some(record) = updated_record {
+                        if record.installed {
+                            eprintln!("✅ Verified: {} at {}", 
+                                toolName, 
+                                record.path.as_deref().unwrap_or("unknown")
+                            );
+                        } else {
+                            eprintln!("⚠️  Tool installed but not found in PATH. Restart may be required.");
+                        }
+                    }
                     
                     // Emit installation completed event
                     let completed_event = EventEmitter::tool_installation_completed(

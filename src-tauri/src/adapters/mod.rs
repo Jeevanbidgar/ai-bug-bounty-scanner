@@ -15,8 +15,12 @@ pub mod nuclei;
 pub mod gau;
 pub mod waybackurls;
 
+// Generic adapter (supports 30+ tools with common patterns)
+pub mod generic;
+
 // Central adapter registry
 pub mod registry;
 
 // Re-export commonly used types for convenience
 pub use registry::{AdapterRegistry, AdapterType, AdapterInfo};
+pub use generic::{GenericAdapter, GenericAdapterManager, GenericAdapterInfo};

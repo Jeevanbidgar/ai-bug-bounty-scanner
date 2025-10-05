@@ -76,6 +76,7 @@ export interface Tool {
   last_checked: string | null
   last_seen: string | null
   last_error: string | null
+  install_method?: string // Installation method: "go", "pipx", "git-pip", "apt", "winget", "cargo", "gem", "npm", "manual", "runtime"
 }
 
 export interface Report {

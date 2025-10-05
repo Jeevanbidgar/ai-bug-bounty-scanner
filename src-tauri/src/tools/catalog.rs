@@ -625,13 +625,13 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
     catalog.insert("netcat".to_string(),
         ToolDefinition::new(
             "netcat",
-            "Network utility",
+            "Network utility - Install via Nmap or download from nmap.org/ncat",
             "network",
             vec!["nc", "netcat"]
         )
         .with_version_args(vec!["-h"])
         .with_apt_package("netcat-openbsd")
-        .with_winget_id("nmap.ncat")
+        .with_install_method("manual")
     );
 
     catalog.insert("socat".to_string(),
@@ -724,12 +724,12 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
     catalog.insert("jq".to_string(),
         ToolDefinition::new(
             "jq",
-            "JSON processor",
+            "JSON processor - Download from stedolan.github.io/jq/download",
             "utility",
             vec!["jq"]
         )
         .with_apt_package("jq")
-        .with_winget_id("jqlang.jq")
+        .with_install_method("manual")
     );
 
     catalog.insert("python".to_string(),
