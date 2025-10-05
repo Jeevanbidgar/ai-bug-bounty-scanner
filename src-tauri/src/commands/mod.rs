@@ -1907,15 +1907,20 @@ pub async fn check_tool_update(
             // Check for updates using go version -m and go list -m -versions
             let result = crate::tools::package_managers::check_go_update(&binary_path, module_path).await?;
             
-            if result.has_update {
-                eprintln!("   ⬆️  Update available: {} -> {}", 
+            // Improved logging with clear status messages
+            if let Some(ref error) = result.error {
+                eprintln!("   ❌ Error checking for updates: {}", error);
+            } else if result.has_update {
+                eprintln!("   ⬆️  Update available: {} → {}", 
                     result.current_version.as_ref().unwrap_or(&"unknown".to_string()),
                     result.latest_version.as_ref().unwrap_or(&"unknown".to_string())
                 );
-            } else {
+            } else if result.current_version.is_some() {
                 eprintln!("   ✅ Up to date: {}", 
-                    result.current_version.as_ref().unwrap_or(&"unknown".to_string())
+                    result.current_version.as_ref().unwrap()
                 );
+            } else {
+                eprintln!("   ❓ Unable to determine update status");
             }
             
             Ok(result)

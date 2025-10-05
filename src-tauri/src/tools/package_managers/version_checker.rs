@@ -7,6 +7,15 @@ use std::process::Stdio;
 use tokio::process::Command;
 use super::version::Version;
 
+/// Normalize version string by removing 'v' prefix and trimming whitespace
+/// This ensures consistent version comparison across different sources
+fn normalize_version(version: &str) -> String {
+    version.trim()
+        .trim_start_matches('v')
+        .trim_start_matches('V')
+        .to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionCheckResult {
     pub has_update: bool,
@@ -72,16 +81,25 @@ pub async fn check_go_update(tool_binary: &str, module_path: &str) -> Result<Ver
         }
     };
 
-    // Step 3: Compare versions using SemVer
-    match (Version::parse(&current_version), Version::parse(&latest_version)) {
+    // Step 3: Normalize versions to remove 'v' prefix inconsistencies
+    let current_normalized = normalize_version(&current_version);
+    let latest_normalized = normalize_version(&latest_version);
+    
+    eprintln!("   📊 Version comparison: current='{}' (normalized: '{}'), latest='{}' (normalized: '{}')",
+        current_version, current_normalized, latest_version, latest_normalized);
+
+    // Step 4: Compare versions using SemVer
+    match (Version::parse(&current_normalized), Version::parse(&latest_normalized)) {
         (Some(current), Some(latest)) => {
             if latest > current {
+                eprintln!("   ✅ SemVer comparison: {} < {} (update available)", current_normalized, latest_normalized);
                 Ok(VersionCheckResult::has_update(
                     current_version,
                     latest_version,
                     "go".to_string()
                 ))
             } else {
+                eprintln!("   ✅ SemVer comparison: {} >= {} (up to date)", current_normalized, latest_normalized);
                 Ok(VersionCheckResult::no_update(
                     current_version,
                     "go".to_string()
@@ -90,13 +108,16 @@ pub async fn check_go_update(tool_binary: &str, module_path: &str) -> Result<Ver
         }
         _ => {
             // Fallback to string comparison if parsing fails
-            if latest_version != current_version {
+            eprintln!("   ⚠️  SemVer parse failed, using string comparison");
+            if latest_normalized != current_normalized {
+                eprintln!("   📝 String comparison: '{}' != '{}' (update available)", current_normalized, latest_normalized);
                 Ok(VersionCheckResult::has_update(
                     current_version,
                     latest_version,
                     "go".to_string()
                 ))
             } else {
+                eprintln!("   📝 String comparison: '{}' == '{}' (up to date)", current_normalized, latest_normalized);
                 Ok(VersionCheckResult::no_update(
                     current_version,
                     "go".to_string()

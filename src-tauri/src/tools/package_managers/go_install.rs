@@ -286,7 +286,23 @@ impl GoInstallManager {
             return None;
         }
 
-        // Try common version flags
+        // Primary method: Use 'go version -m' for Go tools
+        // This is reliable and consistent with update checking
+        if let Some(tool_path) = self.get_tool_path(tool_name) {
+            match self.get_version_from_binary(&tool_path).await {
+                Ok(version) => {
+                    eprintln!("   ✅ Got version from 'go version -m': {}", version);
+                    return Some(version);
+                }
+                Err(e) => {
+                    eprintln!("   ⚠️  Failed to get version from 'go version -m': {}", e);
+                    // Fall through to try version flags
+                }
+            }
+        }
+
+        // Fallback: Try common version flags
+        eprintln!("   🔄 Trying version flags as fallback...");
         let version_flags = vec!["--version", "-version", "-v", "version"];
 
         for flag in version_flags {
@@ -311,7 +327,9 @@ impl GoInstallManager {
 
                             if !version_output.trim().is_empty() {
                                 // Extract version number (first line usually)
-                                return Some(version_output.lines().next()?.trim().to_string());
+                                let version = version_output.lines().next()?.trim().to_string();
+                                eprintln!("   ✅ Got version from '{}' flag: {}", flag, version);
+                                return Some(version);
                             }
                         }
                     }
@@ -320,7 +338,45 @@ impl GoInstallManager {
             }
         }
 
+        eprintln!("   ❌ Could not determine version for {}", tool_name);
         None
+    }
+
+    /// Get version from Go binary using 'go version -m'
+    /// This method is consistent with update checking logic
+    async fn get_version_from_binary(&self, tool_path: &str) -> Result<String, String> {
+        let output = Command::new("go")
+            .arg("version")
+            .arg("-m")
+            .arg(tool_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .map_err(|e| format!("Failed to execute go version: {}", e))?;
+
+        if !output.status.success() {
+            return Err("go version command failed".to_string());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        
+        // Parse output: look for "mod" line with version
+        // Format: "mod    module_path    version    hash"
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("mod") {
+                // Split by any whitespace (spaces or tabs)
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                // parts[0] = "mod", parts[1] = module_path, parts[2] = version
+                if parts.len() >= 3 {
+                    let version = parts[2].trim_start_matches('v');
+                    return Ok(version.to_string());
+                }
+            }
+        }
+
+        Err("Could not parse version from go version -m output".to_string())
     }
 
     /// Uninstall a tool by removing its binary from GOPATH/bin
