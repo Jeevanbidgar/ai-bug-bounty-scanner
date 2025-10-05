@@ -45,6 +45,10 @@ desktop.ini
 data/*.db
 !data/.gitkeep
 
+# Cache files (to avoid rebuild triggers)
+data/tool_discovery_cache.json
+src-tauri/data/
+
 # Logs
 logs/
 *.log
@@ -75,6 +79,11 @@ src-tauri/Cargo.lock
 tmp/
 temp/
 *.tmp
+
+# Tool installations (git-pip, etc.) - excluding source code
+/tools/
+src-tauri/tools/
+!src-tauri/src/tools/
 
 # Reports and scans
 reports/
