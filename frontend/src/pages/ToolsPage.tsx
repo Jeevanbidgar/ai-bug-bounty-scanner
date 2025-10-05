@@ -21,6 +21,8 @@ import { useToast } from '../hooks/useToast'
 import ToolDetailModal from '../components/ToolDetailModal'
 import { InstallationProgressModal } from '../components/InstallationProgressModal'
 import { PipxPathWarning } from '../components/PipxPathWarning'
+import { PackageManagerPanel } from '../components/PackageManagerPanel'
+import { InstallationProgress } from '../components/InstallationProgress'
 
 import type { Tool } from '../services/api'
 
@@ -131,7 +133,8 @@ const ToolsPage = () => {
     const checkUpdatesForInstalledTools = async () => {
       if (!tools?.data) return
       
-      const installedTools = tools.data.filter((t: Tool) => t.installed)
+      // Only check installed tools with valid paths
+      const installedTools = tools.data.filter((t: Tool) => t.installed && t.path)
       const updates: Record<string, { hasUpdate: boolean; latestVersion: string | null }> = {}
       
       // Check updates for installed tools (limit to avoid too many concurrent requests)
@@ -145,8 +148,7 @@ const ToolsPage = () => {
             latestVersion: result.latest_version
           }
         } catch (error) {
-          // Silently ignore errors for individual tools
-          console.debug(`Failed to check update for ${tool.name}:`, error)
+          // Silently ignore all errors - version checking may not be supported for all tools
         }
       }
       
@@ -311,6 +313,14 @@ const ToolsPage = () => {
           )}
         </Button>
       </div>
+
+      {/* Package Managers Section */}
+      <PackageManagerPanel 
+        onInstallComplete={() => {
+          success('Package manager installed successfully!')
+          refetch()
+        }}
+      />
 
       {/* Filters */}
       <div className="flex flex-col lg:flex-row gap-4">

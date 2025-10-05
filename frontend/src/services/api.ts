@@ -179,6 +179,168 @@ export interface StepExecution {
   attempts: number
 }
 
+// Adapter Interfaces
+export interface AdapterInfo {
+  name: string
+  tool_name: string
+  description: string
+  category: string
+  risk_level: string
+  requires_authorization: boolean
+  timeout: number
+  expected_outputs: string[]
+}
+
+export interface SubfinderConfig {
+  target: string
+  output_file?: string | null
+  recursive?: boolean
+  all_sources?: boolean
+  silent?: boolean
+  sources?: string[]
+}
+
+export interface AmassConfig {
+  target: string
+  output_file?: string | null
+  passive?: boolean
+  brute?: boolean
+  active?: boolean
+}
+
+export interface NaabuConfig {
+  target: string
+  output_file?: string | null
+  ports?: string | null
+  rate?: number | null
+  passive?: boolean
+  verbose?: boolean
+}
+
+export interface NmapConfig {
+  target: string
+  output_file?: string | null
+  service_scan?: boolean
+  script_scan?: boolean
+  os_detection?: boolean
+  aggressive?: boolean
+  fast?: boolean
+}
+
+export interface NucleiConfig {
+  target: string
+  output_file?: string | null
+  severity?: string[]
+  templates?: string[]
+  exclude_templates?: string[]
+}
+
+export interface GAUConfig {
+  target: string
+  output_file?: string | null
+  threads?: number | null
+}
+
+export interface WaybackURLsConfig {
+  target: string
+  output_file?: string | null
+}
+
+// Package Manager Interfaces
+export interface PackageManagerInfo {
+  manager_type: 'go' | 'pipx' | 'apt' | 'winget' | 'cargo' | 'npm' | 'gem'
+  available: boolean
+  version: string | null
+  path: string | null
+  error: string | null
+}
+
+export interface InstallationResult {
+  success: boolean
+  message: string
+  steps: string[]
+  requires_restart: boolean
+}
+
+export interface ElevationMethod {
+  Sudo?: null
+  RunAs?: null
+  Pkexec?: null
+  None?: null
+}
+
+export interface ElevationResult {
+  success: boolean
+  stdout: string
+  stderr: string
+  exit_code: number
+  elevated: boolean
+}
+
+export interface VersionCheckResult {
+  has_update: boolean
+  current_version: string | null
+  latest_version: string | null
+  package_manager: string
+  error: string | null
+}
+
+// Event Payloads
+export interface ToolInstallationEvent {
+  tool_name: string
+  install_method: string
+  timestamp: string
+}
+
+export interface ToolInstallationCompleteEvent {
+  tool_name: string
+  success: boolean
+  message: string
+  timestamp: string
+}
+
+export interface ScanEvent {
+  scan_id: string
+  timestamp: string
+}
+
+export interface ScanProgressEvent {
+  scan_id: string
+  progress: number
+  current_test: string | null
+  status: string
+  timestamp: string
+}
+
+export interface WorkflowStdoutEvent {
+  execution_id: string
+  step_id: string
+  line: string
+  timestamp: string
+}
+
+export interface WorkflowStderrEvent {
+  execution_id: string
+  step_id: string
+  line: string
+  timestamp: string
+  threads?: number | null
+}
+
+export interface WaybackURLsConfig {
+  target: string
+  output_file?: string | null
+}
+
+export type AdapterConfig = 
+  | { type: 'Subfinder'; config: SubfinderConfig }
+  | { type: 'Amass'; config: AmassConfig }
+  | { type: 'Naabu'; config: NaabuConfig }
+  | { type: 'Nmap'; config: NmapConfig }
+  | { type: 'Nuclei'; config: NucleiConfig }
+  | { type: 'GAU'; config: GAUConfig }
+  | { type: 'WaybackURLs'; config: WaybackURLsConfig }
+
 class ApiService {
   private async invokeCommand<T>(command: string, args: any = {}): Promise<T> {
     if (!isTauriEnvironment()) {
@@ -188,17 +350,19 @@ class ApiService {
     }
 
     try {
-      console.log(`🔗 Attempting Tauri command: ${command}`, args)
       const { invoke } = await import('@tauri-apps/api/tauri')
-      console.log('Tauri invoke imported successfully')
-
       const result = await invoke(command, args)
-      console.log(`✅ Tauri Response for ${command}:`, result)
       return result as T
     } catch (error) {
-      console.error(`❌ Tauri command failed: ${command}`, error)
-      console.error(`Command: ${command}, Args:`, args)
-      console.error('Error details:', error)
+      // Only log errors that aren't expected/handled
+      const errorMsg = String(error)
+      const isExpectedError = errorMsg.includes('not supported') || 
+                             errorMsg.includes('is not installed') ||
+                             errorMsg.includes('not found')
+      
+      if (!isExpectedError) {
+        console.error(`❌ Tauri command failed: ${command}`, error)
+      }
       
       // Re-throw the error with better context
       throw new Error(`Failed to execute command '${command}': ${error}`)
@@ -631,18 +795,13 @@ class ApiService {
     package_manager: string
     error: string | null
   }> {
-    try {
-      const result = await this.invokeCommand('check_tool_update', { toolName }) as {
-        has_update: boolean
-        current_version: string | null
-        latest_version: string | null
-        package_manager: string
-        error: string | null
-      }
-      return result
-    } catch (error) {
-      console.error('Failed to check tool update:', error)
-      throw error
+    // Just invoke the command, error logging is handled in invokeCommand
+    return await this.invokeCommand('check_tool_update', { toolName }) as {
+      has_update: boolean
+      current_version: string | null
+      latest_version: string | null
+      package_manager: string
+      error: string | null
     }
   }
 
@@ -670,6 +829,250 @@ class ApiService {
       return info
     } catch (error) {
       console.error('Failed to get tool installation info:', error)
+      throw error
+    }
+  }
+
+  // Adapter Commands - Tool Command Builders
+  
+  async buildToolCommand(adapterConfig: AdapterConfig): Promise<string[]> {
+    try {
+      const command = await this.invokeCommand('build_tool_command', { adapterType: adapterConfig }) as string[]
+      return command
+    } catch (error) {
+      console.error('Failed to build tool command:', error)
+      throw error
+    }
+  }
+
+  async buildToolCommandWithDefaults(
+    toolName: string,
+    target: string,
+    outputFile?: string | null
+  ): Promise<string[]> {
+    try {
+      const command = await this.invokeCommand('build_tool_command_with_defaults', {
+        toolName,
+        target,
+        outputFile: outputFile || null
+      }) as string[]
+      return command
+    } catch (error) {
+      console.error('Failed to build tool command with defaults:', error)
+      throw error
+    }
+  }
+
+  async getAdapterInfo(toolName: string): Promise<AdapterInfo> {
+    try {
+      const info = await this.invokeCommand('get_adapter_info', { toolName }) as AdapterInfo
+      return info
+    } catch (error) {
+      console.error('Failed to get adapter info:', error)
+      throw error
+    }
+  }
+
+  async listAdapters(): Promise<AdapterInfo[]> {
+    try {
+      const adapters = await this.invokeCommand('list_adapters') as AdapterInfo[]
+      return adapters
+    } catch (error) {
+      console.error('Failed to list adapters:', error)
+      return []
+    }
+  }
+
+  async getAdaptersByCategory(category: string): Promise<AdapterInfo[]> {
+    try {
+      const adapters = await this.invokeCommand('get_adapters_by_category', { category }) as AdapterInfo[]
+      return adapters
+    } catch (error) {
+      console.error('Failed to get adapters by category:', error)
+      return []
+    }
+  }
+
+  async getAdaptersByRiskLevel(riskLevel: string): Promise<AdapterInfo[]> {
+    try {
+      const adapters = await this.invokeCommand('get_adapters_by_risk_level', { riskLevel }) as AdapterInfo[]
+      return adapters
+    } catch (error) {
+      console.error('Failed to get adapters by risk level:', error)
+      return []
+    }
+  }
+
+  async hasAdapter(toolName: string): Promise<boolean> {
+    try {
+      const result = await this.invokeCommand('has_adapter', { toolName }) as boolean
+      return result
+    } catch (error) {
+      console.error('Failed to check adapter availability:', error)
+      return false
+    }
+  }
+
+  async getAdapterCategories(): Promise<string[]> {
+    try {
+      const categories = await this.invokeCommand('get_adapter_categories') as string[]
+      return categories
+    } catch (error) {
+      console.error('Failed to get adapter categories:', error)
+      return []
+    }
+  }
+
+  // Package Manager Commands
+  
+  async detectPackageManagers(): Promise<PackageManagerInfo[]> {
+    try {
+      const managers = await this.invokeCommand('detect_package_managers') as PackageManagerInfo[]
+      return managers
+    } catch (error) {
+      console.error('Failed to detect package managers:', error)
+      return []
+    }
+  }
+
+  async checkPackageManager(managerName: string): Promise<PackageManagerInfo> {
+    try {
+      const info = await this.invokeCommand('check_package_manager', { managerName }) as PackageManagerInfo
+      return info
+    } catch (error) {
+      console.error(`Failed to check package manager ${managerName}:`, error)
+      throw error
+    }
+  }
+
+  async installPackageManagerPipx(): Promise<InstallationResult> {
+    try {
+      const result = await this.invokeCommand('install_package_manager_pipx') as InstallationResult
+      return result
+    } catch (error) {
+      console.error('Failed to install pipx:', error)
+      throw error
+    }
+  }
+
+  async installPackageManagerGo(): Promise<InstallationResult> {
+    try {
+      const result = await this.invokeCommand('install_package_manager_go') as InstallationResult
+      return result
+    } catch (error) {
+      console.error('Failed to install Go:', error)
+      throw error
+    }
+  }
+
+  async installPackageManagerApt(packageName: string): Promise<InstallationResult> {
+    try {
+      const result = await this.invokeCommand('install_package_manager_apt', { packageName }) as InstallationResult
+      return result
+    } catch (error) {
+      console.error(`Failed to install APT package ${packageName}:`, error)
+      throw error
+    }
+  }
+
+  async installPackageManagerWinget(): Promise<InstallationResult> {
+    try {
+      const result = await this.invokeCommand('install_package_manager_winget') as InstallationResult
+      return result
+    } catch (error) {
+      console.error('Failed to install WinGet:', error)
+      throw error
+    }
+  }
+
+  // Elevation Commands
+  
+  async checkElevationSupport(): Promise<ElevationMethod> {
+    try {
+      const method = await this.invokeCommand('check_elevation_support') as ElevationMethod
+      return method
+    } catch (error) {
+      console.error('Failed to check elevation support:', error)
+      throw error
+    }
+  }
+
+  async executeElevatedCommand(
+    command: string,
+    args: string[],
+    timeoutSecs: number = 60
+  ): Promise<ElevationResult> {
+    try {
+      const result = await this.invokeCommand('execute_elevated_command', {
+        command,
+        args,
+        timeoutSecs
+      }) as ElevationResult
+      return result
+    } catch (error) {
+      console.error('Failed to execute elevated command:', error)
+      throw error
+    }
+  }
+
+  async tryCommandWithElevation(
+    command: string,
+    args: string[],
+    reason: string,
+    timeoutSecs: number = 60
+  ): Promise<ElevationResult> {
+    try {
+      const result = await this.invokeCommand('try_command_with_elevation', {
+        command,
+        args,
+        reason,
+        timeoutSecs
+      }) as ElevationResult
+      return result
+    } catch (error) {
+      console.error('Failed to try command with elevation:', error)
+      throw error
+    }
+  }
+
+  // Pipx Path Management (Windows)
+  
+  async checkPipxPath(): Promise<{
+    in_path: boolean
+    pipx_bin_path: string | null
+    current_path: string
+    platform: string
+  }> {
+    try {
+      const result = await this.invokeCommand('check_pipx_path') as {
+        in_path: boolean
+        pipx_bin_path: string | null
+        current_path: string
+        platform: string
+      }
+      return result
+    } catch (error) {
+      console.error('Failed to check pipx path:', error)
+      throw error
+    }
+  }
+
+  async fixPipxPath(): Promise<string> {
+    try {
+      const message = await this.invokeCommand('fix_pipx_path') as string
+      return message
+    } catch (error) {
+      console.error('Failed to fix pipx path:', error)
+      throw error
+    }
+  }
+
+  async cleanupOldPipx(): Promise<string> {
+    try {
+      const message = await this.invokeCommand('cleanup_old_pipx') as string
+      return message
+    } catch (error) {
+      console.error('Failed to cleanup old pipx:', error)
       throw error
     }
   }

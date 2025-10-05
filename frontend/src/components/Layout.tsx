@@ -8,7 +8,8 @@ import {
   Settings,
   Menu,
   X,
-  Shield
+  Shield,
+  Code
 } from 'lucide-react'
 
 interface LayoutProps {
@@ -23,6 +24,7 @@ const Layout = ({ children }: LayoutProps) => {
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Scans', href: '/scans', icon: Search },
     { name: 'Tools', href: '/tools', icon: Wrench },
+    { name: 'Adapters', href: '/adapters', icon: Code },
     { name: 'Reports', href: '/reports', icon: FileText },
     { name: 'Settings', href: '/settings', icon: Settings },
   ]

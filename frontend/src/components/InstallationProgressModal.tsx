@@ -24,6 +24,8 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
   const [finalMessage, setFinalMessage] = useState<string>('');
   const [isMinimized, setIsMinimized] = useState(false);
   const outputEndRef = useRef<HTMLDivElement>(null);
+  const [currentEventId, setCurrentEventId] = useState<string | null>(null);
+  const [allowForceClose, setAllowForceClose] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -32,21 +34,40 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
     setStatus('installing');
     setOutputLines([]);
     setFinalMessage('');
+    setCurrentEventId(null);
+    setAllowForceClose(false);
+
+    // Add timeout to allow force close after 5 minutes
+    const forceCloseTimer = setTimeout(() => {
+      setAllowForceClose(true);
+    }, 5 * 60 * 1000); // 5 minutes
 
     // Listen for installation events
     const unlistenStart = listen('tool:installation_started', (event: any) => {
+      console.log('📦 Installation started event:', event.payload);
       if (event.payload.tool_name === toolName) {
         setStatus('installing');
         setOutputLines([{
           type: 'stdout',
-          line: `🚀 Starting ${event.payload.installation_method} installation...`,
+          line: `🚀 Starting ${event.payload.installation_method || event.payload.install_method || 'installation'}...`,
           timestamp: event.payload.timestamp
         }]);
       }
     });
 
     const unlistenOutput = listen('tool:installation_output', (event: any) => {
-      if (event.payload.tool_name === toolName) {
+      console.log('📝 Installation output event:', event.payload);
+      // New format from cargo/gem/npm/go installers: {event_id, output}
+      // Accept all events (no tool_name filtering since backend doesn't send it)
+      if (event.payload.output) {
+        setOutputLines(prev => [...prev, {
+          type: 'stdout',  // Backend doesn't distinguish, default to stdout
+          line: event.payload.output,
+          timestamp: new Date().toISOString()
+        }]);
+      } 
+      // Legacy format from other installers: {tool_name, output_type, line, timestamp}
+      else if (event.payload.tool_name === toolName && event.payload.line) {
         setOutputLines(prev => [...prev, {
           type: event.payload.output_type,
           line: event.payload.line,
@@ -56,6 +77,7 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
     });
 
     const unlistenComplete = listen('tool:installation_completed', (event: any) => {
+      console.log('✅ Installation completed event:', event.payload);
       if (event.payload.tool_name === toolName) {
         setStatus(event.payload.success ? 'completed' : 'failed');
         setFinalMessage(event.payload.message);
@@ -68,6 +90,7 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
     });
 
     return () => {
+      clearTimeout(forceCloseTimer);
       unlistenStart.then(fn => fn());
       unlistenOutput.then(fn => fn());
       unlistenComplete.then(fn => fn());
@@ -174,13 +197,19 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
             </button>
             <button
               onClick={onClose}
-              disabled={status === 'installing'}
+              disabled={status === 'installing' && !allowForceClose}
               className={`p-1 rounded-lg transition-colors ${
-                status === 'installing'
+                status === 'installing' && !allowForceClose
                   ? 'text-gray-600 cursor-not-allowed'
                   : 'text-gray-400 hover:text-white hover:bg-gray-700'
               }`}
-              title={status === 'installing' ? 'Please wait for installation to complete' : 'Close'}
+              title={
+                status === 'installing' && !allowForceClose
+                  ? 'Please wait for installation to complete'
+                  : status === 'installing' && allowForceClose
+                  ? 'Force close (installation is taking longer than expected)'
+                  : 'Close'
+              }
             >
               <X className="w-5 h-5" />
             </button>
@@ -217,10 +246,17 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
         <div className="px-6 py-4 border-t border-gray-700 flex items-center justify-between">
           <div className="text-sm text-gray-400">
             {status === 'installing' && (
-              <span className="flex items-center gap-2">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Installation in progress... This may take 30-60 seconds.
-              </span>
+              <div className="flex flex-col gap-1">
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Installation in progress... This may take 30-60 seconds.
+                </span>
+                {allowForceClose && (
+                  <span className="text-yellow-400 text-xs">
+                    ⚠️ Taking longer than expected. You can force close if needed.
+                  </span>
+                )}
+              </div>
             )}
             {status === 'completed' && (
               <span className="text-green-400">

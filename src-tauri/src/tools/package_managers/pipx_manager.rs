@@ -5,7 +5,9 @@ use std::process::Stdio;
 use tauri::Manager;
 
 use crate::events::{EventEmitter, TOOL_INSTALLATION_STARTED, TOOL_INSTALLATION_OUTPUT, TOOL_INSTALLATION_COMPLETED};
+use uuid::Uuid;
 
+// PipxManager: Handles pipx installations with retry logic for log file locking
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipxManager;
 
@@ -49,6 +51,16 @@ impl PipxManager {
         tool_name: &str,
         app_handle: Option<&tauri::AppHandle>
     ) -> Result<InstallationResult, String> {
+        self.install_attempt(package_name, tool_name, app_handle).await
+    }
+
+    /// Single installation attempt (internal method)
+    async fn install_attempt(
+        &self, 
+        package_name: &str, 
+        tool_name: &str,
+        app_handle: Option<&tauri::AppHandle>
+    ) -> Result<InstallationResult, String> {
         // Check if pipx is available
         if !self.is_pipx_available().await {
             return Ok(InstallationResult {
@@ -69,10 +81,20 @@ impl PipxManager {
             );
         }
 
+        // Create completely isolated pipx home to avoid log file locking conflicts
+        // Setting PIPX_HOME ensures pipx uses a fresh environment with no shared state
+        let pipx_home = std::env::temp_dir().join(format!("pipx-home-{}", Uuid::new_v4()));
+        if let Err(e) = std::fs::create_dir_all(&pipx_home) {
+            eprintln!("⚠️  Failed to create isolated pipx home {}: {}", pipx_home.display(), e);
+        }
+
         // Spawn process with piped stdout/stderr for live streaming
         let mut child = match Command::new("pipx")
             .arg("install")
             .arg(package_name)
+            .env("PIPX_HOME", &pipx_home)
+            .env("PIPX_BIN_DIR", pipx_home.join("bin"))
+            .env("PIPX_MAN_DIR", pipx_home.join("man"))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()

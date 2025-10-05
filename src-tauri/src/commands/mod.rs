@@ -5,7 +5,7 @@ use tauri::Manager;
 use crate::database::Database;
 use crate::workflow::{engine::WorkflowEngine, loader::WorkflowLoader, types::WorkflowCompatibility};
 use crate::tools::discovery::ToolDiscoveryService;
-use crate::events::{EventEmitter, SCAN_STARTED, SCAN_COMPLETED, SCAN_FAILED, SCAN_PROGRESS_UPDATE};
+use crate::events::{EventEmitter, SCAN_STARTED, SCAN_COMPLETED, SCAN_FAILED, SCAN_PROGRESS_UPDATE, TOOL_INSTALLATION_STARTED, TOOL_INSTALLATION_COMPLETED};
 use crate::tools::catalog::get_tool_catalog;
 use crate::tools::package_managers::{GoInstallManager, InstallationResult, VersionCheckResult};
 
@@ -1031,9 +1031,20 @@ pub async fn install_tool(
             
             eprintln!("   Go module: {}", go_module);
             
-            let manager = GoInstallManager::new();
+            // Emit installation started event
+            let started_event = EventEmitter::tool_installation_started(&toolName, "go");
+            let _ = app_handle.emit_all(TOOL_INSTALLATION_STARTED, started_event);
+            
+            let manager = GoInstallManager::new(app_handle.clone());
             
             if !manager.is_go_available().await {
+                // Emit failure event
+                let completed_event = EventEmitter::tool_installation_completed(
+                    &toolName, 
+                    false, 
+                    "Go is not installed. Please install Go first."
+                );
+                let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
                 return Err("Go is not installed. Please install Go first.".to_string());
             }
             
@@ -1044,8 +1055,24 @@ pub async fn install_tool(
                 
                 // Trigger tool recheck to update UI
                 let _ = recheck_tool(toolName.clone(), state).await;
+                
+                // Emit installation completed event
+                let completed_event = EventEmitter::tool_installation_completed(
+                    &toolName, 
+                    true, 
+                    &go_result.message
+                );
+                let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
             } else {
                 eprintln!("❌ Failed to install {}: {}", toolName, go_result.message);
+                
+                // Emit installation failed event
+                let completed_event = EventEmitter::tool_installation_completed(
+                    &toolName, 
+                    false, 
+                    &go_result.message
+                );
+                let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
             }
             
             // Convert go_install::InstallationResult to installation::InstallationResult
@@ -1090,27 +1117,35 @@ pub async fn install_tool(
             
             eprintln!("   APT package: {}", apt_package);
             
-            let manager = crate::tools::package_managers::AptManager::new();
+            let manager = crate::tools::package_managers::AptManager::new(app_handle.clone());
+            let started_event = EventEmitter::tool_installation_started(&toolName, "apt");
+            let _ = app_handle.emit_all(TOOL_INSTALLATION_STARTED, started_event);
             
-            if !manager.is_apt_available().await {
-                return Err("apt is not available. This system is not Debian/Ubuntu-based.".to_string());
+            match manager.install(apt_package, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ Successfully installed {}", toolName);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    let completed_event = EventEmitter::tool_installation_completed(&toolName, true, &message);
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to install {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    
+                    let completed_event = EventEmitter::tool_installation_completed(&toolName, false, &error_msg);
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Err(error_msg)
+                }
             }
-            
-            let apt_result = manager.install(apt_package, &toolName).await?;
-            
-            if apt_result.success {
-                eprintln!("✅ Successfully installed {}", toolName);
-                let _ = recheck_tool(toolName.clone(), state).await;
-            } else {
-                eprintln!("❌ Failed to install {}: {}", toolName, apt_result.message);
-            }
-            
-            Ok(InstallationResult {
-                success: apt_result.success,
-                message: apt_result.message,
-                steps: vec![],
-                requires_restart: false,
-            })
         },
         "winget" => {
             let winget_id = tool_def.winget_id.as_ref()
@@ -1118,27 +1153,208 @@ pub async fn install_tool(
             
             eprintln!("   WinGet ID: {}", winget_id);
             
-            let manager = crate::tools::package_managers::WingetManager::new();
+            let manager = crate::tools::package_managers::WingetManager::new(app_handle.clone());
+            let started_event = EventEmitter::tool_installation_started(&toolName, "winget");
+            let _ = app_handle.emit_all(TOOL_INSTALLATION_STARTED, started_event);
             
-            if !manager.is_winget_available().await {
-                return Err("winget is not installed. Please install App Installer from Microsoft Store.".to_string());
+            match manager.install(winget_id, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ Successfully installed {}", toolName);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    let completed_event = EventEmitter::tool_installation_completed(&toolName, true, &message);
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to install {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    
+                    let completed_event = EventEmitter::tool_installation_completed(&toolName, false, &error_msg);
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Err(error_msg)
+                }
+            }
+        },
+        "git-pip" => {
+            let git_repo = tool_def.git_repo.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no git_repo defined", toolName))?;
+            
+            eprintln!("   Git repo: {}", git_repo);
+            
+            let manager = crate::tools::package_managers::GitPipInstaller::new();
+            
+            if !manager.is_git_available().await {
+                return Err("git is not installed. Please install git first.".to_string());
             }
             
-            let winget_result = manager.install(winget_id, &toolName).await?;
+            if !manager.is_python_available().await {
+                return Err("Python is not installed. Please install Python first.".to_string());
+            }
             
-            if winget_result.success {
+            let git_pip_result = manager.install(git_repo, &toolName, Some(&app_handle)).await?;
+            
+            if git_pip_result.success {
                 eprintln!("✅ Successfully installed {}", toolName);
                 let _ = recheck_tool(toolName.clone(), state).await;
             } else {
-                eprintln!("❌ Failed to install {}: {}", toolName, winget_result.message);
+                eprintln!("❌ Failed to install {}: {}", toolName, git_pip_result.message);
             }
             
             Ok(InstallationResult {
-                success: winget_result.success,
-                message: winget_result.message,
+                success: git_pip_result.success,
+                message: git_pip_result.message,
                 steps: vec![],
                 requires_restart: false,
             })
+        },
+        "cargo" => {
+            eprintln!("   Cargo package: {:?}", tool_def.cargo_package);
+            
+            let manager = crate::tools::package_managers::CargoInstaller::new(app_handle.clone());
+            
+            // Emit installation started event
+            let started_event = EventEmitter::tool_installation_started(&toolName, "cargo");
+            let _ = app_handle.emit_all(TOOL_INSTALLATION_STARTED, started_event);
+            
+            match manager.install(tool_def, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    // Emit installation completed event
+                    let completed_event = EventEmitter::tool_installation_completed(
+                        &toolName, 
+                        true, 
+                        &message
+                    );
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to install {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    
+                    // Emit installation failed event
+                    let completed_event = EventEmitter::tool_installation_completed(
+                        &toolName, 
+                        false, 
+                        &error_msg
+                    );
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Err(error_msg)
+                }
+            }
+        },
+        "gem" => {
+            let gem_package = tool_def.gem_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no gem_package defined", toolName))?;
+            
+            eprintln!("   Gem package: {}", gem_package);
+            
+            // Emit installation started event
+            let started_event = EventEmitter::tool_installation_started(&toolName, "gem");
+            let _ = app_handle.emit_all(TOOL_INSTALLATION_STARTED, started_event);
+            
+            let manager = crate::tools::package_managers::GemInstaller::new(app_handle.clone());
+            
+            match manager.install(tool_def, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    // Emit installation completed event
+                    let completed_event = EventEmitter::tool_installation_completed(
+                        &toolName, 
+                        true, 
+                        &message
+                    );
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to install {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    
+                    // Emit installation failed event
+                    let completed_event = EventEmitter::tool_installation_completed(
+                        &toolName, 
+                        false, 
+                        &error_msg
+                    );
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Err(error_msg)
+                }
+            }
+        },
+        "npm" => {
+            let npm_package = tool_def.npm_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no npm_package defined", toolName))?;
+            
+            eprintln!("   NPM package: {}", npm_package);
+            
+            // Emit installation started event
+            let started_event = EventEmitter::tool_installation_started(&toolName, "npm");
+            let _ = app_handle.emit_all(TOOL_INSTALLATION_STARTED, started_event);
+            
+            let manager = crate::tools::package_managers::NpmInstaller::new(app_handle.clone());
+            
+            match manager.install(tool_def, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    // Emit installation completed event
+                    let completed_event = EventEmitter::tool_installation_completed(
+                        &toolName, 
+                        true, 
+                        &message
+                    );
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to install {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    
+                    // Emit installation failed event
+                    let completed_event = EventEmitter::tool_installation_completed(
+                        &toolName, 
+                        false, 
+                        &error_msg
+                    );
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Err(error_msg)
+                }
+            }
         },
         "manual" => {
             Err(format!("Tool '{}' requires manual installation. Check documentation.", toolName))
@@ -1155,7 +1371,8 @@ pub async fn install_tool(
 #[tauri::command]
 pub async fn update_tool(
     #[allow(non_snake_case)] toolName: String,
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle
 ) -> Result<InstallationResult, String> {
     eprintln!("🔄 Updating tool: {}", toolName);
     
@@ -1172,7 +1389,7 @@ pub async fn update_tool(
             let go_module = tool_def.go_module.as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no go_module defined", toolName))?;
             
-            let manager = GoInstallManager::new();
+            let manager = GoInstallManager::new(app_handle.clone());
             
             if !manager.is_go_available().await {
                 return Err("Go is not installed. Please install Go first.".to_string());
@@ -1227,53 +1444,168 @@ pub async fn update_tool(
             let apt_package = tool_def.apt_package.as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no apt_package defined", toolName))?;
             
-            let manager = crate::tools::package_managers::AptManager::new();
+            let manager = crate::tools::package_managers::AptManager::new(app_handle.clone());
+            let started_event = EventEmitter::tool_installation_started(&toolName, "apt");
+            let _ = app_handle.emit_all(TOOL_INSTALLATION_STARTED, started_event);
             
-            if !manager.is_apt_available().await {
-                return Err("apt is not available.".to_string());
+            match manager.update(apt_package, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ Successfully updated {}", toolName);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    let completed_event = EventEmitter::tool_installation_completed(&toolName, true, &message);
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to update {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    
+                    let completed_event = EventEmitter::tool_installation_completed(&toolName, false, &error_msg);
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Err(error_msg)
+                }
             }
-            
-            let apt_result = manager.update(apt_package, &toolName).await?;
-            
-            if apt_result.success {
-                eprintln!("✅ Successfully updated {}", toolName);
-                let _ = recheck_tool(toolName.clone(), state).await;
-            } else {
-                eprintln!("❌ Failed to update {}: {}", toolName, apt_result.message);
-            }
-            
-            Ok(InstallationResult {
-                success: apt_result.success,
-                message: apt_result.message,
-                steps: vec![],
-                requires_restart: false,
-            })
         },
         "winget" => {
             let winget_id = tool_def.winget_id.as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no winget_id defined", toolName))?;
             
-            let manager = crate::tools::package_managers::WingetManager::new();
+            let manager = crate::tools::package_managers::WingetManager::new(app_handle.clone());
+            let started_event = EventEmitter::tool_installation_started(&toolName, "winget");
+            let _ = app_handle.emit_all(TOOL_INSTALLATION_STARTED, started_event);
             
-            if !manager.is_winget_available().await {
-                return Err("winget is not installed.".to_string());
+            match manager.update(winget_id, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ Successfully updated {}", toolName);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    let completed_event = EventEmitter::tool_installation_completed(&toolName, true, &message);
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to update {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    
+                    let completed_event = EventEmitter::tool_installation_completed(&toolName, false, &error_msg);
+                    let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
+                    
+                    Err(error_msg)
+                }
             }
+        },
+        "git-pip" => {
+            // For git-pip, we need to reinstall from the repo
+            let git_repo = tool_def.git_repo.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no git_repo defined", toolName))?;
             
-            let winget_result = manager.update(winget_id, &toolName).await?;
+            let manager = crate::tools::package_managers::GitPipInstaller::new();
             
-            if winget_result.success {
+            // Reinstall to update
+            let result = manager.install(git_repo, &toolName, Some(&app_handle)).await?;
+            
+            if result.success {
                 eprintln!("✅ Successfully updated {}", toolName);
                 let _ = recheck_tool(toolName.clone(), state).await;
             } else {
-                eprintln!("❌ Failed to update {}: {}", toolName, winget_result.message);
+                eprintln!("❌ Failed to update {}: {}", toolName, result.message);
             }
             
             Ok(InstallationResult {
-                success: winget_result.success,
-                message: winget_result.message,
+                success: result.success,
+                message: result.message,
                 steps: vec![],
                 requires_restart: false,
             })
+        },
+        "gem" => {
+            let gem_package = tool_def.gem_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no gem_package defined", toolName))?;
+            
+            let manager = crate::tools::package_managers::GemInstaller::new(app_handle.clone());
+            
+            match manager.update(tool_def, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to update {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    Err(error_msg)
+                }
+            }
+        },
+        "npm" => {
+            let npm_package = tool_def.npm_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no npm_package defined", toolName))?;
+            
+            let manager = crate::tools::package_managers::NpmInstaller::new(app_handle.clone());
+            
+            match manager.update(tool_def, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to update {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    Err(error_msg)
+                }
+            }
+        },
+        "cargo" => {
+            let cargo_package = tool_def.cargo_package.as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no cargo_package defined", toolName))?;
+            
+            let manager = crate::tools::package_managers::CargoInstaller::new(app_handle.clone());
+            
+            match manager.update(tool_def, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to update {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    Err(error_msg)
+                }
+            }
         },
         _ => {
             Err(format!("Cannot update tool '{}' with install method '{}'", toolName, tool_def.install_method))
@@ -1284,7 +1616,8 @@ pub async fn update_tool(
 #[tauri::command]
 pub async fn uninstall_tool(
     #[allow(non_snake_case)] toolName: String,
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle
 ) -> Result<String, String> {
     eprintln!("🗑️  Uninstalling tool: {}", toolName);
     
@@ -1296,7 +1629,7 @@ pub async fn uninstall_tool(
     // Route to appropriate installer
     match tool_def.install_method.as_str() {
         "go" => {
-            let manager = GoInstallManager::new();
+            let manager = GoInstallManager::new(app_handle.clone());
             
             let message = manager.uninstall(&toolName).await?;
             
@@ -1325,9 +1658,10 @@ pub async fn uninstall_tool(
             let apt_package = tool_def.apt_package.as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no apt_package defined", toolName))?;
             
-            let manager = crate::tools::package_managers::AptManager::new();
+            let manager = crate::tools::package_managers::AptManager::new(app_handle.clone());
             
-            let message = manager.uninstall(apt_package, &toolName).await?;
+            let message = manager.uninstall(apt_package, &toolName).await
+                .map_err(|e| e.to_string())?;
             
             eprintln!("✅ {}", message);
             
@@ -1339,15 +1673,73 @@ pub async fn uninstall_tool(
             let winget_id = tool_def.winget_id.as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no winget_id defined", toolName))?;
             
-            let manager = crate::tools::package_managers::WingetManager::new();
+            let manager = crate::tools::package_managers::WingetManager::new(app_handle.clone());
             
-            let message = manager.uninstall(winget_id, &toolName).await?;
+            let message = manager.uninstall(winget_id, &toolName).await
+                .map_err(|e| e.to_string())?;
             
             eprintln!("✅ {}", message);
             
             let _ = recheck_tool(toolName.clone(), state).await;
             
             Ok(message)
+        },
+        "git-pip" => {
+            let manager = crate::tools::package_managers::GitPipInstaller::new();
+            let message = manager.uninstall(&toolName).await?;
+            
+            eprintln!("✅ {}", message);
+            let _ = recheck_tool(toolName.clone(), state).await;
+            
+            Ok(message)
+        },
+        "gem" => {
+            let manager = crate::tools::package_managers::GemInstaller::new(app_handle.clone());
+            
+            match manager.uninstall(tool_def).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    Ok(message)
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to uninstall {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    Err(error_msg)
+                }
+            }
+        },
+        "npm" => {
+            let manager = crate::tools::package_managers::NpmInstaller::new(app_handle.clone());
+            
+            match manager.uninstall(tool_def).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    Ok(message)
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to uninstall {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    Err(error_msg)
+                }
+            }
+        },
+        "cargo" => {
+            let manager = crate::tools::package_managers::CargoInstaller::new(app_handle.clone());
+            
+            match manager.uninstall(tool_def).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+                    Ok(message)
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to uninstall {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    Err(error_msg)
+                }
+            }
         },
         _ => {
             Err(format!("Cannot uninstall tool '{}' with install method '{}'", toolName, tool_def.install_method))
@@ -1358,7 +1750,8 @@ pub async fn uninstall_tool(
 #[tauri::command]
 pub async fn check_tool_installed(
     #[allow(non_snake_case)] toolName: String,
-    _state: tauri::State<'_, AppState>
+    _state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle
 ) -> Result<bool, String> {
     eprintln!("🔍 Checking if tool is installed: {}", toolName);
     
@@ -1370,7 +1763,7 @@ pub async fn check_tool_installed(
     // Route to appropriate installer
     match tool_def.install_method.as_str() {
         "go" => {
-            let manager = GoInstallManager::new();
+            let manager = GoInstallManager::new(app_handle.clone());
             let installed = manager.is_installed(&toolName);
             
             eprintln!("   Installed: {}", installed);
@@ -1390,7 +1783,8 @@ pub async fn check_tool_installed(
 #[tauri::command]
 pub async fn get_tool_version(
     #[allow(non_snake_case)] toolName: String,
-    _state: tauri::State<'_, AppState>
+    _state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle
 ) -> Result<Option<String>, String> {
     eprintln!("🔍 Getting tool version: {}", toolName);
     
@@ -1402,7 +1796,7 @@ pub async fn get_tool_version(
     // Route to appropriate installer
     match tool_def.install_method.as_str() {
         "go" => {
-            let manager = GoInstallManager::new();
+            let manager = GoInstallManager::new(app_handle.clone());
             let version = manager.get_version(&toolName).await;
             
             if let Some(ref v) = version {
@@ -1422,7 +1816,8 @@ pub async fn get_tool_version(
 #[tauri::command]
 pub async fn check_tool_update(
     #[allow(non_snake_case)] toolName: String,
-    _state: tauri::State<'_, AppState>
+    _state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle
 ) -> Result<VersionCheckResult, String> {
     eprintln!("🔄 Checking for updates: {}", toolName);
     
@@ -1434,7 +1829,7 @@ pub async fn check_tool_update(
     // Route to appropriate version checker based on install method
     match tool_def.install_method.as_str() {
         "go" => {
-            let manager = GoInstallManager::new();
+            let manager = GoInstallManager::new(app_handle.clone());
             
             // Get the binary path
             let binary_path = manager.get_tool_path(&toolName)
@@ -1728,5 +2123,79 @@ pub async fn cleanup_old_pipx() -> Result<String, String> {
     {
         Ok("This feature is only needed on Windows.".to_string())
     }
+}
+
+// ============================================================================
+// Adapter Commands - Tool Command Builders
+// ============================================================================
+
+/// Build a command for a specific tool with custom configuration
+#[tauri::command]
+pub async fn build_tool_command(
+    adapter_type: crate::adapters::AdapterType,
+) -> Result<Vec<String>, String> {
+    let registry = crate::adapters::AdapterRegistry::new();
+    Ok(registry.build_command(&adapter_type))
+}
+
+/// Build a command for a tool with default configuration
+#[tauri::command]
+pub async fn build_tool_command_with_defaults(
+    #[allow(non_snake_case)] toolName: String,
+    target: String,
+    #[allow(non_snake_case)] outputFile: Option<String>,
+) -> Result<Vec<String>, String> {
+    let registry = crate::adapters::AdapterRegistry::new();
+    registry.build_command_with_defaults(&toolName, target, outputFile)
+}
+
+/// Get detailed information about a specific adapter
+#[tauri::command]
+pub async fn get_adapter_info(
+    #[allow(non_snake_case)] toolName: String,
+) -> Result<crate::adapters::AdapterInfo, String> {
+    let registry = crate::adapters::AdapterRegistry::new();
+    registry.get_adapter_info(&toolName)
+}
+
+/// List all available adapters
+#[tauri::command]
+pub async fn list_adapters() -> Result<Vec<crate::adapters::AdapterInfo>, String> {
+    let registry = crate::adapters::AdapterRegistry::new();
+    Ok(registry.list_adapters())
+}
+
+/// Get adapters by category
+#[tauri::command]
+pub async fn get_adapters_by_category(
+    category: String,
+) -> Result<Vec<crate::adapters::AdapterInfo>, String> {
+    let registry = crate::adapters::AdapterRegistry::new();
+    Ok(registry.get_adapters_by_category(&category))
+}
+
+/// Get adapters by risk level
+#[tauri::command]
+pub async fn get_adapters_by_risk_level(
+    #[allow(non_snake_case)] riskLevel: String,
+) -> Result<Vec<crate::adapters::AdapterInfo>, String> {
+    let registry = crate::adapters::AdapterRegistry::new();
+    Ok(registry.get_adapters_by_risk_level(&riskLevel))
+}
+
+/// Check if an adapter exists for a tool
+#[tauri::command]
+pub async fn has_adapter(
+    #[allow(non_snake_case)] toolName: String,
+) -> Result<bool, String> {
+    let registry = crate::adapters::AdapterRegistry::new();
+    Ok(registry.has_adapter(&toolName))
+}
+
+/// Get all adapter categories
+#[tauri::command]
+pub async fn get_adapter_categories() -> Result<Vec<String>, String> {
+    let registry = crate::adapters::AdapterRegistry::new();
+    Ok(registry.get_categories())
 }
 

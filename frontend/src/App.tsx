@@ -3,9 +3,11 @@ import { useEffect, useState } from 'react'
 import Dashboard from './pages/Dashboard'
 import ScansPage from './pages/ScansPage'
 import ToolsPage from './pages/ToolsPage'
+import AdaptersPage from './pages/AdaptersPage'
 import ReportsPage from './pages/ReportsPage'
 import SettingsPage from './pages/SettingsPage'
 import Layout from './components/Layout'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 function App() {
   const [backendStarted, setBackendStarted] = useState(false)
@@ -96,15 +98,23 @@ function App() {
   }
 
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/scans" element={<ScansPage />} />
-        <Route path="/tools" element={<ToolsPage />} />
-        <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Routes>
-    </Layout>
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        console.error('Application Error:', error, errorInfo)
+        // In production, send to error tracking service
+      }}
+    >
+      <Layout>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/scans" element={<ScansPage />} />
+          <Route path="/tools" element={<ToolsPage />} />
+          <Route path="/adapters" element={<AdaptersPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
+      </Layout>
+    </ErrorBoundary>
   )
 }
 

@@ -15,6 +15,7 @@ use uuid::Uuid;
 use crate::workflow::types::{WorkflowStep, WorkflowArtifact};
 use crate::tools::discovery::ToolDiscoveryService;
 use crate::workflow::artifacts::ArtifactManager;
+use crate::adapters::AdapterRegistry;
 
 #[derive(Clone)]
 pub struct ProcessExecutor {
@@ -145,8 +146,18 @@ impl ProcessExecutor {
             return Err(anyhow!("Step '{}' has no command to execute", step_id));
         }
 
-        // Resolve tool path using ToolDiscoveryService
+        // Try to use adapter first, fall back to original command
         let tool_name = &command_args[0];
+        let final_command_args = self.try_build_command_with_adapter(
+            tool_name,
+            &command_args,
+            inputs,
+        ).unwrap_or_else(|| {
+            eprintln!("🔧 Using original command for tool: {}", tool_name);
+            command_args.clone()
+        });
+
+        // Resolve tool path using ToolDiscoveryService
         let resolved_tool_path = {
             let discovery = self.tool_discovery.read().await;
             match discovery.get_tool_record(tool_name, false).await {
@@ -192,7 +203,7 @@ impl ProcessExecutor {
 
         let timeout_duration = Duration::from_secs(step.timeout.unwrap_or(300));
         let mut child = Command::new(&resolved_tool_path)
-            .args(&command_args[1..])
+            .args(&final_command_args[1..])
             .current_dir(working_directory)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -394,6 +405,62 @@ impl ProcessExecutor {
         }
 
         Ok(artifacts)
+    }
+
+    /// Try to use an adapter to build the command if available
+    /// Returns Some(command_args) if an adapter was used, None otherwise
+    fn try_build_command_with_adapter(
+        &self,
+        tool_name: &str,
+        original_args: &[String],
+        inputs: &HashMap<String, String>,
+    ) -> Option<Vec<String>> {
+        let registry = AdapterRegistry::new();
+        
+        // Check if we have an adapter for this tool
+        if !registry.has_adapter(tool_name) {
+            return None;
+        }
+
+        eprintln!("📦 Using adapter for tool: {}", tool_name);
+
+        // Try to extract target from inputs or original args
+        let target = inputs.get("target")
+            .cloned()
+            .or_else(|| {
+                // Try to find a domain/URL-like argument
+                original_args.iter()
+                    .find(|arg| arg.contains(".") && !arg.starts_with("-"))
+                    .cloned()
+            });
+
+        // Try to extract output file from original args
+        let output_file = original_args.iter()
+            .enumerate()
+            .find_map(|(i, arg)| {
+                if (arg == "-o" || arg == "--output" || arg == "-oJ") && i + 1 < original_args.len() {
+                    Some(original_args[i + 1].clone())
+                } else {
+                    None
+                }
+            });
+
+        // If we have a target, use the adapter
+        if let Some(target) = target {
+            match registry.build_command_with_defaults(tool_name, target, output_file) {
+                Ok(command) => {
+                    eprintln!("✅ Adapter built command: {:?}", command);
+                    Some(command)
+                }
+                Err(e) => {
+                    eprintln!("⚠️  Adapter failed to build command: {}", e);
+                    None
+                }
+            }
+        } else {
+            eprintln!("⚠️  No target found for adapter, using original command");
+            None
+        }
     }
 
     fn resolve_template_variables(

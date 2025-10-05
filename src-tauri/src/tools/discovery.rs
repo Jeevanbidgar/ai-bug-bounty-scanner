@@ -10,7 +10,6 @@ use crate::tools::registry::ToolRegistry;
 use crate::workflow::types::WorkflowTemplate;
 use super::catalog::{get_tool_catalog, ToolDefinition as CatalogToolDefinition};
 
-const CACHE_FILE: &str = "data/tool_discovery_cache.json";
 const REFRESH_TTL: u64 = 900; // 15 minutes in seconds
 const VERSION_TIMEOUT: u64 = 5; // seconds
 
@@ -79,12 +78,14 @@ pub struct ToolDiscoveryService {
     cache: Arc<RwLock<ToolCache>>,
     catalog: HashMap<String, CatalogToolDefinition>,
     additional_search_paths: Vec<PathBuf>,
+    cache_file_path: PathBuf,
 }
 
 impl ToolDiscoveryService {
     pub fn new() -> Self {
         let catalog = get_tool_catalog();
         let additional_paths = Self::build_additional_search_paths();
+        let cache_path = Self::get_cache_file_path();
         
         let mut cache = ToolCache {
             tools: HashMap::new(),
@@ -103,6 +104,42 @@ impl ToolDiscoveryService {
             cache: Arc::new(RwLock::new(cache)),
             catalog,
             additional_search_paths: additional_paths,
+            cache_file_path: cache_path,
+        }
+    }
+
+    /// Get the cache file path (outside src-tauri to avoid rebuild triggers)
+    fn get_cache_file_path() -> PathBuf {
+        // In development: use workspace root/data
+        // In production: use app data directory
+        #[cfg(debug_assertions)]
+        {
+            // Development mode: use workspace root
+            let workspace_root = std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."));
+            
+            // Go up from src-tauri to workspace root if needed
+            let workspace_root = if workspace_root.ends_with("src-tauri") {
+                workspace_root.parent().unwrap_or(&workspace_root).to_path_buf()
+            } else {
+                workspace_root
+            };
+            
+            workspace_root.join("data").join("tool_discovery_cache.json")
+        }
+        
+        #[cfg(not(debug_assertions))]
+        {
+            // Production mode: use app data directory
+            if let Some(data_dir) = dirs::data_dir() {
+                data_dir
+                    .join("ai-bug-bounty-scanner")
+                    .join("data")
+                    .join("tool_discovery_cache.json")
+            } else {
+                // Fallback to current directory if data_dir fails
+                PathBuf::from("data").join("tool_discovery_cache.json")
+            }
         }
     }
 
@@ -367,25 +404,27 @@ impl ToolDiscoveryService {
     
     /// Load cached tool records from disk
     pub async fn load_cache(&mut self) -> Result<()> {
-        let cache_path = std::path::Path::new(CACHE_FILE);
-        if cache_path.exists() {
-            let contents = tokio::fs::read_to_string(cache_path).await?;
+        if self.cache_file_path.exists() {
+            let contents = tokio::fs::read_to_string(&self.cache_file_path).await?;
             let cache: ToolCache = serde_json::from_str(&contents)?;
             *self.cache.write().await = cache;
+            eprintln!("✅ Loaded cache from: {}", self.cache_file_path.display());
+        } else {
+            eprintln!("ℹ️  No cache file found at: {}", self.cache_file_path.display());
         }
         Ok(())
     }
 
     /// Save tool cache to disk
     pub async fn save_cache(&self) -> Result<()> {
-        let cache_path = std::path::Path::new(CACHE_FILE);
-        if let Some(parent) = cache_path.parent() {
+        if let Some(parent) = self.cache_file_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
         
         let cache = self.cache.read().await;
         let json = serde_json::to_string_pretty(&*cache)?;
-        tokio::fs::write(cache_path, json).await?;
+        tokio::fs::write(&self.cache_file_path, json).await?;
+        eprintln!("✅ Saved cache to: {}", self.cache_file_path.display());
         Ok(())
     }
 

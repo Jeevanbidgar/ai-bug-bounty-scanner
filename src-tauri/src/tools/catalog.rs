@@ -18,10 +18,14 @@ pub struct ToolDefinition {
     
     // Installation metadata (Phase 2)
     pub go_module: Option<String>,        // Go module path for `go install`
-    pub pipx_package: Option<String>,     // pipx package name
+    pub pipx_package: Option<String>,     // pipx package name for Python CLI tools
+    pub git_repo: Option<String>,         // Git repository URL for Python tools
     pub apt_package: Option<String>,      // APT package name (Linux)
     pub winget_id: Option<String>,        // WinGet package ID (Windows)
-    pub install_method: String,           // Primary installation method: "go", "pipx", "apt", "winget", "manual", "runtime"
+    pub cargo_package: Option<String>,    // Cargo package name for Rust tools
+    pub gem_package: Option<String>,      // Ruby gem package name
+    pub npm_package: Option<String>,      // npm package name for Node.js tools
+    pub install_method: String,           // Primary installation method: "go", "pipx", "git-pip", "apt", "winget", "cargo", "gem", "npm", "manual", "runtime"
 }
 
 impl ToolDefinition {
@@ -41,8 +45,12 @@ impl ToolDefinition {
             os_dependencies: vec![],
             go_module: None,
             pipx_package: None,
+            git_repo: None,
             apt_package: None,
             winget_id: None,
+            cargo_package: None,
+            gem_package: None,
+            npm_package: None,
             install_method: "manual".to_string(),
         }
     }
@@ -69,9 +77,9 @@ impl ToolDefinition {
         self
     }
     
-    pub fn with_pipx_package(mut self, package: &str) -> Self {
-        self.pipx_package = Some(package.to_string());
-        self.install_method = "pipx".to_string();
+    pub fn with_git_repo(mut self, repo: &str) -> Self {
+        self.git_repo = Some(repo.to_string());
+        self.install_method = "git-pip".to_string();
         self
     }
     
@@ -83,6 +91,30 @@ impl ToolDefinition {
     
     pub fn with_winget_id(mut self, id: &str) -> Self {
         self.winget_id = Some(id.to_string());
+        self.install_method = "winget".to_string();
+        self
+    }
+    
+    pub fn with_cargo_package(mut self, package: &str) -> Self {
+        self.cargo_package = Some(package.to_string());
+        self.install_method = "cargo".to_string();
+        self
+    }
+    
+    pub fn with_gem_package(mut self, package: &str) -> Self {
+        self.gem_package = Some(package.to_string());
+        self.install_method = "gem".to_string();
+        self
+    }
+    
+    pub fn with_npm_package(mut self, package: &str) -> Self {
+        self.npm_package = Some(package.to_string());
+        self.install_method = "npm".to_string();
+        self
+    }
+    
+    pub fn with_manual_install(mut self) -> Self {
+        self.install_method = "manual".to_string();
         self.install_method = "winget".to_string();
         self
     }
@@ -137,7 +169,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["knockpy"]
         )
-        .with_pipx_package("git+https://github.com/guelfoweb/knock.git")
+        .with_git_repo("https://github.com/guelfoweb/knock.git")
     );
 
     catalog.insert("sublist3r".to_string(),
@@ -147,7 +179,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["sublist3r"]
         )
-        .with_pipx_package("sublist3r")
+        .with_git_repo("https://github.com/aboul3la/Sublist3r.git")
     );
 
     catalog.insert("dnsrecon".to_string(),
@@ -157,7 +189,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["dnsrecon"]
         )
-        .with_pipx_package("dnsrecon")
+        .with_git_repo("https://github.com/darkoperator/dnsrecon.git")
     );
 
     catalog.insert("fierce".to_string(),
@@ -167,7 +199,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["fierce"]
         )
-        .with_pipx_package("fierce")
+        .with_git_repo("https://github.com/mschwager/fierce.git")
     );
 
     catalog.insert("dnsenum".to_string(),
@@ -177,6 +209,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["dnsenum"]
         )
+        .with_os_dependencies(vec!["perl"])
         .with_apt_package("dnsenum")
         .with_install_method("manual")
     );
@@ -226,7 +259,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "network",
             vec!["rustscan"]
         )
-        .with_install_method("manual")
+        .with_cargo_package("rustscan")
     );
 
     // === HTTP Probing & Web Analysis ===
@@ -343,6 +376,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "vulnerability",
             vec!["nikto"]
         )
+        .with_os_dependencies(vec!["perl"])
         .with_apt_package("nikto")
         .with_install_method("manual")
     );
@@ -354,8 +388,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "vulnerability",
             vec!["wpscan"]
         )
+        .with_gem_package("wpscan")
         .with_apt_package("wpscan")
-        .with_install_method("manual")
     );
 
     catalog.insert("joomscan".to_string(),
@@ -365,7 +399,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "vulnerability",
             vec!["joomscan"]
         )
-        .with_install_method("manual")
+        .with_os_dependencies(vec!["perl"])
+        .with_git_repo("https://github.com/OWASP/joomscan.git")
     );
 
     // === Directory & File Brute Forcing ===
@@ -393,10 +428,11 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
     catalog.insert("dirbuster".to_string(),
         ToolDefinition::new(
             "dirbuster",
-            "Web directory brute forcer",
+            "Web directory brute forcer (Java)",
             "web",
             vec!["dirbuster"]
         )
+        .with_os_dependencies(vec!["java"])
         .with_apt_package("dirbuster")
         .with_install_method("manual")
     );
@@ -408,7 +444,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["feroxbuster"]
         )
-        .with_install_method("manual")
+        .with_cargo_package("feroxbuster")
     );
 
     catalog.insert("wfuzz".to_string(),
@@ -418,8 +454,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["wfuzz"]
         )
-        .with_apt_package("wfuzz")
-        .with_install_method("manual")
+        .with_git_repo("https://github.com/xmendez/wfuzz.git")
     );
 
     // === Parameter Discovery & Fuzzing ===
@@ -430,7 +465,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["arjun", "arjun.exe"]
         )
-        .with_pipx_package("arjun")
+        .with_git_repo("https://github.com/s0md3v/Arjun.git")
     );
 
     catalog.insert("param-miner".to_string(),
@@ -451,7 +486,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["sqlmap"]
         )
-        .with_pipx_package("sqlmap")
+        .with_git_repo("https://github.com/sqlmapproject/sqlmap.git")
     );
 
     // === XSS Detection ===
@@ -472,7 +507,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["xsstrike"]
         )
-        .with_pipx_package("git+https://github.com/s0md3v/XSStrike.git")
+        .with_git_repo("https://github.com/s0md3v/XSStrike.git")
     );
 
     // === Technology Detection ===
@@ -483,7 +518,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["wappalyzer"]
         )
-        .with_install_method("manual")
+        .with_npm_package("wappalyzer")
     );
 
     catalog.insert("whatweb".to_string(),
@@ -493,8 +528,9 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["whatweb"]
         )
+        .with_os_dependencies(vec!["ruby"])
+        .with_gem_package("whatweb")
         .with_apt_package("whatweb")
-        .with_install_method("manual")
     );
 
     // === Screenshot & Visual Recon ===
@@ -511,11 +547,13 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
     catalog.insert("aquatone".to_string(),
         ToolDefinition::new(
             "aquatone",
-            "Domain flyover tool",
+            "Domain flyover tool (DEPRECATED - upstream archived, Go 1.20+ incompatible)",
             "recon",
             vec!["aquatone"]
         )
-        .with_go_module("github.com/michenriksen/aquatone")
+        .with_install_method("manual")
+        // Note: Original repo is archived and doesn't compile with modern Go
+        // Binary releases or older forks may still work
     );
 
     catalog.insert("eyewitness".to_string(),
@@ -525,7 +563,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["eyewitness"]
         )
-        .with_pipx_package("git+https://github.com/FortyNorthSecurity/EyeWitness.git")
+        .with_git_repo("https://github.com/FortyNorthSecurity/EyeWitness.git")
     );
 
     // === JavaScript Analysis ===
@@ -536,7 +574,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["linkfinder"]
         )
-        .with_pipx_package("linkfinder")
+        .with_git_repo("https://github.com/GerbenJavado/LinkFinder.git")
     );
 
     catalog.insert("subjs".to_string(),
@@ -654,11 +692,11 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
     catalog.insert("cloudfail".to_string(),
         ToolDefinition::new(
             "cloudfail",
-            "Find origin servers",
+            "Find origin servers behind CDN",
             "cloud",
             vec!["cloudfail"]
         )
-        .with_pipx_package("git+https://github.com/m0rtem/CloudFail.git")
+        .with_git_repo("https://github.com/m0rtem/CloudFail.git")
     );
 
     // === Utilities ===

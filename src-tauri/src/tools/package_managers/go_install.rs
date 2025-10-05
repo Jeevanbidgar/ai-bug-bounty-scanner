@@ -2,11 +2,14 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::process::Command;
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoInstallManager {
     go_path: Option<PathBuf>,
     go_bin_path: Option<PathBuf>,
+    app_handle: tauri::AppHandle,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,11 +22,22 @@ pub struct InstallationResult {
 
 impl GoInstallManager {
     /// Create a new GoInstallManager instance
-    pub fn new() -> Self {
+    pub fn new(app_handle: tauri::AppHandle) -> Self {
         Self {
             go_path: Self::detect_gopath(),
             go_bin_path: Self::detect_go_bin_path(),
+            app_handle,
         }
+    }
+
+    /// Emit installation output to frontend
+    fn emit_output(&self, event_id: &str, output: &str) {
+        let _ = self.app_handle.emit_all("tool:installation_output", 
+            serde_json::json!({
+                "event_id": event_id,
+                "output": output
+            })
+        );
     }
 
     /// Detect GOPATH from environment or use default
@@ -89,8 +103,11 @@ impl GoInstallManager {
     /// # Returns
     /// * `InstallationResult` with success status and message
     pub async fn install(&self, module_path: &str, tool_name: &str) -> Result<InstallationResult, String> {
+        let event_id = Uuid::new_v4().to_string();
+        
         // Check if Go is available
         if !self.is_go_available().await {
+            self.emit_output(&event_id, "❌ Go is not installed or not in PATH. Please install Go first.\n");
             return Ok(InstallationResult {
                 success: false,
                 message: "Go is not installed or not in PATH. Please install Go first.".to_string(),
@@ -102,7 +119,7 @@ impl GoInstallManager {
         // Build the install command: go install module@latest
         let module_with_version = format!("{}@latest", module_path);
         
-        println!("Installing {} via go install {}", tool_name, module_with_version);
+        self.emit_output(&event_id, &format!("🚀 Installing {} via go install {}\n", tool_name, module_with_version));
 
         match Command::new("go")
             .arg("install")
@@ -112,11 +129,56 @@ impl GoInstallManager {
             .spawn()
         {
             Ok(mut child) => {
+                // Stream stdout and stderr concurrently
+                let stdout = child.stdout.take();
+                let stderr = child.stderr.take();
+                
+                let event_id_clone = event_id.clone();
+                let app_handle_clone = self.app_handle.clone();
+                
+                let stdout_task = tokio::spawn(async move {
+                    if let Some(stdout) = stdout {
+                        let reader = BufReader::new(stdout);
+                        let mut lines = reader.lines();
+                        
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            let _ = app_handle_clone.emit_all("tool:installation_output", 
+                                serde_json::json!({
+                                    "event_id": event_id_clone,
+                                    "output": format!("{}\n", line)
+                                })
+                            );
+                        }
+                    }
+                });
+                
+                let event_id_clone2 = event_id.clone();
+                let app_handle_clone2 = self.app_handle.clone();
+                let stderr_task = tokio::spawn(async move {
+                    if let Some(stderr) = stderr {
+                        let reader = BufReader::new(stderr);
+                        let mut lines = reader.lines();
+                        
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            let _ = app_handle_clone2.emit_all("tool:installation_output", 
+                                serde_json::json!({
+                                    "event_id": event_id_clone2,
+                                    "output": format!("{}\n", line)
+                                })
+                            );
+                        }
+                    }
+                });
+                
+                // Wait for both streams to complete
+                let _ = tokio::join!(stdout_task, stderr_task);
+
                 match child.wait().await {
                     Ok(status) => {
                         if status.success() {
                             // Check if the binary was installed successfully
                             if let Some(installed_path) = self.get_tool_path(tool_name) {
+                                self.emit_output(&event_id, &format!("✅ Successfully installed {} to {}\n", tool_name, installed_path));
                                 Ok(InstallationResult {
                                     success: true,
                                     message: format!("Successfully installed {} to {}", tool_name, installed_path),
@@ -124,6 +186,7 @@ impl GoInstallManager {
                                     installed_path: Some(installed_path),
                                 })
                             } else {
+                                self.emit_output(&event_id, &format!("⚠️ Installation completed but {} binary not found in GOPATH/bin\n", tool_name));
                                 Ok(InstallationResult {
                                     success: false,
                                     message: format!("Installation completed but {} binary not found in GOPATH/bin", tool_name),
@@ -132,20 +195,10 @@ impl GoInstallManager {
                                 })
                             }
                         } else {
-                            // Get error output
-                            let stderr = child.stderr.take();
-                            let error_msg = if let Some(mut stderr) = stderr {
-                                use tokio::io::AsyncReadExt;
-                                let mut buf = String::new();
-                                let _ = stderr.read_to_string(&mut buf).await;
-                                buf
-                            } else {
-                                "Unknown error".to_string()
-                            };
-
+                            self.emit_output(&event_id, &format!("❌ Failed to install {}\n", tool_name));
                             Ok(InstallationResult {
                                 success: false,
-                                message: format!("Failed to install {}: {}", tool_name, error_msg),
+                                message: format!("Failed to install {}: go install exited with non-zero status", tool_name),
                                 tool_name: tool_name.to_string(),
                                 installed_path: None,
                             })
@@ -350,12 +403,6 @@ impl GoInstallManager {
         }
 
         results
-    }
-}
-
-impl Default for GoInstallManager {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

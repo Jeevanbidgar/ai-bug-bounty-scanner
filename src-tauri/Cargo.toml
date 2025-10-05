@@ -27,6 +27,7 @@ chrono = { version = "0.4", features = ["serde"] }
 which = "4.4"
 sha2 = "0.10"
 semver = "1.0"
+dirs = "5.0"
 
 # Database dependencies
 sqlx = { version = "0.7", features = [ "runtime-tokio-rustls", "sqlite", "chrono", "uuid", "migrate" ] }

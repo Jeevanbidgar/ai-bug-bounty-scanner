@@ -1,24 +1,21 @@
+use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
+use anyhow::{Context, Result, anyhow};
+use std::process::Stdio;
+use tauri::Manager;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AptManager;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InstallationResult {
-    pub success: bool,
-    pub message: String,
-    pub tool_name: String,
-    pub installed_path: Option<String>,
+pub struct AptManager {
+    app_handle: tauri::AppHandle,
 }
 
 impl AptManager {
-    pub fn new() -> Self {
-        Self
+    pub fn new(app_handle: tauri::AppHandle) -> Self {
+        Self { app_handle }
     }
 
     /// Check if apt is available (Linux only)
-    pub async fn is_apt_available(&self) -> bool {
+    async fn is_apt_available(&self) -> bool {
         if !cfg!(target_os = "linux") {
             return false;
         }
@@ -33,147 +30,156 @@ impl AptManager {
         }
     }
 
-    /// Install a tool via apt install
+    fn emit_output(&self, tool_name: &str, message: &str) {
+        let event = EventEmitter::tool_installation_output(tool_name, "stdout", message);
+        let _ = self.app_handle.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+    }
+
+    /// Install a tool via apt install with live streaming
     /// 
     /// # Arguments
     /// * `package_name` - The APT package name (e.g., "nmap", "curl")
     /// * `tool_name` - The tool name (e.g., "nmap")
     /// 
     /// # Returns
-    /// * `InstallationResult` with success status and message
-    pub async fn install(&self, package_name: &str, tool_name: &str) -> Result<InstallationResult, String> {
+    /// * `Result<String>` with success message
+    pub async fn install(&self, package_name: &str, tool_name: &str) -> Result<String> {
+        self.emit_output(tool_name, &format!("Starting APT installation for {}...\n", tool_name));
+
         // Check if apt is available
         if !self.is_apt_available().await {
-            return Ok(InstallationResult {
-                success: false,
-                message: "apt is not available. This system is not Debian/Ubuntu-based.".to_string(),
-                tool_name: tool_name.to_string(),
-                installed_path: None,
-            });
+            return Err(anyhow!("apt is not available. This system is not Debian/Ubuntu-based."));
         }
 
-        eprintln!("📦 Installing {} via sudo apt install -y {}", tool_name, package_name);
-        eprintln!("⚠️  Note: This requires sudo permissions and may prompt for password");
+        self.emit_output(tool_name, &format!("Installing {} via apt...\n", package_name));
+        self.emit_output(tool_name, "⚠️  This requires sudo permissions and may prompt for password\n");
 
         // Run apt install with -y flag for non-interactive mode
-        match Command::new("sudo")
-            .arg("apt")
-            .arg("install")
-            .arg("-y")
-            .arg(package_name)
-            .output()
-            .await
-        {
-            Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                
-                if output.status.success() {
-                    Ok(InstallationResult {
-                        success: true,
-                        message: format!("Successfully installed {} via apt", tool_name),
-                        tool_name: tool_name.to_string(),
-                        installed_path: None, // apt installs to /usr/bin typically
-                    })
-                } else {
-                    Ok(InstallationResult {
-                        success: false,
-                        message: format!("Failed to install {}: {}", tool_name, stderr.trim()),
-                        tool_name: tool_name.to_string(),
-                        installed_path: None,
-                    })
+        let mut child = Command::new("sudo")
+            .args(&["apt", "install", "-y", package_name])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("Failed to spawn apt install")?;
+
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        
+        let tool_name_clone = tool_name.to_string();
+        let app_handle_clone = self.app_handle.clone();
+        
+        let stdout_task = tokio::spawn(async move {
+            if let Some(stdout) = stdout {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let event = EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &format!("{}\n", line));
+                    let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
-            Err(e) => {
-                Ok(InstallationResult {
-                    success: false,
-                    message: format!("Failed to execute apt install: {}. Check if sudo is available.", e),
-                    tool_name: tool_name.to_string(),
-                    installed_path: None,
-                })
+        });
+        
+        let tool_name_clone2 = tool_name.to_string();
+        let app_handle_clone2 = self.app_handle.clone();
+        let stderr_task = tokio::spawn(async move {
+            if let Some(stderr) = stderr {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let event = EventEmitter::tool_installation_output(&tool_name_clone2, "stderr", &format!("{}\n", line));
+                    let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                }
             }
+        });
+        
+        let _ = tokio::join!(stdout_task, stderr_task);
+
+        let status = child.wait().await.context("Failed to wait for apt install")?;
+
+        if !status.success() {
+            self.emit_output(tool_name, &format!("Failed to install {} via apt\n", tool_name));
+            return Err(anyhow!("apt install failed"));
         }
+
+        self.emit_output(tool_name, &format!("Successfully installed {} via apt\n", tool_name));
+        Ok(format!("Successfully installed {} via apt", tool_name))
     }
 
-    /// Update a tool via apt upgrade
-    pub async fn update(&self, package_name: &str, tool_name: &str) -> Result<InstallationResult, String> {
+    /// Update a tool via apt upgrade with live streaming
+    pub async fn update(&self, package_name: &str, tool_name: &str) -> Result<String> {
+        self.emit_output(tool_name, &format!("Updating {}...\n", tool_name));
+
         if !self.is_apt_available().await {
-            return Ok(InstallationResult {
-                success: false,
-                message: "apt is not available.".to_string(),
-                tool_name: tool_name.to_string(),
-                installed_path: None,
-            });
+            return Err(anyhow!("apt is not available."));
         }
 
-        eprintln!("🔄 Updating {} via sudo apt upgrade -y {}", tool_name, package_name);
+        let mut child = Command::new("sudo")
+            .args(&["apt", "install", "--only-upgrade", "-y", package_name])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("Failed to spawn apt upgrade")?;
 
-        match Command::new("sudo")
-            .arg("apt")
-            .arg("install")
-            .arg("--only-upgrade")
-            .arg("-y")
-            .arg(package_name)
-            .output()
-            .await
-        {
-            Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                
-                if output.status.success() {
-                    Ok(InstallationResult {
-                        success: true,
-                        message: format!("Successfully updated {} via apt", tool_name),
-                        tool_name: tool_name.to_string(),
-                        installed_path: None,
-                    })
-                } else {
-                    Ok(InstallationResult {
-                        success: false,
-                        message: format!("Failed to update {}: {}", tool_name, stderr.trim()),
-                        tool_name: tool_name.to_string(),
-                        installed_path: None,
-                    })
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        
+        let tool_name_clone = tool_name.to_string();
+        let app_handle_clone = self.app_handle.clone();
+        
+        let stdout_task = tokio::spawn(async move {
+            if let Some(stdout) = stdout {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let event = EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &format!("{}\n", line));
+                    let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
-            Err(e) => {
-                Ok(InstallationResult {
-                    success: false,
-                    message: format!("Failed to execute apt upgrade: {}", e),
-                    tool_name: tool_name.to_string(),
-                    installed_path: None,
-                })
+        });
+        
+        let tool_name_clone2 = tool_name.to_string();
+        let app_handle_clone2 = self.app_handle.clone();
+        let stderr_task = tokio::spawn(async move {
+            if let Some(stderr) = stderr {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let event = EventEmitter::tool_installation_output(&tool_name_clone2, "stderr", &format!("{}\n", line));
+                    let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                }
             }
+        });
+        
+        let _ = tokio::join!(stdout_task, stderr_task);
+
+        let status = child.wait().await?;
+
+        if !status.success() {
+            self.emit_output(tool_name, &format!("Failed to update {}\n", tool_name));
+            return Err(anyhow!("apt upgrade failed"));
         }
+
+        self.emit_output(tool_name, &format!("Successfully updated {}\n", tool_name));
+        Ok(format!("Successfully updated {}", tool_name))
     }
 
     /// Uninstall a tool via apt remove
-    pub async fn uninstall(&self, package_name: &str, tool_name: &str) -> Result<String, String> {
+    pub async fn uninstall(&self, package_name: &str, tool_name: &str) -> Result<String> {
         if !self.is_apt_available().await {
-            return Err("apt is not available.".to_string());
+            return Err(anyhow!("apt is not available."));
         }
 
-        eprintln!("🗑️  Uninstalling {} via sudo apt remove -y {}", tool_name, package_name);
-
-        match Command::new("sudo")
-            .arg("apt")
-            .arg("remove")
-            .arg("-y")
-            .arg(package_name)
+        let output = Command::new("sudo")
+            .args(&["apt", "remove", "-y", package_name])
             .output()
             .await
-        {
-            Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                
-                if output.status.success() {
-                    Ok(format!("Successfully uninstalled {}", tool_name))
-                } else {
-                    Err(format!("Failed to uninstall {}: {}", tool_name, stderr.trim()))
-                }
-            }
-            Err(e) => {
-                Err(format!("Failed to execute apt remove: {}", e))
-            }
+            .context("Failed to execute apt remove")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("Failed to uninstall {}: {}", tool_name, stderr.trim()));
         }
+
+        Ok(format!("Successfully uninstalled {}", tool_name))
     }
 }

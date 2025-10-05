@@ -128,6 +128,15 @@ fn main() {
             crate::commands::delete_report,
             crate::commands::get_stats,
             crate::commands::get_system_metrics,
+            // Adapter commands - Tool command builders
+            crate::commands::build_tool_command,
+            crate::commands::build_tool_command_with_defaults,
+            crate::commands::get_adapter_info,
+            crate::commands::list_adapters,
+            crate::commands::get_adapters_by_category,
+            crate::commands::get_adapters_by_risk_level,
+            crate::commands::has_adapter,
+            crate::commands::get_adapter_categories,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

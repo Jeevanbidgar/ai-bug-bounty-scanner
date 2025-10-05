@@ -35,20 +35,14 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false)
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
-  const [installationInfo, setInstallationInfo] = useState<{
-    install_method: string
-    go_module: string | null
-    pipx_package: string | null
-    apt_package: string | null
-    winget_id: string | null
-  } | null>(null)
+  const [installationInfo, setInstallationInfo] = useState<any>(null)
   const { toasts, success, error: showError, info, removeToast } = useToast()
 
   useEffect(() => {
     const fetchOsInfo = async () => {
       try {
-        const info = await invoke<OsInfo>('get_os_info')
-        setOsInfo(info)
+        const osData = await invoke<OsInfo>('get_os_info')
+        setOsInfo(osData)
       } catch (error) {
         console.error('Failed to get OS info:', error)
       }
@@ -56,8 +50,8 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     
     const fetchInstallationInfo = async () => {
       try {
-        const info = await apiService.getToolInstallationInfo(tool.name)
-        setInstallationInfo(info)
+        const installData = await apiService.getToolInstallationInfo(tool.name)
+        setInstallationInfo(installData)
       } catch (error) {
         console.error('Failed to get installation info:', error)
       }
@@ -401,7 +395,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     }
   }
 
-  const canInstall = installationInfo && ['go', 'pipx', 'apt', 'winget'].includes(installationInfo.install_method)
+  const canInstall = installationInfo && ['go', 'pipx', 'git-pip', 'apt', 'winget', 'cargo', 'gem', 'npm'].includes(installationInfo.install_method)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -492,8 +486,12 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                       <Badge className={
                         installationInfo.install_method === 'go' ? 'bg-green-700 text-green-100' :
                         installationInfo.install_method === 'pipx' ? 'bg-yellow-700 text-yellow-100' :
+                        installationInfo.install_method === 'git-pip' ? 'bg-yellow-700 text-yellow-100' :
                         installationInfo.install_method === 'apt' ? 'bg-blue-700 text-blue-100' :
                         installationInfo.install_method === 'winget' ? 'bg-blue-700 text-blue-100' :
+                        installationInfo.install_method === 'cargo' ? 'bg-orange-700 text-orange-100' :
+                        installationInfo.install_method === 'gem' ? 'bg-red-700 text-red-100' :
+                        installationInfo.install_method === 'npm' ? 'bg-red-700 text-red-100' :
                         'bg-gray-700 text-gray-100'
                       }>
                         {installationInfo.install_method}

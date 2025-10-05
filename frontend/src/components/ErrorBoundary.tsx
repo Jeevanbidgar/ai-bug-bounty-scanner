@@ -6,6 +6,7 @@ import { Button } from './ui/Button'
 interface Props {
   children: ReactNode
   fallback?: ReactNode
+  onError?: (error: Error, errorInfo: React.ErrorInfo) => void
 }
 
 interface State {
@@ -38,6 +39,11 @@ export class ErrorBoundary extends Component<Props, State> {
       error,
       errorInfo
     })
+    
+    // Call custom error handler if provided
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo)
+    }
   }
 
   handleReset = () => {
