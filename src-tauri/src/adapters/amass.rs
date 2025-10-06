@@ -57,7 +57,11 @@ impl AmassAdapter {
         command
     }
 
-    pub fn build_command_with_defaults(&self, target: String, output_file: Option<String>) -> Vec<String> {
+    pub fn build_command_with_defaults(
+        &self,
+        target: String,
+        output_file: Option<String>,
+    ) -> Vec<String> {
         let config = AmassConfig {
             target,
             output_file,

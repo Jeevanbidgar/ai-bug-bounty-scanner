@@ -2,10 +2,10 @@
 //
 // This module provides unified version checking for Go, APT, WinGet, and pipx tools
 
+use super::version::Version;
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use tokio::process::Command;
-use super::version::Version;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionCheckResult {
@@ -49,14 +49,17 @@ impl VersionCheckResult {
 }
 
 /// Check for updates for a Go tool using `go list -m -versions`
-pub async fn check_go_update(tool_binary: &str, module_path: &str) -> Result<VersionCheckResult, String> {
+pub async fn check_go_update(
+    tool_binary: &str,
+    module_path: &str,
+) -> Result<VersionCheckResult, String> {
     // Step 1: Get current version from binary using `go version -m`
     let current_version = match get_go_binary_version(tool_binary).await {
         Ok(v) => v,
         Err(e) => {
             return Ok(VersionCheckResult::error(
                 format!("Failed to get current version: {}", e),
-                "go".to_string()
+                "go".to_string(),
             ));
         }
     };
@@ -67,24 +70,27 @@ pub async fn check_go_update(tool_binary: &str, module_path: &str) -> Result<Ver
         Err(e) => {
             return Ok(VersionCheckResult::error(
                 format!("Failed to get latest version: {}", e),
-                "go".to_string()
+                "go".to_string(),
             ));
         }
     };
 
     // Step 3: Compare versions using SemVer
-    match (Version::parse(&current_version), Version::parse(&latest_version)) {
+    match (
+        Version::parse(&current_version),
+        Version::parse(&latest_version),
+    ) {
         (Some(current), Some(latest)) => {
             if latest > current {
                 Ok(VersionCheckResult::has_update(
                     current_version,
                     latest_version,
-                    "go".to_string()
+                    "go".to_string(),
                 ))
             } else {
                 Ok(VersionCheckResult::no_update(
                     current_version,
-                    "go".to_string()
+                    "go".to_string(),
                 ))
             }
         }
@@ -94,12 +100,12 @@ pub async fn check_go_update(tool_binary: &str, module_path: &str) -> Result<Ver
                 Ok(VersionCheckResult::has_update(
                     current_version,
                     latest_version,
-                    "go".to_string()
+                    "go".to_string(),
                 ))
             } else {
                 Ok(VersionCheckResult::no_update(
                     current_version,
-                    "go".to_string()
+                    "go".to_string(),
                 ))
             }
         }
@@ -123,7 +129,7 @@ async fn get_go_binary_version(tool_binary: &str) -> Result<String, String> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     // Parse output: look for "mod	<module>	v<version>"
     for line in stdout.lines() {
         if line.contains("mod") && line.contains("\t") {
@@ -157,11 +163,11 @@ async fn get_go_latest_version(module_path: &str) -> Result<String, String> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     // Output format: "module v1.0.0 v1.1.0 v1.2.0 ..."
     // We want the last version in the list
     let versions: Vec<&str> = stdout.split_whitespace().collect();
-    
+
     if versions.len() < 2 {
         return Err("No versions found".to_string());
     }
@@ -185,12 +191,12 @@ pub async fn check_apt_update(package_name: &str) -> Result<VersionCheckResult, 
     if !output.status.success() {
         return Ok(VersionCheckResult::error(
             "apt-cache policy failed".to_string(),
-            "apt".to_string()
+            "apt".to_string(),
         ));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     let mut installed_version: Option<String> = None;
     let mut candidate_version: Option<String> = None;
 
@@ -200,14 +206,13 @@ pub async fn check_apt_update(package_name: &str) -> Result<VersionCheckResult, 
     for line in stdout.lines() {
         let line = line.trim();
         if line.starts_with("Installed:") {
-            installed_version = line.split(':')
+            installed_version = line
+                .split(':')
                 .nth(1)
                 .map(|s| s.trim().to_string())
                 .filter(|s| s != "(none)");
         } else if line.starts_with("Candidate:") {
-            candidate_version = line.split(':')
-                .nth(1)
-                .map(|s| s.trim().to_string());
+            candidate_version = line.split(':').nth(1).map(|s| s.trim().to_string());
         }
     }
 
@@ -217,24 +222,17 @@ pub async fn check_apt_update(package_name: &str) -> Result<VersionCheckResult, 
                 Ok(VersionCheckResult::has_update(
                     installed,
                     candidate,
-                    "apt".to_string()
+                    "apt".to_string(),
                 ))
             } else {
-                Ok(VersionCheckResult::no_update(
-                    installed,
-                    "apt".to_string()
-                ))
+                Ok(VersionCheckResult::no_update(installed, "apt".to_string()))
             }
         }
-        (Some(installed), None) => {
-            Ok(VersionCheckResult::no_update(installed, "apt".to_string()))
-        }
-        _ => {
-            Ok(VersionCheckResult::error(
-                "Could not determine installed/candidate version".to_string(),
-                "apt".to_string()
-            ))
-        }
+        (Some(installed), None) => Ok(VersionCheckResult::no_update(installed, "apt".to_string())),
+        _ => Ok(VersionCheckResult::error(
+            "Could not determine installed/candidate version".to_string(),
+            "apt".to_string(),
+        )),
     }
 }
 
@@ -252,7 +250,7 @@ pub async fn check_winget_update(package_id: &str) -> Result<VersionCheckResult,
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    
+
     // Check if update is available
     // WinGet output includes version columns when update is available
     if stdout.contains("upgrades available") || stdout.contains("available") {
@@ -273,30 +271,28 @@ pub async fn check_winget_update(package_id: &str) -> Result<VersionCheckResult,
         }
 
         match (current_version, latest_version) {
-            (Some(current), Some(latest)) => {
-                Ok(VersionCheckResult::has_update(
-                    current,
-                    latest,
-                    "winget".to_string()
-                ))
-            }
-            _ => {
-                Ok(VersionCheckResult::error(
-                    "Could not parse version information".to_string(),
-                    "winget".to_string()
-                ))
-            }
+            (Some(current), Some(latest)) => Ok(VersionCheckResult::has_update(
+                current,
+                latest,
+                "winget".to_string(),
+            )),
+            _ => Ok(VersionCheckResult::error(
+                "Could not parse version information".to_string(),
+                "winget".to_string(),
+            )),
         }
-    } else if stdout.contains("No applicable update found") || stderr.contains("No applicable update found") {
+    } else if stdout.contains("No applicable update found")
+        || stderr.contains("No applicable update found")
+    {
         // No update available - try to get current version
         Ok(VersionCheckResult::no_update(
             "installed".to_string(),
-            "winget".to_string()
+            "winget".to_string(),
         ))
     } else {
         Ok(VersionCheckResult::error(
             format!("Could not determine update status: {}", stdout),
-            "winget".to_string()
+            "winget".to_string(),
         ))
     }
 }
@@ -319,12 +315,12 @@ pub async fn check_pipx_update(package_name: &str) -> Result<VersionCheckResult,
     if !output.status.success() {
         return Ok(VersionCheckResult::error(
             "pipx command failed".to_string(),
-            "pipx".to_string()
+            "pipx".to_string(),
         ));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     // Parse JSON output
     #[derive(Deserialize)]
     struct OutdatedPackage {
@@ -336,26 +332,27 @@ pub async fn check_pipx_update(package_name: &str) -> Result<VersionCheckResult,
     match serde_json::from_str::<Vec<OutdatedPackage>>(&stdout) {
         Ok(packages) => {
             // Find our package in the list
-            if let Some(pkg) = packages.iter().find(|p| p.name.eq_ignore_ascii_case(package_name)) {
+            if let Some(pkg) = packages
+                .iter()
+                .find(|p| p.name.eq_ignore_ascii_case(package_name))
+            {
                 Ok(VersionCheckResult::has_update(
                     pkg.version.clone(),
                     pkg.latest_version.clone(),
-                    "pipx".to_string()
+                    "pipx".to_string(),
                 ))
             } else {
                 // Package not in outdated list = up to date
                 Ok(VersionCheckResult::no_update(
                     "installed".to_string(),
-                    "pipx".to_string()
+                    "pipx".to_string(),
                 ))
             }
         }
-        Err(e) => {
-            Ok(VersionCheckResult::error(
-                format!("Failed to parse JSON: {}", e),
-                "pipx".to_string()
-            ))
-        }
+        Err(e) => Ok(VersionCheckResult::error(
+            format!("Failed to parse JSON: {}", e),
+            "pipx".to_string(),
+        )),
     }
 }
 
@@ -367,11 +364,7 @@ mod tests {
     async fn test_go_version_parsing() {
         // This test requires a Go binary to be available
         // Skip if go not available
-        if let Ok(output) = Command::new("go")
-            .arg("version")
-            .output()
-            .await
-        {
+        if let Ok(output) = Command::new("go").arg("version").output().await {
             if output.status.success() {
                 println!("Go is available, testing version parsing");
                 // Add more specific tests here
@@ -384,7 +377,7 @@ mod tests {
         let result = VersionCheckResult::has_update(
             "1.0.0".to_string(),
             "1.1.0".to_string(),
-            "go".to_string()
+            "go".to_string(),
         );
         assert!(result.has_update);
         assert_eq!(result.current_version, Some("1.0.0".to_string()));

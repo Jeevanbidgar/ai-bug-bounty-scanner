@@ -1,8 +1,8 @@
+use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use anyhow::Result;
 use which::which;
 
 #[derive(Debug, Clone)]
@@ -40,15 +40,18 @@ impl ToolRegistry {
         // Try to find the tool using the `which` crate
         if let Ok(path) = which(tool_name) {
             let path_str = path.to_string_lossy().to_string();
-            
+
             // Cache the result
             let mut tools = self.tools.write().await;
-            tools.insert(tool_name.to_string(), ToolInfo {
-                name: tool_name.to_string(),
-                path: path_str.clone(),
-                version: None,
-                category: "unknown".to_string(),
-            });
+            tools.insert(
+                tool_name.to_string(),
+                ToolInfo {
+                    name: tool_name.to_string(),
+                    path: path_str.clone(),
+                    version: None,
+                    category: "unknown".to_string(),
+                },
+            );
 
             return Some(path_str);
         }
@@ -58,12 +61,15 @@ impl ToolRegistry {
 
     pub async fn register_tool(&self, name: String, path: String, category: String) -> Result<()> {
         let mut tools = self.tools.write().await;
-        tools.insert(name.clone(), ToolInfo {
-            name,
-            path,
-            version: None,
-            category,
-        });
+        tools.insert(
+            name.clone(),
+            ToolInfo {
+                name,
+                path,
+                version: None,
+                category,
+            },
+        );
         Ok(())
     }
 
@@ -83,19 +89,32 @@ impl ToolRegistry {
 
         // Common security tools to check for
         let common_tools = vec![
-            "subfinder", "amass", "naabu", "nmap", "nuclei", "httpx",
-            "gau", "waybackurls", "ffuf", "gobuster", "sqlmap", "arjun"
+            "subfinder",
+            "amass",
+            "naabu",
+            "nmap",
+            "nuclei",
+            "httpx",
+            "gau",
+            "waybackurls",
+            "ffuf",
+            "gobuster",
+            "sqlmap",
+            "arjun",
         ];
 
         for tool_name in common_tools {
             if let Ok(path) = which(tool_name) {
                 let path_str = path.to_string_lossy().to_string();
-                tools.insert(tool_name.to_string(), ToolInfo {
-                    name: tool_name.to_string(),
-                    path: path_str,
-                    version: None,
-                    category: self.categorize_tool(tool_name),
-                });
+                tools.insert(
+                    tool_name.to_string(),
+                    ToolInfo {
+                        name: tool_name.to_string(),
+                        path: path_str,
+                        version: None,
+                        category: self.categorize_tool(tool_name),
+                    },
+                );
             }
         }
 

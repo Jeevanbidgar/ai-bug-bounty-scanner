@@ -1,21 +1,21 @@
+use anyhow::{anyhow, Result};
+use chrono::Utc;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::time::Duration;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::time::Duration;
+use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tokio::sync::RwLock;
 use tokio::time::timeout;
-use anyhow::{Result, anyhow};
-use tauri::{AppHandle, Manager};
-use chrono::Utc;
 use uuid::Uuid;
 
-use crate::workflow::types::{WorkflowStep, WorkflowArtifact};
+use crate::adapters::AdapterRegistry;
 use crate::tools::discovery::ToolDiscoveryService;
 use crate::workflow::artifacts::ArtifactManager;
-use crate::adapters::AdapterRegistry;
+use crate::workflow::types::{WorkflowArtifact, WorkflowStep};
 
 #[derive(Clone)]
 pub struct ProcessExecutor {
@@ -47,10 +47,18 @@ impl ProcessExecutor {
     ) -> Result<Vec<WorkflowArtifact>> {
         // Check if step has retry configuration
         if let Some(retry_config) = &step.retry {
-            self.execute_step_with_retry(step, execution_id, working_directory, inputs, retry_config).await
+            self.execute_step_with_retry(
+                step,
+                execution_id,
+                working_directory,
+                inputs,
+                retry_config,
+            )
+            .await
         } else {
             // No retry, execute once
-            self.execute_step_once(step, execution_id, working_directory, inputs).await
+            self.execute_step_once(step, execution_id, working_directory, inputs)
+                .await
         }
     }
 
@@ -72,28 +80,42 @@ impl ProcessExecutor {
                 let delay_ms = retry_config.calculate_delay(attempt - 1);
                 eprintln!(
                     "Retrying step '{}' (attempt {}/{}) after {}ms delay...",
-                    step.id, attempt + 1, max_attempts, delay_ms
+                    step.id,
+                    attempt + 1,
+                    max_attempts,
+                    delay_ms
                 );
 
                 // Emit retry event
-                let _ = self.app_handle.emit_all("workflow:step_retry", serde_json::json!({
-                    "execution_id": execution_id,
-                    "step_id": step.id,
-                    "attempt": attempt + 1,
-                    "max_attempts": max_attempts,
-                    "delay_ms": delay_ms,
-                    "timestamp": Utc::now().to_rfc3339()
-                }));
+                let _ = self.app_handle.emit_all(
+                    "workflow:step_retry",
+                    serde_json::json!({
+                        "execution_id": execution_id,
+                        "step_id": step.id,
+                        "attempt": attempt + 1,
+                        "max_attempts": max_attempts,
+                        "delay_ms": delay_ms,
+                        "timestamp": Utc::now().to_rfc3339()
+                    }),
+                );
 
                 // Wait before retrying (exponential backoff)
                 tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             }
 
             // Attempt execution
-            match self.execute_step_once(step, execution_id, working_directory, inputs).await {
+            match self
+                .execute_step_once(step, execution_id, working_directory, inputs)
+                .await
+            {
                 Ok(artifacts) => {
                     if attempt > 0 {
-                        eprintln!("Step '{}' succeeded on attempt {}/{}", step.id, attempt + 1, max_attempts);
+                        eprintln!(
+                            "Step '{}' succeeded on attempt {}/{}",
+                            step.id,
+                            attempt + 1,
+                            max_attempts
+                        );
                     }
                     return Ok(artifacts);
                 }
@@ -101,7 +123,10 @@ impl ProcessExecutor {
                     last_error = Some(e);
                     eprintln!(
                         "Step '{}' failed on attempt {}/{}: {}",
-                        step.id, attempt + 1, max_attempts, last_error.as_ref().unwrap()
+                        step.id,
+                        attempt + 1,
+                        max_attempts,
+                        last_error.as_ref().unwrap()
                     );
 
                     // If this was the last attempt, don't retry
@@ -113,7 +138,8 @@ impl ProcessExecutor {
         }
 
         // All attempts failed
-        Err(last_error.unwrap_or_else(|| anyhow!("Step execution failed after {} attempts", max_attempts)))
+        Err(last_error
+            .unwrap_or_else(|| anyhow!("Step execution failed after {} attempts", max_attempts)))
     }
 
     /// Execute a workflow step once (no retry logic)
@@ -125,20 +151,24 @@ impl ProcessExecutor {
         inputs: &HashMap<String, String>,
     ) -> Result<Vec<WorkflowArtifact>> {
         let step_id = &step.id;
-        
+
         // Emit step started event (only on first attempt)
-        let _ = self.app_handle.emit_all("workflow:step_started", serde_json::json!({
-            "execution_id": execution_id,
-            "step_id": step_id,
-            "step_name": step.name,
-            "timestamp": Utc::now().to_rfc3339()
-        }));
+        let _ = self.app_handle.emit_all(
+            "workflow:step_started",
+            serde_json::json!({
+                "execution_id": execution_id,
+                "step_id": step_id,
+                "step_name": step.name,
+                "timestamp": Utc::now().to_rfc3339()
+            }),
+        );
 
         // Build command with template variable substitution
         let empty_artifacts = HashMap::new();
         let mut command_args = Vec::new();
         for arg in &step.run {
-            let resolved_arg = self.resolve_template_variables(arg, working_directory, inputs, &empty_artifacts);
+            let resolved_arg =
+                self.resolve_template_variables(arg, working_directory, inputs, &empty_artifacts);
             command_args.push(resolved_arg);
         }
 
@@ -148,14 +178,12 @@ impl ProcessExecutor {
 
         // Try to use adapter first, fall back to original command
         let tool_name = &command_args[0];
-        let final_command_args = self.try_build_command_with_adapter(
-            tool_name,
-            &command_args,
-            inputs,
-        ).unwrap_or_else(|| {
-            eprintln!("🔧 Using original command for tool: {}", tool_name);
-            command_args.clone()
-        });
+        let final_command_args = self
+            .try_build_command_with_adapter(tool_name, &command_args, inputs)
+            .unwrap_or_else(|| {
+                eprintln!("🔧 Using original command for tool: {}", tool_name);
+                command_args.clone()
+            });
 
         // Resolve tool path using ToolDiscoveryService
         let resolved_tool_path = {
@@ -195,7 +223,10 @@ impl ProcessExecutor {
                 }
                 None => {
                     // Tool not found in catalog, try to use it directly (might be in PATH)
-                    eprintln!("Warning: Tool '{}' not found in catalog, attempting direct execution", tool_name);
+                    eprintln!(
+                        "Warning: Tool '{}' not found in catalog, attempting direct execution",
+                        tool_name
+                    );
                     tool_name.clone()
                 }
             }
@@ -209,8 +240,14 @@ impl ProcessExecutor {
             .stderr(Stdio::piped())
             .spawn()?;
 
-        let stdout = child.stdout.take().ok_or_else(|| anyhow!("Failed to capture stdout"))?;
-        let stderr = child.stderr.take().ok_or_else(|| anyhow!("Failed to capture stderr"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("Failed to capture stdout"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow!("Failed to capture stderr"))?;
 
         // Stream output in real-time
         let app_handle_clone = self.app_handle.clone();
@@ -218,12 +255,19 @@ impl ProcessExecutor {
         let step_id_clone = step_id.to_string();
 
         tokio::spawn(async move {
-            let _ = Self::stream_output(stdout, stderr, &app_handle_clone, &execution_id_clone, &step_id_clone).await;
+            let _ = Self::stream_output(
+                stdout,
+                stderr,
+                &app_handle_clone,
+                &execution_id_clone,
+                &step_id_clone,
+            )
+            .await;
         });
 
         // Wait for process completion with timeout
         let result = timeout(timeout_duration, child.wait()).await;
-        
+
         let exit_code = match result {
             Ok(Ok(status)) => status.code().unwrap_or(-1),
             Ok(Err(e)) => {
@@ -233,35 +277,50 @@ impl ProcessExecutor {
             Err(_) => {
                 // Timeout occurred
                 let _ = child.kill().await;
-                let _ = self.app_handle.emit_all("workflow:step_failed", serde_json::json!({
-                    "execution_id": execution_id,
-                    "step_id": step_id,
-                    "error": "Step timed out",
-                    "timestamp": Utc::now().to_rfc3339()
-                }));
-                return Err(anyhow!("Step '{}' timed out after {} seconds", step_id, timeout_duration.as_secs()));
+                let _ = self.app_handle.emit_all(
+                    "workflow:step_failed",
+                    serde_json::json!({
+                        "execution_id": execution_id,
+                        "step_id": step_id,
+                        "error": "Step timed out",
+                        "timestamp": Utc::now().to_rfc3339()
+                    }),
+                );
+                return Err(anyhow!(
+                    "Step '{}' timed out after {} seconds",
+                    step_id,
+                    timeout_duration.as_secs()
+                ));
             }
         };
 
         // Emit step completion event
         if exit_code == 0 {
-            let _ = self.app_handle.emit_all("workflow:step_completed", serde_json::json!({
-                "execution_id": execution_id,
-                "step_id": step_id,
-                "exit_code": exit_code,
-                "timestamp": Utc::now().to_rfc3339()
-            }));
+            let _ = self.app_handle.emit_all(
+                "workflow:step_completed",
+                serde_json::json!({
+                    "execution_id": execution_id,
+                    "step_id": step_id,
+                    "exit_code": exit_code,
+                    "timestamp": Utc::now().to_rfc3339()
+                }),
+            );
         } else {
-            let _ = self.app_handle.emit_all("workflow:step_failed", serde_json::json!({
-                "execution_id": execution_id,
-                "step_id": step_id,
-                "error": format!("Process exited with code {}", exit_code),
-                "timestamp": Utc::now().to_rfc3339()
-            }));
+            let _ = self.app_handle.emit_all(
+                "workflow:step_failed",
+                serde_json::json!({
+                    "execution_id": execution_id,
+                    "step_id": step_id,
+                    "error": format!("Process exited with code {}", exit_code),
+                    "timestamp": Utc::now().to_rfc3339()
+                }),
+            );
         }
 
         // Collect artifacts
-        let artifacts = self.collect_artifacts(step, working_directory, execution_id).await?;
+        let artifacts = self
+            .collect_artifacts(step, working_directory, execution_id)
+            .await?;
 
         Ok(artifacts)
     }
@@ -332,12 +391,17 @@ impl ProcessExecutor {
 
         // Collect artifacts based on step outputs
         for output in &step.outputs {
-            let artifact_path = self.resolve_template_variables(&output.path, working_directory, &HashMap::new(), &empty_artifacts_map);
+            let artifact_path = self.resolve_template_variables(
+                &output.path,
+                working_directory,
+                &HashMap::new(),
+                &empty_artifacts_map,
+            );
             let full_path = PathBuf::from(working_directory).join(&artifact_path);
 
             if full_path.exists() {
                 let content = tokio::fs::read_to_string(&full_path).await.ok();
-                
+
                 let mut artifact = WorkflowArtifact {
                     id: Uuid::new_v4().to_string(),
                     execution_id: execution_id.to_string(),
@@ -354,7 +418,10 @@ impl ProcessExecutor {
 
                 // Enrich artifact with metadata
                 if let Err(e) = self.artifact_manager.enrich_artifact(&mut artifact).await {
-                    eprintln!("Warning: Failed to enrich artifact '{}': {}", artifact.name, e);
+                    eprintln!(
+                        "Warning: Failed to enrich artifact '{}': {}",
+                        artifact.name, e
+                    );
                 }
 
                 artifacts.push(artifact);
@@ -366,7 +433,10 @@ impl ProcessExecutor {
         for mut artifact in common_artifacts {
             // Enrich common artifacts too
             if let Err(e) = self.artifact_manager.enrich_artifact(&mut artifact).await {
-                eprintln!("Warning: Failed to enrich common artifact '{}': {}", artifact.name, e);
+                eprintln!(
+                    "Warning: Failed to enrich common artifact '{}': {}",
+                    artifact.name, e
+                );
             }
             artifacts.push(artifact);
         }
@@ -374,24 +444,35 @@ impl ProcessExecutor {
         Ok(artifacts)
     }
 
-    async fn find_common_artifacts(&self, working_directory: &str) -> Result<Vec<WorkflowArtifact>> {
+    async fn find_common_artifacts(
+        &self,
+        working_directory: &str,
+    ) -> Result<Vec<WorkflowArtifact>> {
         let mut artifacts = Vec::new();
-        
+
         let common_files = vec![
-            "subdomains.txt", "ports.txt", "nuclei_output.jsonl", "nuclei_output.json",
-            "httpx_output.txt", "gau_output.txt", "waybackurls_output.txt",
-            "ffuf_output.json", "gobuster_output.txt", "sqlmap_output.txt", "arjun_output.txt"
+            "subdomains.txt",
+            "ports.txt",
+            "nuclei_output.jsonl",
+            "nuclei_output.json",
+            "httpx_output.txt",
+            "gau_output.txt",
+            "waybackurls_output.txt",
+            "ffuf_output.json",
+            "gobuster_output.txt",
+            "sqlmap_output.txt",
+            "arjun_output.txt",
         ];
 
         for filename in common_files {
             let file_path = PathBuf::from(working_directory).join(filename);
             if file_path.exists() {
                 let content = tokio::fs::read_to_string(&file_path).await.ok();
-                
+
                 artifacts.push(WorkflowArtifact {
                     id: Uuid::new_v4().to_string(),
                     execution_id: "".to_string(), // Will be set by caller
-                    step_id: "".to_string(), // Will be set by caller
+                    step_id: "".to_string(),      // Will be set by caller
                     name: filename.to_string(),
                     artifact_type: "file".to_string(),
                     file_path: Some(file_path.to_string_lossy().to_string()),
@@ -416,7 +497,7 @@ impl ProcessExecutor {
         inputs: &HashMap<String, String>,
     ) -> Option<Vec<String>> {
         let registry = AdapterRegistry::new();
-        
+
         // Check if we have an adapter for this tool
         if !registry.has_adapter(tool_name) {
             return None;
@@ -425,25 +506,22 @@ impl ProcessExecutor {
         eprintln!("📦 Using adapter for tool: {}", tool_name);
 
         // Try to extract target from inputs or original args
-        let target = inputs.get("target")
-            .cloned()
-            .or_else(|| {
-                // Try to find a domain/URL-like argument
-                original_args.iter()
-                    .find(|arg| arg.contains(".") && !arg.starts_with("-"))
-                    .cloned()
-            });
+        let target = inputs.get("target").cloned().or_else(|| {
+            // Try to find a domain/URL-like argument
+            original_args
+                .iter()
+                .find(|arg| arg.contains(".") && !arg.starts_with("-"))
+                .cloned()
+        });
 
         // Try to extract output file from original args
-        let output_file = original_args.iter()
-            .enumerate()
-            .find_map(|(i, arg)| {
-                if (arg == "-o" || arg == "--output" || arg == "-oJ") && i + 1 < original_args.len() {
-                    Some(original_args[i + 1].clone())
-                } else {
-                    None
-                }
-            });
+        let output_file = original_args.iter().enumerate().find_map(|(i, arg)| {
+            if (arg == "-o" || arg == "--output" || arg == "-oJ") && i + 1 < original_args.len() {
+                Some(original_args[i + 1].clone())
+            } else {
+                None
+            }
+        });
 
         // If we have a target, use the adapter
         if let Some(target) = target {
@@ -471,11 +549,14 @@ impl ProcessExecutor {
         artifacts: &HashMap<String, Vec<WorkflowArtifact>>,
     ) -> String {
         let mut resolved = template.to_string();
-        
+
         // Replace common variables
         resolved = resolved.replace("{{workdir}}", working_directory);
-        resolved = resolved.replace("{{target}}", inputs.get("target").unwrap_or(&"".to_string()));
-        
+        resolved = resolved.replace(
+            "{{target}}",
+            inputs.get("target").unwrap_or(&"".to_string()),
+        );
+
         // Replace input variables
         for (key, value) in inputs {
             let placeholder = format!("{{{{{}}}}}", key);
@@ -489,7 +570,10 @@ impl ProcessExecutor {
             for cap in re.captures_iter(&resolved.clone()) {
                 if let Some(reference) = cap.get(1) {
                     let ref_str = reference.as_str();
-                    if let Some(artifact_path) = self.artifact_manager.resolve_artifact_reference(ref_str, artifacts) {
+                    if let Some(artifact_path) = self
+                        .artifact_manager
+                        .resolve_artifact_reference(ref_str, artifacts)
+                    {
                         let placeholder = format!("{{{{{}}}}}", ref_str);
                         resolved = resolved.replace(&placeholder, &artifact_path);
                     } else {

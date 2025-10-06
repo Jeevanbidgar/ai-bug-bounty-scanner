@@ -1,11 +1,11 @@
-﻿use crate::tools::catalog::ToolDefinition;
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
-use anyhow::{Context, Result, anyhow};
+use crate::tools::catalog::ToolDefinition;
+use anyhow::{anyhow, Context, Result};
+use std::path::PathBuf;
 use std::process::Stdio;
 use tauri::Manager;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use std::path::PathBuf;
 
 pub struct CargoInstaller {
     app_handle: tauri::AppHandle,
@@ -17,10 +17,7 @@ impl CargoInstaller {
     }
 
     async fn check_cargo_installed(&self) -> Result<bool> {
-        let output = Command::new("cargo")
-            .arg("--version")
-            .output()
-            .await;
+        let output = Command::new("cargo").arg("--version").output().await;
         match output {
             Ok(output) => Ok(output.status.success()),
             Err(_) => Ok(false),
@@ -43,16 +40,26 @@ impl CargoInstaller {
     }
 
     pub async fn install(&self, tool: &ToolDefinition, tool_name: &str) -> Result<String> {
-        self.emit_output(tool_name, &format!("Starting Cargo installation for {}...\n", tool.name));
+        self.emit_output(
+            tool_name,
+            &format!("Starting Cargo installation for {}...\n", tool.name),
+        );
 
         if !self.check_cargo_installed().await? {
-            return Err(anyhow!("Cargo is not installed. Please install Rust/Cargo first."));
+            return Err(anyhow!(
+                "Cargo is not installed. Please install Rust/Cargo first."
+            ));
         }
 
-        let package_name = tool.cargo_package.as_ref()
+        let package_name = tool
+            .cargo_package
+            .as_ref()
             .ok_or_else(|| anyhow!("Tool {} does not have cargo_package defined", tool.name))?;
 
-        self.emit_output(tool_name, &format!("Installing {} via cargo...\n", package_name));
+        self.emit_output(
+            tool_name,
+            &format!("Installing {} via cargo...\n", package_name),
+        );
 
         let mut child = Command::new("cargo")
             .args(&["install", package_name])
@@ -63,21 +70,25 @@ impl CargoInstaller {
 
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-        
+
         let tool_name_clone = tool_name.to_string();
         let app_handle_clone = self.app_handle.clone();
-        
+
         let stdout_task = tokio::spawn(async move {
             if let Some(stdout) = stdout {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let event = EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &format!("{}\n", line));
+                    let event = EventEmitter::tool_installation_output(
+                        &tool_name_clone,
+                        "stdout",
+                        &format!("{}\n", line),
+                    );
                     let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
-        
+
         let tool_name_clone2 = tool_name.to_string();
         let app_handle_clone2 = self.app_handle.clone();
         let stderr_task = tokio::spawn(async move {
@@ -85,35 +96,59 @@ impl CargoInstaller {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let event = EventEmitter::tool_installation_output(&tool_name_clone2, "stderr", &format!("{}\n", line));
+                    let event = EventEmitter::tool_installation_output(
+                        &tool_name_clone2,
+                        "stderr",
+                        &format!("{}\n", line),
+                    );
                     let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
-        
+
         let _ = tokio::join!(stdout_task, stderr_task);
 
-        let status = child.wait().await.context("Failed to wait for cargo install")?;
+        let status = child
+            .wait()
+            .await
+            .context("Failed to wait for cargo install")?;
 
         if !status.success() {
             let error_msg = if let Some(code) = status.code() {
-                format!("❌ Failed to install {} via cargo (exit code: {})\n", tool.name, code)
+                format!(
+                    "❌ Failed to install {} via cargo (exit code: {})\n",
+                    tool.name, code
+                )
             } else {
-                format!("❌ Failed to install {} via cargo (process terminated)\n", tool.name)
+                format!(
+                    "❌ Failed to install {} via cargo (process terminated)\n",
+                    tool.name
+                )
             };
             self.emit_output(tool_name, &error_msg);
-            self.emit_output(tool_name, "💡 Tip: Check if Rust/Cargo is properly installed and crate name is correct\n");
-            return Err(anyhow!("Cargo install failed with status: {}. Verify Rust toolchain installation.", status));
+            self.emit_output(
+                tool_name,
+                "💡 Tip: Check if Rust/Cargo is properly installed and crate name is correct\n",
+            );
+            return Err(anyhow!(
+                "Cargo install failed with status: {}. Verify Rust toolchain installation.",
+                status
+            ));
         }
 
-        self.emit_output(tool_name, &format!("Successfully installed {} via cargo\n", tool.name));
+        self.emit_output(
+            tool_name,
+            &format!("Successfully installed {} via cargo\n", tool.name),
+        );
         Ok(format!("Successfully installed {} via cargo", tool.name))
     }
 
     pub async fn update(&self, tool: &ToolDefinition, tool_name: &str) -> Result<String> {
         self.emit_output(tool_name, &format!("Updating {}...\n", tool.name));
 
-        let package_name = tool.cargo_package.as_ref()
+        let package_name = tool
+            .cargo_package
+            .as_ref()
             .ok_or_else(|| anyhow!("Tool {} does not have cargo_package defined", tool.name))?;
 
         let mut child = Command::new("cargo")
@@ -125,10 +160,10 @@ impl CargoInstaller {
 
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-        
+
         let tool_name_clone = tool_name.to_string();
         let app_handle_clone = self.app_handle.clone();
-        
+
         let stdout_task = tokio::spawn(async move {
             if let Some(stdout) = stdout {
                 let reader = BufReader::new(stdout);
@@ -136,7 +171,11 @@ impl CargoInstaller {
                 loop {
                     match lines.next_line().await {
                         Ok(Some(line)) => {
-                            let event = EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &format!("{}\n", line));
+                            let event = EventEmitter::tool_installation_output(
+                                &tool_name_clone,
+                                "stdout",
+                                &format!("{}\n", line),
+                            );
                             let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
                         }
                         Ok(None) => break,
@@ -148,7 +187,7 @@ impl CargoInstaller {
                 }
             }
         });
-        
+
         let tool_name_clone2 = tool_name.to_string();
         let app_handle_clone2 = self.app_handle.clone();
         let stderr_task = tokio::spawn(async move {
@@ -158,7 +197,11 @@ impl CargoInstaller {
                 loop {
                     match lines.next_line().await {
                         Ok(Some(line)) => {
-                            let event = EventEmitter::tool_installation_output(&tool_name_clone2, "stderr", &format!("{}\n", line));
+                            let event = EventEmitter::tool_installation_output(
+                                &tool_name_clone2,
+                                "stderr",
+                                &format!("{}\n", line),
+                            );
                             let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
                         }
                         Ok(None) => break,
@@ -170,15 +213,15 @@ impl CargoInstaller {
                 }
             }
         });
-        
+
         // Wait with timeout
         let timeout_duration = tokio::time::Duration::from_secs(900);
         let join_handle = tokio::spawn(async move {
             let _ = tokio::join!(stdout_task, stderr_task);
         });
-        
+
         match tokio::time::timeout(timeout_duration, join_handle).await {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(_) => {
                 // Timeout occurred
             }
@@ -193,8 +236,14 @@ impl CargoInstaller {
                 format!("❌ Failed to update {} (process terminated)\n", tool.name)
             };
             self.emit_output(tool_name, &error_msg);
-            self.emit_output(tool_name, "💡 Tip: The crate may not be installed or may require recompilation\n");
-            return Err(anyhow!("Cargo update failed for {}. The crate may need to be reinstalled.", tool.name));
+            self.emit_output(
+                tool_name,
+                "💡 Tip: The crate may not be installed or may require recompilation\n",
+            );
+            return Err(anyhow!(
+                "Cargo update failed for {}. The crate may need to be reinstalled.",
+                tool.name
+            ));
         }
 
         self.emit_output(tool_name, &format!("Successfully updated {}\n", tool.name));
@@ -202,7 +251,9 @@ impl CargoInstaller {
     }
 
     pub async fn uninstall(&self, tool: &ToolDefinition) -> Result<String> {
-        let package_name = tool.cargo_package.as_ref()
+        let package_name = tool
+            .cargo_package
+            .as_ref()
             .ok_or_else(|| anyhow!("Tool {} does not have cargo_package defined", tool.name))?;
 
         let output = Command::new("cargo")
@@ -214,9 +265,16 @@ impl CargoInstaller {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if stderr.contains("not installed") || stderr.contains("package is not installed") {
-                return Err(anyhow!("Crate '{}' is not installed or already removed", package_name));
+                return Err(anyhow!(
+                    "Crate '{}' is not installed or already removed",
+                    package_name
+                ));
             }
-            return Err(anyhow!("Failed to uninstall {}: {}. Check if crate is installed.", package_name, stderr.trim()));
+            return Err(anyhow!(
+                "Failed to uninstall {}: {}. Check if crate is installed.",
+                package_name,
+                stderr.trim()
+            ));
         }
 
         Ok(format!("Successfully uninstalled {}", package_name))

@@ -1,5 +1,5 @@
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
 use tauri::Manager;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -20,11 +20,7 @@ impl AptManager {
             return false;
         }
 
-        match Command::new("apt")
-            .arg("--version")
-            .output()
-            .await
-        {
+        match Command::new("apt").arg("--version").output().await {
             Ok(output) => output.status.success(),
             Err(_) => false,
         }
@@ -36,23 +32,34 @@ impl AptManager {
     }
 
     /// Install a tool via apt install with live streaming
-    /// 
+    ///
     /// # Arguments
     /// * `package_name` - The APT package name (e.g., "nmap", "curl")
     /// * `tool_name` - The tool name (e.g., "nmap")
-    /// 
+    ///
     /// # Returns
     /// * `Result<String>` with success message
     pub async fn install(&self, package_name: &str, tool_name: &str) -> Result<String> {
-        self.emit_output(tool_name, &format!("Starting APT installation for {}...\n", tool_name));
+        self.emit_output(
+            tool_name,
+            &format!("Starting APT installation for {}...\n", tool_name),
+        );
 
         // Check if apt is available
         if !self.is_apt_available().await {
-            return Err(anyhow!("apt is not available. This system is not Debian/Ubuntu-based."));
+            return Err(anyhow!(
+                "apt is not available. This system is not Debian/Ubuntu-based."
+            ));
         }
 
-        self.emit_output(tool_name, &format!("Installing {} via apt...\n", package_name));
-        self.emit_output(tool_name, "⚠️  This requires sudo permissions and may prompt for password\n");
+        self.emit_output(
+            tool_name,
+            &format!("Installing {} via apt...\n", package_name),
+        );
+        self.emit_output(
+            tool_name,
+            "⚠️  This requires sudo permissions and may prompt for password\n",
+        );
 
         // Run apt install with -y flag for non-interactive mode
         let mut child = Command::new("sudo")
@@ -64,21 +71,25 @@ impl AptManager {
 
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-        
+
         let tool_name_clone = tool_name.to_string();
         let app_handle_clone = self.app_handle.clone();
-        
+
         let stdout_task = tokio::spawn(async move {
             if let Some(stdout) = stdout {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let event = EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &format!("{}\n", line));
+                    let event = EventEmitter::tool_installation_output(
+                        &tool_name_clone,
+                        "stdout",
+                        &format!("{}\n", line),
+                    );
                     let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
-        
+
         let tool_name_clone2 = tool_name.to_string();
         let app_handle_clone2 = self.app_handle.clone();
         let stderr_task = tokio::spawn(async move {
@@ -86,22 +97,35 @@ impl AptManager {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let event = EventEmitter::tool_installation_output(&tool_name_clone2, "stderr", &format!("{}\n", line));
+                    let event = EventEmitter::tool_installation_output(
+                        &tool_name_clone2,
+                        "stderr",
+                        &format!("{}\n", line),
+                    );
                     let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
-        
+
         let _ = tokio::join!(stdout_task, stderr_task);
 
-        let status = child.wait().await.context("Failed to wait for apt install")?;
+        let status = child
+            .wait()
+            .await
+            .context("Failed to wait for apt install")?;
 
         if !status.success() {
-            self.emit_output(tool_name, &format!("Failed to install {} via apt\n", tool_name));
+            self.emit_output(
+                tool_name,
+                &format!("Failed to install {} via apt\n", tool_name),
+            );
             return Err(anyhow!("apt install failed"));
         }
 
-        self.emit_output(tool_name, &format!("Successfully installed {} via apt\n", tool_name));
+        self.emit_output(
+            tool_name,
+            &format!("Successfully installed {} via apt\n", tool_name),
+        );
         Ok(format!("Successfully installed {} via apt", tool_name))
     }
 
@@ -122,21 +146,25 @@ impl AptManager {
 
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-        
+
         let tool_name_clone = tool_name.to_string();
         let app_handle_clone = self.app_handle.clone();
-        
+
         let stdout_task = tokio::spawn(async move {
             if let Some(stdout) = stdout {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let event = EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &format!("{}\n", line));
+                    let event = EventEmitter::tool_installation_output(
+                        &tool_name_clone,
+                        "stdout",
+                        &format!("{}\n", line),
+                    );
                     let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
-        
+
         let tool_name_clone2 = tool_name.to_string();
         let app_handle_clone2 = self.app_handle.clone();
         let stderr_task = tokio::spawn(async move {
@@ -144,12 +172,16 @@ impl AptManager {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let event = EventEmitter::tool_installation_output(&tool_name_clone2, "stderr", &format!("{}\n", line));
+                    let event = EventEmitter::tool_installation_output(
+                        &tool_name_clone2,
+                        "stderr",
+                        &format!("{}\n", line),
+                    );
                     let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
-        
+
         let _ = tokio::join!(stdout_task, stderr_task);
 
         let status = child.wait().await?;
@@ -177,7 +209,11 @@ impl AptManager {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("Failed to uninstall {}: {}", tool_name, stderr.trim()));
+            return Err(anyhow!(
+                "Failed to uninstall {}: {}",
+                tool_name,
+                stderr.trim()
+            ));
         }
 
         Ok(format!("Successfully uninstalled {}", tool_name))

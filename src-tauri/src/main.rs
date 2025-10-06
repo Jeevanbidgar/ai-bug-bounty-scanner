@@ -4,29 +4,35 @@
 use std::sync::Arc;
 use tauri::Manager;
 
-mod database;
-mod workflow;
-mod tools;
-mod runtime;
-mod commands;
-mod events;
 mod adapters;
+mod commands;
+mod database;
+mod events;
+mod runtime;
+mod tools;
+mod workflow;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let app_handle = app.handle();
-            let app_data_dir = app.path_resolver().app_data_dir()
+            let app_data_dir = app
+                .path_resolver()
+                .app_data_dir()
                 .expect("Failed to get app data dir");
 
             // Create tokio runtime for async operations
-            let rt = tokio::runtime::Runtime::new()
-                .expect("Failed to create tokio runtime");
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
 
             // Initialize database
             let db = Arc::new(
                 rt.block_on(async { crate::database::Database::new(app_data_dir.clone()).await })
-                    .expect("Failed to initialize database")
+                    .expect("Failed to initialize database"),
             );
 
             // Create artifacts directory
@@ -38,13 +44,15 @@ fn main() {
 
             // Initialize tool discovery with RwLock for async access
             let mut tool_discovery_service = crate::tools::discovery::ToolDiscoveryService::new();
-            
+
             // Load cache from disk
             rt.block_on(async {
-                tool_discovery_service.load_cache().await
+                tool_discovery_service
+                    .load_cache()
+                    .await
                     .unwrap_or_else(|e| eprintln!("Warning: Failed to load tool cache: {}", e));
             });
-            
+
             let tool_discovery = Arc::new(tokio::sync::RwLock::new(tool_discovery_service));
             let tool_registry = Arc::new(crate::tools::registry::ToolRegistry::new());
 
@@ -52,7 +60,7 @@ fn main() {
             let workflow_engine = Arc::new(crate::workflow::engine::WorkflowEngine::new(
                 app_handle.clone(),
                 tool_discovery.clone(),
-                artifacts_dir
+                artifacts_dir,
             ));
 
             // Create app state

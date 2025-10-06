@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use super::{
-    subfinder::{SubfinderAdapter, SubfinderConfig},
     amass::{AmassAdapter, AmassConfig},
+    gau::{GAUAdapter, GAUConfig},
     naabu::{NaabuAdapter, NaabuConfig},
     nmap::{NmapAdapter, NmapConfig},
     nuclei::{NucleiAdapter, NucleiConfig},
-    gau::{GAUAdapter, GAUConfig},
+    subfinder::{SubfinderAdapter, SubfinderConfig},
     waybackurls::{WaybackURLsAdapter, WaybackURLsConfig},
 };
 
@@ -54,27 +54,13 @@ impl AdapterRegistry {
     /// Build a command for a specific tool with custom configuration
     pub fn build_command(&self, adapter_type: &AdapterType) -> Vec<String> {
         match adapter_type {
-            AdapterType::Subfinder(config) => {
-                SubfinderAdapter::new().build_command(config)
-            }
-            AdapterType::Amass(config) => {
-                AmassAdapter::new().build_command(config)
-            }
-            AdapterType::Naabu(config) => {
-                NaabuAdapter::new().build_command(config)
-            }
-            AdapterType::Nmap(config) => {
-                NmapAdapter::new().build_command(config)
-            }
-            AdapterType::Nuclei(config) => {
-                NucleiAdapter::new().build_command(config)
-            }
-            AdapterType::GAU(config) => {
-                GAUAdapter::new().build_command(config)
-            }
-            AdapterType::WaybackURLs(config) => {
-                WaybackURLsAdapter::new().build_command(config)
-            }
+            AdapterType::Subfinder(config) => SubfinderAdapter::new().build_command(config),
+            AdapterType::Amass(config) => AmassAdapter::new().build_command(config),
+            AdapterType::Naabu(config) => NaabuAdapter::new().build_command(config),
+            AdapterType::Nmap(config) => NmapAdapter::new().build_command(config),
+            AdapterType::Nuclei(config) => NucleiAdapter::new().build_command(config),
+            AdapterType::GAU(config) => GAUAdapter::new().build_command(config),
+            AdapterType::WaybackURLs(config) => WaybackURLsAdapter::new().build_command(config),
         }
     }
 
@@ -86,13 +72,17 @@ impl AdapterRegistry {
         output_file: Option<String>,
     ) -> Result<Vec<String>, String> {
         match tool_name.to_lowercase().as_str() {
-            "subfinder" => Ok(SubfinderAdapter::new().build_command_with_defaults(target, output_file)),
+            "subfinder" => {
+                Ok(SubfinderAdapter::new().build_command_with_defaults(target, output_file))
+            }
             "amass" => Ok(AmassAdapter::new().build_command_with_defaults(target, output_file)),
             "naabu" => Ok(NaabuAdapter::new().build_command_with_defaults(target, output_file)),
             "nmap" => Ok(NmapAdapter::new().build_command_with_defaults(target, output_file)),
             "nuclei" => Ok(NucleiAdapter::new().build_command_with_defaults(target, output_file)),
             "gau" => Ok(GAUAdapter::new().build_command_with_defaults(target, output_file)),
-            "waybackurls" => Ok(WaybackURLsAdapter::new().build_command_with_defaults(target, output_file)),
+            "waybackurls" => {
+                Ok(WaybackURLsAdapter::new().build_command_with_defaults(target, output_file))
+            }
             _ => Err(format!("Unknown tool: {}", tool_name)),
         }
     }
@@ -244,7 +234,8 @@ impl AdapterRegistry {
 
     /// Get all adapter categories
     pub fn get_categories(&self) -> Vec<String> {
-        let mut categories: Vec<String> = self.list_adapters()
+        let mut categories: Vec<String> = self
+            .list_adapters()
             .into_iter()
             .map(|info| info.category)
             .collect();

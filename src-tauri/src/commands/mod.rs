@@ -1,13 +1,18 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tauri::Manager;
 
 use crate::database::Database;
-use crate::workflow::{engine::WorkflowEngine, loader::WorkflowLoader, types::WorkflowCompatibility};
-use crate::tools::discovery::ToolDiscoveryService;
-use crate::events::{EventEmitter, SCAN_STARTED, SCAN_COMPLETED, SCAN_FAILED, SCAN_PROGRESS_UPDATE, TOOL_INSTALLATION_STARTED, TOOL_INSTALLATION_COMPLETED};
+use crate::events::{
+    EventEmitter, SCAN_COMPLETED, SCAN_FAILED, SCAN_PROGRESS_UPDATE, SCAN_STARTED,
+    TOOL_INSTALLATION_COMPLETED, TOOL_INSTALLATION_STARTED,
+};
 use crate::tools::catalog::get_tool_catalog;
+use crate::tools::discovery::ToolDiscoveryService;
 use crate::tools::package_managers::{GoInstallManager, InstallationResult, VersionCheckResult};
+use crate::workflow::{
+    engine::WorkflowEngine, loader::WorkflowLoader, types::WorkflowCompatibility,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkflowExecuteRequest {
@@ -64,22 +69,29 @@ pub struct AppState {
 // Commands for workflow management
 #[tauri::command]
 pub async fn load_workflow_templates(
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<Vec<WorkflowSummary>, String> {
     // Try multiple paths: relative, from project root, from current dir
     let possible_paths = vec![
         std::path::PathBuf::from("app/workflows"),
         std::path::PathBuf::from("../app/workflows"),
         std::path::PathBuf::from("../../app/workflows"),
-        std::env::current_dir().unwrap_or_default().join("app/workflows"),
-        std::env::current_dir().unwrap_or_default().parent().unwrap_or(std::path::Path::new(".")).join("app/workflows"),
+        std::env::current_dir()
+            .unwrap_or_default()
+            .join("app/workflows"),
+        std::env::current_dir()
+            .unwrap_or_default()
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join("app/workflows"),
     ];
-    
-    let workflows_dir = possible_paths.iter()
+
+    let workflows_dir = possible_paths
+        .iter()
         .find(|p| p.exists())
         .cloned()
         .unwrap_or_else(|| std::path::PathBuf::from("app/workflows"));
-    
+
     eprintln!("Loading workflows from: {:?}", workflows_dir);
     eprintln!("Workflows directory exists: {}", workflows_dir.exists());
     let workflow_loader = WorkflowLoader::new(workflows_dir.clone());
@@ -92,15 +104,19 @@ pub async fn load_workflow_templates(
             for (id, workflow) in workflows {
                 eprintln!("Processing workflow: {} ({})", workflow.name, id);
                 let discovery_service = state.tool_discovery.read().await;
-                let compatibility = discovery_service.get_tool_compatibility(&workflow).await
+                let compatibility = discovery_service
+                    .get_tool_compatibility(&workflow)
+                    .await
                     .map_err(|e| {
                         eprintln!("Failed to check compatibility for {}: {}", id, e);
                         format!("Failed to check compatibility: {}", e)
                     })?;
                 drop(discovery_service);
 
-                eprintln!("Workflow {} compatibility: {} ({}%)", 
-                    id, compatibility.compatible, compatibility.compatibility_percentage);
+                eprintln!(
+                    "Workflow {} compatibility: {} ({}%)",
+                    id, compatibility.compatible, compatibility.compatibility_percentage
+                );
 
                 summaries.push(WorkflowSummary {
                     id: id.clone(),
@@ -132,35 +148,48 @@ pub async fn get_workflow_details(
         std::path::PathBuf::from("app/workflows"),
         std::path::PathBuf::from("../app/workflows"),
         std::path::PathBuf::from("../../app/workflows"),
-        std::env::current_dir().unwrap_or_default().join("app/workflows"),
-        std::env::current_dir().unwrap_or_default().parent().unwrap_or(std::path::Path::new(".")).join("app/workflows"),
+        std::env::current_dir()
+            .unwrap_or_default()
+            .join("app/workflows"),
+        std::env::current_dir()
+            .unwrap_or_default()
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join("app/workflows"),
     ];
-    
-    let workflows_dir = possible_paths.iter()
+
+    let workflows_dir = possible_paths
+        .iter()
         .find(|p| p.exists())
         .cloned()
         .unwrap_or_else(|| std::path::PathBuf::from("app/workflows"));
-    
+
     let workflow_loader = WorkflowLoader::new(workflows_dir.clone());
 
     match workflow_loader.load_workflow(&workflow_id).await {
         Ok(workflow) => {
             let discovery_service = state.tool_discovery.read().await;
-            let compatibility = discovery_service.get_tool_compatibility(&workflow).await
+            let compatibility = discovery_service
+                .get_tool_compatibility(&workflow)
+                .await
                 .map_err(|e| format!("Failed to check compatibility: {}", e))?;
             drop(discovery_service);
 
             // Convert workflow steps to a serializable format
-            let steps_json: Vec<serde_json::Value> = workflow.steps.iter().map(|step| {
-                serde_json::json!({
-                    "id": step.id,
-                    "name": step.name,
-                    "description": step.description,
-                    "run": step.run,
-                    "needs": step.needs,
-                    "timeout": step.timeout,
+            let steps_json: Vec<serde_json::Value> = workflow
+                .steps
+                .iter()
+                .map(|step| {
+                    serde_json::json!({
+                        "id": step.id,
+                        "name": step.name,
+                        "description": step.description,
+                        "run": step.run,
+                        "needs": step.needs,
+                        "timeout": step.timeout,
+                    })
                 })
-            }).collect();
+                .collect();
 
             let details = serde_json::json!({
                 "id": workflow.id,
@@ -183,12 +212,17 @@ pub async fn execute_workflow(
     state: tauri::State<'_, AppState>,
     request: WorkflowExecuteRequest,
 ) -> Result<WorkflowExecuteResponse, String> {
-    let execution_id = state.workflow_engine.execute_workflow(
-        request.workflow_id,
-        request.inputs,
-        request.working_directory.unwrap_or_else(|| "./results".to_string()),
-    ).await
-    .map_err(|e| format!("Failed to execute workflow: {}", e))?;
+    let execution_id = state
+        .workflow_engine
+        .execute_workflow(
+            request.workflow_id,
+            request.inputs,
+            request
+                .working_directory
+                .unwrap_or_else(|| "./results".to_string()),
+        )
+        .await
+        .map_err(|e| format!("Failed to execute workflow: {}", e))?;
 
     Ok(WorkflowExecuteResponse {
         execution_id,
@@ -202,7 +236,10 @@ pub async fn get_workflow_status(
     state: tauri::State<'_, AppState>,
     #[allow(non_snake_case)] executionId: String,
 ) -> Result<WorkflowStatusResponse, String> {
-    let execution = state.workflow_engine.get_execution_status(&executionId).await
+    let execution = state
+        .workflow_engine
+        .get_execution_status(&executionId)
+        .await
         .map_err(|e| format!("Failed to get execution status: {}", e))?
         .ok_or_else(|| format!("Execution '{}' not found", executionId))?;
 
@@ -211,7 +248,11 @@ pub async fn get_workflow_status(
         status: format!("{:?}", execution.status),
         progress: execution.progress,
         current_step: execution.current_step,
-        logs: execution.logs.iter().map(|log| log.message.clone()).collect(),
+        logs: execution
+            .logs
+            .iter()
+            .map(|log| log.message.clone())
+            .collect(),
     })
 }
 
@@ -220,7 +261,10 @@ pub async fn stop_workflow_execution(
     state: tauri::State<'_, AppState>,
     #[allow(non_snake_case)] executionId: String,
 ) -> Result<String, String> {
-    state.workflow_engine.stop_execution(&executionId).await
+    state
+        .workflow_engine
+        .stop_execution(&executionId)
+        .await
         .map_err(|e| format!("Failed to stop execution: {}", e))?;
 
     Ok("Execution stopped".to_string())
@@ -230,17 +274,24 @@ pub async fn stop_workflow_execution(
 #[tauri::command]
 pub async fn list_tools(
     #[allow(non_snake_case)] forceRefresh: bool,
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<Vec<crate::tools::discovery::ToolRecord>, String> {
     let discovery_service = state.tool_discovery.read().await;
-    
+
     let tools = discovery_service.get_all_tool_records(forceRefresh).await;
-    
-    eprintln!("list_tools called: force_refresh={}, found {} tools", forceRefresh, tools.len());
+
+    eprintln!(
+        "list_tools called: force_refresh={}, found {} tools",
+        forceRefresh,
+        tools.len()
+    );
     if tools.len() > 0 {
-        eprintln!("First 5 tools: {:?}", tools.iter().take(5).map(|t| &t.name).collect::<Vec<_>>());
+        eprintln!(
+            "First 5 tools: {:?}",
+            tools.iter().take(5).map(|t| &t.name).collect::<Vec<_>>()
+        );
     }
-    
+
     Ok(tools)
 }
 
@@ -248,33 +299,35 @@ pub async fn list_tools(
 pub async fn get_tool(
     #[allow(non_snake_case)] toolName: String,
     #[allow(non_snake_case)] forceRefresh: bool,
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<Option<crate::tools::discovery::ToolRecord>, String> {
     let discovery_service = state.tool_discovery.read().await;
-    
-    let tool = discovery_service.get_tool_record(&toolName, forceRefresh).await;
-    
+
+    let tool = discovery_service
+        .get_tool_record(&toolName, forceRefresh)
+        .await;
+
     Ok(tool)
 }
 
 #[tauri::command]
 pub async fn recheck_tool(
     #[allow(non_snake_case)] toolName: String,
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<Option<crate::tools::discovery::ToolRecord>, String> {
     eprintln!("🔄 Rechecking tool: {}", toolName);
     let discovery_service = state.tool_discovery.read().await;
-    
+
     // Get the current cached tool record WITHOUT forcing refresh (avoid cache save that triggers rebuild)
     let mut record = match discovery_service.get_tool_record(&toolName, false).await {
         Some(r) => r,
         None => return Ok(None),
     };
-    
+
     // Manually check if tool is available without saving to cache
     let tool_path = discovery_service.get_tool_path(&toolName).await;
     let tool_available = tool_path.is_some();
-    
+
     // Update the record in memory
     if tool_available {
         record.installed = true;
@@ -289,44 +342,42 @@ pub async fn recheck_tool(
         record.status = "missing".to_string();
         record.path = None;
     }
-    
+
     record.last_checked = Some(chrono::Utc::now().to_rfc3339());
-    
+
     // Return the updated record WITHOUT saving cache (to avoid triggering dev server reload)
     Ok(Some(record))
 }
 
 #[tauri::command]
 pub async fn refresh_tools(
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<HashMap<String, crate::tools::discovery::ToolRecord>, String> {
     let discovery_service = state.tool_discovery.read().await;
-    
+
     let results = discovery_service.refresh_all_tools().await;
-    
+
     Ok(results)
 }
 
 #[tauri::command]
-pub async fn get_tool_categories(
-    state: tauri::State<'_, AppState>
-) -> Result<Vec<String>, String> {
+pub async fn get_tool_categories(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
     let discovery_service = state.tool_discovery.read().await;
-    
+
     let categories = discovery_service.get_categories();
-    
+
     Ok(categories)
 }
 
 #[tauri::command]
 pub async fn get_tools_by_category(
     category: String,
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<Vec<crate::tools::discovery::ToolRecord>, String> {
     let discovery_service = state.tool_discovery.read().await;
-    
+
     let tools = discovery_service.get_tools_by_category(&category).await;
-    
+
     Ok(tools)
 }
 
@@ -335,57 +386,60 @@ pub async fn add_manual_tool(
     #[allow(non_snake_case)] toolName: String,
     #[allow(non_snake_case)] toolPath: String,
     category: String,
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<crate::tools::discovery::ToolRecord, String> {
     let discovery_service = state.tool_discovery.write().await;
-    
-    let tool = discovery_service.add_manual_tool(&toolName, &toolPath, &category).await
+
+    let tool = discovery_service
+        .add_manual_tool(&toolName, &toolPath, &category)
+        .await
         .map_err(|e| format!("Failed to add manual tool: {}", e))?;
-    
+
     Ok(tool)
 }
 
 #[tauri::command]
 pub async fn remove_manual_tool(
     #[allow(non_snake_case)] toolName: String,
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<bool, String> {
     let discovery_service = state.tool_discovery.write().await;
-    
-    let success = discovery_service.remove_manual_tool(&toolName).await
+
+    let success = discovery_service
+        .remove_manual_tool(&toolName)
+        .await
         .map_err(|e| format!("Failed to remove manual tool: {}", e))?;
-    
+
     Ok(success)
 }
 
 #[tauri::command]
-pub async fn list_manual_tools(
-    state: tauri::State<'_, AppState>
-) -> Result<Vec<String>, String> {
+pub async fn list_manual_tools(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
     let discovery_service = state.tool_discovery.read().await;
-    
+
     let manual_tools = discovery_service.list_manual_tools();
-    
+
     Ok(manual_tools)
 }
 
 #[tauri::command]
-pub async fn get_available_tools_count(
-    state: tauri::State<'_, AppState>
-) -> Result<usize, String> {
+pub async fn get_available_tools_count(state: tauri::State<'_, AppState>) -> Result<usize, String> {
     let discovery_service = state.tool_discovery.read().await;
-    
+
     let count = discovery_service.get_available_count().await;
-    
+
     Ok(count)
 }
 
 // Commands for scan management
 #[tauri::command]
 pub async fn list_scans(
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let scans = state.db.list_scans().await
+    let scans = state
+        .db
+        .list_scans()
+        .await
         .map_err(|e| format!("Failed to list scans: {}", e))?;
 
     let mut scan_data = Vec::new();
@@ -403,30 +457,36 @@ pub async fn create_scan(
     scan_data: HashMap<String, serde_json::Value>,
 ) -> Result<String, String> {
     // Extract required fields
-    let name = scan_data.get("name")
+    let name = scan_data
+        .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or("Unnamed Scan")
         .to_string();
 
-    let target = scan_data.get("target")
+    let target = scan_data
+        .get("target")
         .and_then(|v| v.as_str())
         .ok_or("Target is required")?
         .to_string();
 
-    let scan_type = scan_data.get("scan_type")
+    let scan_type = scan_data
+        .get("scan_type")
         .and_then(|v| v.as_str())
         .unwrap_or("Custom Scan")
         .to_string();
 
-    let workflow_id = scan_data.get("workflow_id")
+    let workflow_id = scan_data
+        .get("workflow_id")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let description = scan_data.get("description")
+    let description = scan_data
+        .get("description")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let working_directory = scan_data.get("working_directory")
+    let working_directory = scan_data
+        .get("working_directory")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
@@ -461,7 +521,10 @@ pub async fn create_scan(
         updated_at: chrono::Utc::now(),
     };
 
-    state.db.create_scan(&scan).await
+    state
+        .db
+        .create_scan(&scan)
+        .await
         .map_err(|e| format!("Failed to create scan: {}", e))?;
 
     // Emit scan started event
@@ -476,7 +539,10 @@ pub async fn get_scan(
     state: tauri::State<'_, AppState>,
     #[allow(non_snake_case)] scanId: String,
 ) -> Result<Option<serde_json::Value>, String> {
-    let scan = state.db.get_scan(&scanId).await
+    let scan = state
+        .db
+        .get_scan(&scanId)
+        .await
         .map_err(|e| format!("Failed to get scan: {}", e))?;
 
     if let Some(scan) = scan {
@@ -493,10 +559,16 @@ pub async fn update_scan(
     scan: crate::database::Scan,
 ) -> Result<(), String> {
     // Store old status for comparison
-    let old_scan = state.db.get_scan(&scan.id).await
+    let old_scan = state
+        .db
+        .get_scan(&scan.id)
+        .await
         .map_err(|e| format!("Failed to get scan: {}", e))?;
 
-    state.db.update_scan(&scan).await
+    state
+        .db
+        .update_scan(&scan)
+        .await
         .map_err(|e| format!("Failed to update scan: {}", e))?;
 
     // Emit events based on status changes
@@ -514,14 +586,14 @@ pub async fn update_scan(
                 _ => {}
             }
         }
-        
+
         // Emit progress update if progress changed
         if old.progress != scan.progress {
             let event = EventEmitter::scan_progress_update(
                 &scan.id,
                 scan.progress,
                 scan.current_test.clone(),
-                &scan.status
+                &scan.status,
             );
             let _ = app.emit_all(SCAN_PROGRESS_UPDATE, event);
         }
@@ -535,7 +607,10 @@ pub async fn delete_scan(
     state: tauri::State<'_, AppState>,
     #[allow(non_snake_case)] scanId: String,
 ) -> Result<(), String> {
-    state.db.delete_scan(&scanId).await
+    state
+        .db
+        .delete_scan(&scanId)
+        .await
         .map_err(|e| format!("Failed to delete scan: {}", e))?;
 
     Ok(())
@@ -548,7 +623,7 @@ pub async fn get_system_info() -> Result<serde_json::Value, String> {
 
     let mut sys = System::new_all();
     sys.refresh_all();
-    
+
     let info = serde_json::json!({
         "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
@@ -556,7 +631,7 @@ pub async fn get_system_info() -> Result<serde_json::Value, String> {
         "available_memory_mb": sys.available_memory(),
         "cpu_cores": sys.cpus().len()
     });
-    
+
     Ok(info)
 }
 
@@ -566,7 +641,10 @@ pub async fn get_workflow_artifacts(
     state: tauri::State<'_, AppState>,
     #[allow(non_snake_case)] executionId: String,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let artifacts = state.db.get_workflow_artifacts(&executionId).await
+    let artifacts = state
+        .db
+        .get_workflow_artifacts(&executionId)
+        .await
         .map_err(|e| format!("Failed to get artifacts: {}", e))?;
 
     let mut artifact_data = Vec::new();
@@ -582,7 +660,10 @@ pub async fn get_workflow_findings(
     state: tauri::State<'_, AppState>,
     #[allow(non_snake_case)] executionId: String,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let findings = state.db.get_workflow_findings(&executionId).await
+    let findings = state
+        .db
+        .get_workflow_findings(&executionId)
+        .await
         .map_err(|e| format!("Failed to get findings: {}", e))?;
 
     let mut finding_data = Vec::new();
@@ -596,9 +677,12 @@ pub async fn get_workflow_findings(
 // Commands for vulnerability management
 #[tauri::command]
 pub async fn list_vulnerabilities(
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let vulns = state.db.list_vulnerabilities().await
+    let vulns = state
+        .db
+        .list_vulnerabilities()
+        .await
         .map_err(|e| format!("Failed to list vulnerabilities: {}", e))?;
 
     let mut vuln_data = Vec::new();
@@ -614,7 +698,10 @@ pub async fn get_scan_vulnerabilities(
     state: tauri::State<'_, AppState>,
     scan_id: String,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let vulns = state.db.get_vulnerabilities_by_scan(&scan_id).await
+    let vulns = state
+        .db
+        .get_vulnerabilities_by_scan(&scan_id)
+        .await
         .map_err(|e| format!("Failed to get vulnerabilities: {}", e))?;
 
     let mut vuln_data = Vec::new();
@@ -632,53 +719,67 @@ pub async fn create_vulnerability(
 ) -> Result<String, String> {
     let vuln = crate::database::Vulnerability {
         id: uuid::Uuid::new_v4().to_string(),
-        scan_id: vuln_data.get("scan_id")
+        scan_id: vuln_data
+            .get("scan_id")
             .and_then(|v| v.as_str())
             .ok_or("scan_id is required")?
             .to_string(),
-        title: vuln_data.get("title")
+        title: vuln_data
+            .get("title")
             .and_then(|v| v.as_str())
             .ok_or("title is required")?
             .to_string(),
-        severity: vuln_data.get("severity")
+        severity: vuln_data
+            .get("severity")
             .and_then(|v| v.as_str())
             .ok_or("severity is required")?
             .to_string(),
-        cvss: vuln_data.get("cvss")
-            .and_then(|v| v.as_f64()),
-        description: vuln_data.get("description")
+        cvss: vuln_data.get("cvss").and_then(|v| v.as_f64()),
+        description: vuln_data
+            .get("description")
             .and_then(|v| v.as_str())
             .ok_or("description is required")?
             .to_string(),
-        url: vuln_data.get("url")
+        url: vuln_data
+            .get("url")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
-        parameter: vuln_data.get("parameter")
+        parameter: vuln_data
+            .get("parameter")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
-        payload: vuln_data.get("payload")
+        payload: vuln_data
+            .get("payload")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
-        remediation: vuln_data.get("remediation")
+        remediation: vuln_data
+            .get("remediation")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
-        discovered_by: vuln_data.get("discovered_by")
+        discovered_by: vuln_data
+            .get("discovered_by")
             .and_then(|v| v.as_str())
             .ok_or("discovered_by is required")?
             .to_string(),
         timestamp: chrono::Utc::now(),
-        false_positive: vuln_data.get("false_positive")
+        false_positive: vuln_data
+            .get("false_positive")
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
-        confirmed: vuln_data.get("confirmed")
+        confirmed: vuln_data
+            .get("confirmed")
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
-        evidence: vuln_data.get("evidence")
+        evidence: vuln_data
+            .get("evidence")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
     };
 
-    state.db.create_vulnerability(&vuln).await
+    state
+        .db
+        .create_vulnerability(&vuln)
+        .await
         .map_err(|e| format!("Failed to create vulnerability: {}", e))?;
 
     Ok(vuln.id)
@@ -689,7 +790,10 @@ pub async fn delete_vulnerability(
     state: tauri::State<'_, AppState>,
     vuln_id: String,
 ) -> Result<(), String> {
-    state.db.delete_vulnerability(&vuln_id).await
+    state
+        .db
+        .delete_vulnerability(&vuln_id)
+        .await
         .map_err(|e| format!("Failed to delete vulnerability: {}", e))?;
 
     Ok(())
@@ -698,9 +802,12 @@ pub async fn delete_vulnerability(
 // Commands for report management
 #[tauri::command]
 pub async fn list_reports(
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let reports = state.db.list_reports().await
+    let reports = state
+        .db
+        .list_reports()
+        .await
         .map_err(|e| format!("Failed to list reports: {}", e))?;
 
     let mut report_data = Vec::new();
@@ -716,7 +823,10 @@ pub async fn get_report(
     state: tauri::State<'_, AppState>,
     report_id: String,
 ) -> Result<Option<serde_json::Value>, String> {
-    let report = state.db.get_report(&report_id).await
+    let report = state
+        .db
+        .get_report(&report_id)
+        .await
         .map_err(|e| format!("Failed to get report: {}", e))?;
 
     if let Some(report) = report {
@@ -733,26 +843,33 @@ pub async fn create_report(
 ) -> Result<String, String> {
     let report = crate::database::Report {
         id: uuid::Uuid::new_v4().to_string(),
-        scan_id: report_data.get("scan_id")
+        scan_id: report_data
+            .get("scan_id")
             .and_then(|v| v.as_str())
             .ok_or("scan_id is required")?
             .to_string(),
-        title: report_data.get("title")
+        title: report_data
+            .get("title")
             .and_then(|v| v.as_str())
             .ok_or("title is required")?
             .to_string(),
-        content: report_data.get("content")
+        content: report_data
+            .get("content")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),
-        format: report_data.get("format")
+        format: report_data
+            .get("format")
             .and_then(|v| v.as_str())
             .unwrap_or("html")
             .to_string(),
         created_at: chrono::Utc::now(),
     };
 
-    state.db.create_report(&report).await
+    state
+        .db
+        .create_report(&report)
+        .await
         .map_err(|e| format!("Failed to create report: {}", e))?;
 
     Ok(report.id)
@@ -763,7 +880,10 @@ pub async fn delete_report(
     state: tauri::State<'_, AppState>,
     report_id: String,
 ) -> Result<(), String> {
-    state.db.delete_report(&report_id).await
+    state
+        .db
+        .delete_report(&report_id)
+        .await
         .map_err(|e| format!("Failed to delete report: {}", e))?;
 
     Ok(())
@@ -771,19 +891,26 @@ pub async fn delete_report(
 
 // Commands for statistics
 #[tauri::command]
-pub async fn get_stats(
-    state: tauri::State<'_, AppState>
-) -> Result<serde_json::Value, String> {
-    let scans = state.db.list_scans().await
+pub async fn get_stats(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let scans = state
+        .db
+        .list_scans()
+        .await
         .map_err(|e| format!("Failed to get scans: {}", e))?;
-    let vulns = state.db.list_vulnerabilities().await
+    let vulns = state
+        .db
+        .list_vulnerabilities()
+        .await
         .map_err(|e| format!("Failed to get vulnerabilities: {}", e))?;
-    
+
     let discovery_service = state.tool_discovery.read().await;
     let tools = discovery_service.get_all_tool_records(false).await;
 
     let active_scans = scans.iter().filter(|s| s.status == "running").count();
-    let critical_vulns = vulns.iter().filter(|v| v.severity.to_lowercase() == "critical").count();
+    let critical_vulns = vulns
+        .iter()
+        .filter(|v| v.severity.to_lowercase() == "critical")
+        .count();
     let available_tools = tools.iter().filter(|t| t.installed).count();
 
     let stats = serde_json::json!({
@@ -800,13 +927,19 @@ pub async fn get_stats(
 
 #[tauri::command]
 pub async fn get_system_metrics(
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
-    let scans = state.db.list_scans().await
+    let scans = state
+        .db
+        .list_scans()
+        .await
         .map_err(|e| format!("Failed to get scans: {}", e))?;
-    let vulns = state.db.list_vulnerabilities().await
+    let vulns = state
+        .db
+        .list_vulnerabilities()
+        .await
         .map_err(|e| format!("Failed to get vulnerabilities: {}", e))?;
-    
+
     let discovery_service = state.tool_discovery.read().await;
     let tools = discovery_service.get_all_tool_records(false).await;
 
@@ -814,7 +947,10 @@ pub async fn get_system_metrics(
     let active_scans = scans.iter().filter(|s| s.status == "running").count();
     let completed_scans = scans.iter().filter(|s| s.status == "completed").count();
     let total_vulnerabilities = vulns.len();
-    let critical_issues = vulns.iter().filter(|v| v.severity.to_lowercase() == "critical").count();
+    let critical_issues = vulns
+        .iter()
+        .filter(|v| v.severity.to_lowercase() == "critical")
+        .count();
     let tools_available = tools.iter().filter(|t| t.installed).count();
     let tools_total = tools.len();
     let tools_unavailable = tools_total - tools_available;
@@ -870,35 +1006,38 @@ pub fn get_os_info() -> Result<serde_json::Value, String> {
 
 // Package manager detection commands
 #[tauri::command]
-pub async fn detect_package_managers() -> Result<Vec<crate::tools::package_managers::PackageManagerInfo>, String> {
+pub async fn detect_package_managers(
+) -> Result<Vec<crate::tools::package_managers::PackageManagerInfo>, String> {
     eprintln!("🔍 Detecting available package managers...");
-    
+
     let managers = crate::tools::package_managers::detect_all_managers().await;
-    
+
     eprintln!("✅ Detection complete:");
     for manager in &managers {
         if manager.available {
-            eprintln!("  ✓ {} - v{}", 
+            eprintln!(
+                "  ✓ {} - v{}",
                 manager.manager_type.display_name(),
                 manager.version.as_ref().unwrap_or(&"unknown".to_string())
             );
         } else {
-            eprintln!("  ✗ {} - {}", 
+            eprintln!(
+                "  ✗ {} - {}",
                 manager.manager_type.display_name(),
                 manager.error.as_ref().unwrap_or(&"not found".to_string())
             );
         }
     }
-    
+
     Ok(managers)
 }
 
 #[tauri::command]
 pub async fn check_package_manager(
-    manager_name: String
+    manager_name: String,
 ) -> Result<crate::tools::package_managers::PackageManagerInfo, String> {
     eprintln!("🔍 Checking package manager: {}", manager_name);
-    
+
     let manager_type = match manager_name.to_lowercase().as_str() {
         "go" => crate::tools::package_managers::PackageManagerType::Go,
         "pipx" => crate::tools::package_managers::PackageManagerType::Pipx,
@@ -906,102 +1045,112 @@ pub async fn check_package_manager(
         "winget" => crate::tools::package_managers::PackageManagerType::WinGet,
         _ => return Err(format!("Unknown package manager: {}", manager_name)),
     };
-    
+
     let info = crate::tools::package_managers::detect_manager(manager_type).await;
-    
+
     if info.available {
-        eprintln!("✅ {} is available (v{})", 
+        eprintln!(
+            "✅ {} is available (v{})",
             info.manager_type.display_name(),
             info.version.as_ref().unwrap_or(&"unknown".to_string())
         );
     } else {
-        eprintln!("❌ {} is not available: {}", 
+        eprintln!(
+            "❌ {} is not available: {}",
             info.manager_type.display_name(),
             info.error.as_ref().unwrap_or(&"not found".to_string())
         );
     }
-    
+
     Ok(info)
 }
 
 // Package Manager Installation Commands
 
 #[tauri::command]
-pub async fn install_package_manager_pipx() -> Result<crate::tools::package_managers::InstallationResult, String> {
+pub async fn install_package_manager_pipx(
+) -> Result<crate::tools::package_managers::InstallationResult, String> {
     eprintln!("📦 Installing pipx...");
     let result = crate::tools::package_managers::install_pipx().await?;
-    
+
     if result.success {
         eprintln!("✅ pipx installation completed");
     } else {
         eprintln!("❌ pipx installation failed: {}", result.message);
     }
-    
+
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn install_package_manager_go() -> Result<crate::tools::package_managers::InstallationResult, String> {
+pub async fn install_package_manager_go(
+) -> Result<crate::tools::package_managers::InstallationResult, String> {
     eprintln!("📦 Installing Go...");
-    
+
     #[cfg(target_os = "windows")]
     let result = crate::tools::package_managers::install_go_windows().await?;
-    
+
     #[cfg(not(target_os = "windows"))]
     {
-        return Err("Go installation on Linux should be done via APT. Use: sudo apt install golang-go".to_string());
+        return Err(
+            "Go installation on Linux should be done via APT. Use: sudo apt install golang-go"
+                .to_string(),
+        );
     }
-    
+
     if result.success {
         eprintln!("✅ Go installation completed");
     } else {
         eprintln!("❌ Go installation failed: {}", result.message);
     }
-    
+
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn install_package_manager_apt(package_name: String) -> Result<crate::tools::package_managers::InstallationResult, String> {
+pub async fn install_package_manager_apt(
+    package_name: String,
+) -> Result<crate::tools::package_managers::InstallationResult, String> {
     eprintln!("📦 Installing APT package: {}", package_name);
-    
+
     #[cfg(not(target_os = "linux"))]
     {
         return Err("APT is only available on Linux systems".to_string());
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         let result = crate::tools::package_managers::install_apt_package(&package_name).await?;
-        
+
         if result.success {
             eprintln!("✅ APT package installed");
         } else {
             eprintln!("❌ APT installation failed: {}", result.message);
         }
-        
+
         Ok(result)
     }
 }
 
 #[tauri::command]
-pub async fn install_package_manager_winget() -> Result<crate::tools::package_managers::InstallationResult, String> {
+pub async fn install_package_manager_winget(
+) -> Result<crate::tools::package_managers::InstallationResult, String> {
     eprintln!("📦 Opening WinGet installation page...");
-    
+
     #[cfg(target_os = "windows")]
     let result = crate::tools::package_managers::install_winget_windows().await?;
-    
+
     #[cfg(not(target_os = "windows"))]
     {
         return Err("WinGet is only available on Windows systems".to_string());
     }
-    
+
     if result.success {
         eprintln!("✅ Microsoft Store opened");
     } else {
         eprintln!("❌ Failed to open Store: {}", result.message);
     }
-    
+
     Ok(result)
 }
 
@@ -1011,17 +1160,18 @@ pub async fn install_package_manager_winget() -> Result<crate::tools::package_ma
 pub async fn install_tool(
     #[allow(non_snake_case)] toolName: String,
     app_handle: tauri::AppHandle,
-    state: tauri::State<'_, AppState>
+    state: tauri::State<'_, AppState>,
 ) -> Result<InstallationResult, String> {
     eprintln!("📦 Installing tool: {}", toolName);
-    
+
     // Look up tool in catalog
     let catalog = get_tool_catalog();
-    let tool_def = catalog.get(&toolName)
+    let tool_def = catalog
+        .get(&toolName)
         .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
-    
+
     eprintln!("   Installation method: {}", tool_def.install_method);
-    
+
     // Route to appropriate installer based on install_method
     match tool_def.install_method.as_str() {
         "go" => {
@@ -1372,40 +1522,43 @@ pub async fn install_tool(
 pub async fn update_tool(
     #[allow(non_snake_case)] toolName: String,
     state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle
+    app_handle: tauri::AppHandle,
 ) -> Result<InstallationResult, String> {
     eprintln!("🔄 Updating tool: {}", toolName);
-    
+
     // Look up tool in catalog
     let catalog = get_tool_catalog();
-    let tool_def = catalog.get(&toolName)
+    let tool_def = catalog
+        .get(&toolName)
         .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
-    
+
     eprintln!("   Installation method: {}", tool_def.install_method);
-    
+
     // Route to appropriate installer
     match tool_def.install_method.as_str() {
         "go" => {
-            let go_module = tool_def.go_module.as_ref()
+            let go_module = tool_def
+                .go_module
+                .as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no go_module defined", toolName))?;
-            
+
             let manager = GoInstallManager::new(app_handle.clone());
-            
+
             if !manager.is_go_available().await {
                 return Err("Go is not installed. Please install Go first.".to_string());
             }
-            
+
             let go_result = manager.update(go_module, &toolName).await?;
-            
+
             if go_result.success {
                 eprintln!("✅ Successfully updated {}", toolName);
-                
+
                 // Trigger tool recheck
                 let _ = recheck_tool(toolName.clone(), state).await;
             } else {
                 eprintln!("❌ Failed to update {}: {}", toolName, go_result.message);
             }
-            
+
             // Convert go_install::InstallationResult to installation::InstallationResult
             Ok(InstallationResult {
                 success: go_result.success,
@@ -1413,49 +1566,54 @@ pub async fn update_tool(
                 steps: vec![],
                 requires_restart: false,
             })
-        },
+        }
         "pipx" => {
-            let pipx_package = tool_def.pipx_package.as_ref()
+            let pipx_package = tool_def
+                .pipx_package
+                .as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no pipx_package defined", toolName))?;
-            
+
             let manager = crate::tools::package_managers::PipxManager::new();
-            
+
             if !manager.is_pipx_available().await {
                 return Err("pipx is not installed.".to_string());
             }
-            
+
             let pipx_result = manager.update(pipx_package, &toolName).await?;
-            
+
             if pipx_result.success {
                 eprintln!("✅ Successfully updated {}", toolName);
                 let _ = recheck_tool(toolName.clone(), state).await;
             } else {
                 eprintln!("❌ Failed to update {}: {}", toolName, pipx_result.message);
             }
-            
+
             Ok(InstallationResult {
                 success: pipx_result.success,
                 message: pipx_result.message,
                 steps: vec![],
                 requires_restart: false,
             })
-        },
+        }
         "apt" => {
-            let apt_package = tool_def.apt_package.as_ref()
+            let apt_package = tool_def
+                .apt_package
+                .as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no apt_package defined", toolName))?;
-            
+
             let manager = crate::tools::package_managers::AptManager::new(app_handle.clone());
             let started_event = EventEmitter::tool_installation_started(&toolName, "apt");
             let _ = app_handle.emit_all(TOOL_INSTALLATION_STARTED, started_event);
-            
+
             match manager.update(apt_package, &toolName).await {
                 Ok(message) => {
                     eprintln!("✅ Successfully updated {}", toolName);
                     let _ = recheck_tool(toolName.clone(), state).await;
-                    
-                    let completed_event = EventEmitter::tool_installation_completed(&toolName, true, &message);
+
+                    let completed_event =
+                        EventEmitter::tool_installation_completed(&toolName, true, &message);
                     let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
-                    
+
                     Ok(InstallationResult {
                         success: true,
                         message,
@@ -1466,30 +1624,34 @@ pub async fn update_tool(
                 Err(e) => {
                     let error_msg = format!("Failed to update {}: {}", toolName, e);
                     eprintln!("❌ {}", error_msg);
-                    
-                    let completed_event = EventEmitter::tool_installation_completed(&toolName, false, &error_msg);
+
+                    let completed_event =
+                        EventEmitter::tool_installation_completed(&toolName, false, &error_msg);
                     let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
-                    
+
                     Err(error_msg)
                 }
             }
-        },
+        }
         "winget" => {
-            let winget_id = tool_def.winget_id.as_ref()
+            let winget_id = tool_def
+                .winget_id
+                .as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no winget_id defined", toolName))?;
-            
+
             let manager = crate::tools::package_managers::WingetManager::new(app_handle.clone());
             let started_event = EventEmitter::tool_installation_started(&toolName, "winget");
             let _ = app_handle.emit_all(TOOL_INSTALLATION_STARTED, started_event);
-            
+
             match manager.update(winget_id, &toolName).await {
                 Ok(message) => {
                     eprintln!("✅ Successfully updated {}", toolName);
                     let _ = recheck_tool(toolName.clone(), state).await;
-                    
-                    let completed_event = EventEmitter::tool_installation_completed(&toolName, true, &message);
+
+                    let completed_event =
+                        EventEmitter::tool_installation_completed(&toolName, true, &message);
                     let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
-                    
+
                     Ok(InstallationResult {
                         success: true,
                         message,
@@ -1500,116 +1662,128 @@ pub async fn update_tool(
                 Err(e) => {
                     let error_msg = format!("Failed to update {}: {}", toolName, e);
                     eprintln!("❌ {}", error_msg);
-                    
-                    let completed_event = EventEmitter::tool_installation_completed(&toolName, false, &error_msg);
+
+                    let completed_event =
+                        EventEmitter::tool_installation_completed(&toolName, false, &error_msg);
                     let _ = app_handle.emit_all(TOOL_INSTALLATION_COMPLETED, completed_event);
-                    
+
                     Err(error_msg)
                 }
             }
-        },
+        }
         "git-pip" => {
             // For git-pip, we need to reinstall from the repo
-            let git_repo = tool_def.git_repo.as_ref()
+            let git_repo = tool_def
+                .git_repo
+                .as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no git_repo defined", toolName))?;
-            
+
             let manager = crate::tools::package_managers::GitPipInstaller::new();
-            
+
             // Reinstall to update
-            let result = manager.install(git_repo, &toolName, Some(&app_handle)).await?;
-            
+            let result = manager
+                .install(git_repo, &toolName, Some(&app_handle))
+                .await?;
+
             if result.success {
                 eprintln!("✅ Successfully updated {}", toolName);
                 let _ = recheck_tool(toolName.clone(), state).await;
             } else {
                 eprintln!("❌ Failed to update {}: {}", toolName, result.message);
             }
-            
+
             Ok(InstallationResult {
                 success: result.success,
                 message: result.message,
                 steps: vec![],
                 requires_restart: false,
             })
-        },
-        "gem" => {
-            let gem_package = tool_def.gem_package.as_ref()
-                .ok_or_else(|| format!("Tool '{}' has no gem_package defined", toolName))?;
-            
-            let manager = crate::tools::package_managers::GemInstaller::new(app_handle.clone());
-            
-            match manager.update(tool_def, &toolName).await {
-                Ok(message) => {
-                    eprintln!("✅ {}", message);
-                    let _ = recheck_tool(toolName.clone(), state).await;
-                    
-                    Ok(InstallationResult {
-                        success: true,
-                        message,
-                        steps: vec![],
-                        requires_restart: false,
-                    })
-                }
-                Err(e) => {
-                    let error_msg = format!("Failed to update {}: {}", toolName, e);
-                    eprintln!("❌ {}", error_msg);
-                    Err(error_msg)
-                }
-            }
-        },
-        "npm" => {
-            let npm_package = tool_def.npm_package.as_ref()
-                .ok_or_else(|| format!("Tool '{}' has no npm_package defined", toolName))?;
-            
-            let manager = crate::tools::package_managers::NpmInstaller::new(app_handle.clone());
-            
-            match manager.update(tool_def, &toolName).await {
-                Ok(message) => {
-                    eprintln!("✅ {}", message);
-                    let _ = recheck_tool(toolName.clone(), state).await;
-                    
-                    Ok(InstallationResult {
-                        success: true,
-                        message,
-                        steps: vec![],
-                        requires_restart: false,
-                    })
-                }
-                Err(e) => {
-                    let error_msg = format!("Failed to update {}: {}", toolName, e);
-                    eprintln!("❌ {}", error_msg);
-                    Err(error_msg)
-                }
-            }
-        },
-        "cargo" => {
-            let cargo_package = tool_def.cargo_package.as_ref()
-                .ok_or_else(|| format!("Tool '{}' has no cargo_package defined", toolName))?;
-            
-            let manager = crate::tools::package_managers::CargoInstaller::new(app_handle.clone());
-            
-            match manager.update(tool_def, &toolName).await {
-                Ok(message) => {
-                    eprintln!("✅ {}", message);
-                    let _ = recheck_tool(toolName.clone(), state).await;
-                    
-                    Ok(InstallationResult {
-                        success: true,
-                        message,
-                        steps: vec![],
-                        requires_restart: false,
-                    })
-                }
-                Err(e) => {
-                    let error_msg = format!("Failed to update {}: {}", toolName, e);
-                    eprintln!("❌ {}", error_msg);
-                    Err(error_msg)
-                }
-            }
-        },
-        _ => {
-            Err(format!("Cannot update tool '{}' with install method '{}'", toolName, tool_def.install_method))
         }
+        "gem" => {
+            let gem_package = tool_def
+                .gem_package
+                .as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no gem_package defined", toolName))?;
+
+            let manager = crate::tools::package_managers::GemInstaller::new(app_handle.clone());
+
+            match manager.update(tool_def, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to update {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    Err(error_msg)
+                }
+            }
+        }
+        "npm" => {
+            let npm_package = tool_def
+                .npm_package
+                .as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no npm_package defined", toolName))?;
+
+            let manager = crate::tools::package_managers::NpmInstaller::new(app_handle.clone());
+
+            match manager.update(tool_def, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to update {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    Err(error_msg)
+                }
+            }
+        }
+        "cargo" => {
+            let cargo_package = tool_def
+                .cargo_package
+                .as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no cargo_package defined", toolName))?;
+
+            let manager = crate::tools::package_managers::CargoInstaller::new(app_handle.clone());
+
+            match manager.update(tool_def, &toolName).await {
+                Ok(message) => {
+                    eprintln!("✅ {}", message);
+                    let _ = recheck_tool(toolName.clone(), state).await;
+
+                    Ok(InstallationResult {
+                        success: true,
+                        message,
+                        steps: vec![],
+                        requires_restart: false,
+                    })
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to update {}: {}", toolName, e);
+                    eprintln!("❌ {}", error_msg);
+                    Err(error_msg)
+                }
+            }
+        }
+        _ => Err(format!(
+            "Cannot update tool '{}' with install method '{}'",
+            toolName, tool_def.install_method
+        )),
     }
 }
 
@@ -1617,85 +1791,96 @@ pub async fn update_tool(
 pub async fn uninstall_tool(
     #[allow(non_snake_case)] toolName: String,
     state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle
+    app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     eprintln!("🗑️  Uninstalling tool: {}", toolName);
-    
+
     // Look up tool in catalog
     let catalog = get_tool_catalog();
-    let tool_def = catalog.get(&toolName)
+    let tool_def = catalog
+        .get(&toolName)
         .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
-    
+
     // Route to appropriate installer
     match tool_def.install_method.as_str() {
         "go" => {
             let manager = GoInstallManager::new(app_handle.clone());
-            
+
             let message = manager.uninstall(&toolName).await?;
-            
+
             eprintln!("✅ {}", message);
-            
+
             // Trigger tool recheck
             let _ = recheck_tool(toolName.clone(), state).await;
-            
+
             Ok(message)
-        },
+        }
         "pipx" => {
-            let pipx_package = tool_def.pipx_package.as_ref()
+            let pipx_package = tool_def
+                .pipx_package
+                .as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no pipx_package defined", toolName))?;
-            
+
             let manager = crate::tools::package_managers::PipxManager::new();
-            
+
             let message = manager.uninstall(pipx_package, &toolName).await?;
-            
+
             eprintln!("✅ {}", message);
-            
+
             let _ = recheck_tool(toolName.clone(), state).await;
-            
+
             Ok(message)
-        },
+        }
         "apt" => {
-            let apt_package = tool_def.apt_package.as_ref()
+            let apt_package = tool_def
+                .apt_package
+                .as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no apt_package defined", toolName))?;
-            
+
             let manager = crate::tools::package_managers::AptManager::new(app_handle.clone());
-            
-            let message = manager.uninstall(apt_package, &toolName).await
+
+            let message = manager
+                .uninstall(apt_package, &toolName)
+                .await
                 .map_err(|e| e.to_string())?;
-            
+
             eprintln!("✅ {}", message);
-            
+
             let _ = recheck_tool(toolName.clone(), state).await;
-            
+
             Ok(message)
-        },
+        }
         "winget" => {
-            let winget_id = tool_def.winget_id.as_ref()
+            let winget_id = tool_def
+                .winget_id
+                .as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no winget_id defined", toolName))?;
-            
+
             let manager = crate::tools::package_managers::WingetManager::new(app_handle.clone());
-            
-            let message = manager.uninstall(winget_id, &toolName).await
+
+            let message = manager
+                .uninstall(winget_id, &toolName)
+                .await
                 .map_err(|e| e.to_string())?;
-            
+
             eprintln!("✅ {}", message);
-            
+
             let _ = recheck_tool(toolName.clone(), state).await;
-            
+
             Ok(message)
-        },
+        }
         "git-pip" => {
             let manager = crate::tools::package_managers::GitPipInstaller::new();
             let message = manager.uninstall(&toolName).await?;
-            
+
             eprintln!("✅ {}", message);
             let _ = recheck_tool(toolName.clone(), state).await;
-            
+
             Ok(message)
-        },
+        }
         "gem" => {
             let manager = crate::tools::package_managers::GemInstaller::new(app_handle.clone());
-            
+
             match manager.uninstall(tool_def).await {
                 Ok(message) => {
                     eprintln!("✅ {}", message);
@@ -1708,10 +1893,10 @@ pub async fn uninstall_tool(
                     Err(error_msg)
                 }
             }
-        },
+        }
         "npm" => {
             let manager = crate::tools::package_managers::NpmInstaller::new(app_handle.clone());
-            
+
             match manager.uninstall(tool_def).await {
                 Ok(message) => {
                     eprintln!("✅ {}", message);
@@ -1724,10 +1909,10 @@ pub async fn uninstall_tool(
                     Err(error_msg)
                 }
             }
-        },
+        }
         "cargo" => {
             let manager = crate::tools::package_managers::CargoInstaller::new(app_handle.clone());
-            
+
             match manager.uninstall(tool_def).await {
                 Ok(message) => {
                     eprintln!("✅ {}", message);
@@ -1740,10 +1925,11 @@ pub async fn uninstall_tool(
                     Err(error_msg)
                 }
             }
-        },
-        _ => {
-            Err(format!("Cannot uninstall tool '{}' with install method '{}'", toolName, tool_def.install_method))
         }
+        _ => Err(format!(
+            "Cannot uninstall tool '{}' with install method '{}'",
+            toolName, tool_def.install_method
+        )),
     }
 }
 
@@ -1751,28 +1937,27 @@ pub async fn uninstall_tool(
 pub async fn check_tool_installed(
     #[allow(non_snake_case)] toolName: String,
     _state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle
+    app_handle: tauri::AppHandle,
 ) -> Result<bool, String> {
     eprintln!("🔍 Checking if tool is installed: {}", toolName);
-    
+
     // Look up tool in catalog
     let catalog = get_tool_catalog();
-    let tool_def = catalog.get(&toolName)
+    let tool_def = catalog
+        .get(&toolName)
         .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
-    
+
     // Route to appropriate installer
     match tool_def.install_method.as_str() {
         "go" => {
             let manager = GoInstallManager::new(app_handle.clone());
             let installed = manager.is_installed(&toolName);
-            
+
             eprintln!("   Installed: {}", installed);
-            
+
             Ok(installed)
-        },
-        "pipx" => {
-            Err(format!("pipx check not yet implemented for '{}'", toolName))
-        },
+        }
+        "pipx" => Err(format!("pipx check not yet implemented for '{}'", toolName)),
         _ => {
             // For other methods, assume not installed via this command
             Ok(false)
@@ -1784,32 +1969,31 @@ pub async fn check_tool_installed(
 pub async fn get_tool_version(
     #[allow(non_snake_case)] toolName: String,
     _state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle
+    app_handle: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
     eprintln!("🔍 Getting tool version: {}", toolName);
-    
+
     // Look up tool in catalog
     let catalog = get_tool_catalog();
-    let tool_def = catalog.get(&toolName)
+    let tool_def = catalog
+        .get(&toolName)
         .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
-    
+
     // Route to appropriate installer
     match tool_def.install_method.as_str() {
         "go" => {
             let manager = GoInstallManager::new(app_handle.clone());
             let version = manager.get_version(&toolName).await;
-            
+
             if let Some(ref v) = version {
                 eprintln!("   Version: {}", v);
             } else {
                 eprintln!("   Version: unknown");
             }
-            
+
             Ok(version)
-        },
-        _ => {
-            Ok(None)
         }
+        _ => Ok(None),
     }
 }
 
@@ -1817,107 +2001,152 @@ pub async fn get_tool_version(
 pub async fn check_tool_update(
     #[allow(non_snake_case)] toolName: String,
     _state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle
+    app_handle: tauri::AppHandle,
 ) -> Result<VersionCheckResult, String> {
     eprintln!("🔄 Checking for updates: {}", toolName);
-    
+
     // Look up tool in catalog
     let catalog = get_tool_catalog();
-    let tool_def = catalog.get(&toolName)
+    let tool_def = catalog
+        .get(&toolName)
         .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
-    
+
     // Route to appropriate version checker based on install method
     match tool_def.install_method.as_str() {
         "go" => {
             let manager = GoInstallManager::new(app_handle.clone());
-            
+
             // Get the binary path
-            let binary_path = manager.get_tool_path(&toolName)
+            let binary_path = manager
+                .get_tool_path(&toolName)
                 .ok_or_else(|| format!("Tool '{}' is not installed", toolName))?;
-            
+
             // Get the go module path
-            let module_path = tool_def.go_module.as_ref()
+            let module_path = tool_def
+                .go_module
+                .as_ref()
                 .ok_or_else(|| format!("Tool '{}' has no go_module defined", toolName))?;
-            
+
             // Check for updates using go version -m and go list -m -versions
-            let result = crate::tools::package_managers::check_go_update(&binary_path, module_path).await?;
-            
+            let result =
+                crate::tools::package_managers::check_go_update(&binary_path, module_path).await?;
+
             if result.has_update {
-                eprintln!("   ⬆️  Update available: {} -> {}", 
-                    result.current_version.as_ref().unwrap_or(&"unknown".to_string()),
-                    result.latest_version.as_ref().unwrap_or(&"unknown".to_string())
+                eprintln!(
+                    "   ⬆️  Update available: {} -> {}",
+                    result
+                        .current_version
+                        .as_ref()
+                        .unwrap_or(&"unknown".to_string()),
+                    result
+                        .latest_version
+                        .as_ref()
+                        .unwrap_or(&"unknown".to_string())
                 );
             } else {
-                eprintln!("   ✅ Up to date: {}", 
-                    result.current_version.as_ref().unwrap_or(&"unknown".to_string())
+                eprintln!(
+                    "   ✅ Up to date: {}",
+                    result
+                        .current_version
+                        .as_ref()
+                        .unwrap_or(&"unknown".to_string())
                 );
             }
-            
+
             Ok(result)
-        },
-        "apt" => {
-            let package_name = tool_def.apt_package.as_ref()
-                .ok_or_else(|| format!("Tool '{}' has no apt_package defined", toolName))?;
-            
-            let result = crate::tools::package_managers::check_apt_update(package_name).await?;
-            
-            if result.has_update {
-                eprintln!("   ⬆️  Update available: {} -> {}", 
-                    result.current_version.as_ref().unwrap_or(&"unknown".to_string()),
-                    result.latest_version.as_ref().unwrap_or(&"unknown".to_string())
-                );
-            }
-            
-            Ok(result)
-        },
-        "winget" => {
-            let winget_id = tool_def.winget_id.as_ref()
-                .ok_or_else(|| format!("Tool '{}' has no winget_id defined", toolName))?;
-            
-            let result = crate::tools::package_managers::check_winget_update(winget_id).await?;
-            
-            if result.has_update {
-                eprintln!("   ⬆️  Update available: {} -> {}", 
-                    result.current_version.as_ref().unwrap_or(&"unknown".to_string()),
-                    result.latest_version.as_ref().unwrap_or(&"unknown".to_string())
-                );
-            }
-            
-            Ok(result)
-        },
-        "pipx" => {
-            let package_name = tool_def.pipx_package.as_ref()
-                .ok_or_else(|| format!("Tool '{}' has no pipx_package defined", toolName))?;
-            
-            let result = crate::tools::package_managers::check_pipx_update(package_name).await?;
-            
-            if result.has_update {
-                eprintln!("   ⬆️  Update available: {} -> {}", 
-                    result.current_version.as_ref().unwrap_or(&"unknown".to_string()),
-                    result.latest_version.as_ref().unwrap_or(&"unknown".to_string())
-                );
-            }
-            
-            Ok(result)
-        },
-        _ => {
-            Err(format!("Version check not supported for install method '{}'", tool_def.install_method))
         }
+        "apt" => {
+            let package_name = tool_def
+                .apt_package
+                .as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no apt_package defined", toolName))?;
+
+            let result = crate::tools::package_managers::check_apt_update(package_name).await?;
+
+            if result.has_update {
+                eprintln!(
+                    "   ⬆️  Update available: {} -> {}",
+                    result
+                        .current_version
+                        .as_ref()
+                        .unwrap_or(&"unknown".to_string()),
+                    result
+                        .latest_version
+                        .as_ref()
+                        .unwrap_or(&"unknown".to_string())
+                );
+            }
+
+            Ok(result)
+        }
+        "winget" => {
+            let winget_id = tool_def
+                .winget_id
+                .as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no winget_id defined", toolName))?;
+
+            let result = crate::tools::package_managers::check_winget_update(winget_id).await?;
+
+            if result.has_update {
+                eprintln!(
+                    "   ⬆️  Update available: {} -> {}",
+                    result
+                        .current_version
+                        .as_ref()
+                        .unwrap_or(&"unknown".to_string()),
+                    result
+                        .latest_version
+                        .as_ref()
+                        .unwrap_or(&"unknown".to_string())
+                );
+            }
+
+            Ok(result)
+        }
+        "pipx" => {
+            let package_name = tool_def
+                .pipx_package
+                .as_ref()
+                .ok_or_else(|| format!("Tool '{}' has no pipx_package defined", toolName))?;
+
+            let result = crate::tools::package_managers::check_pipx_update(package_name).await?;
+
+            if result.has_update {
+                eprintln!(
+                    "   ⬆️  Update available: {} -> {}",
+                    result
+                        .current_version
+                        .as_ref()
+                        .unwrap_or(&"unknown".to_string()),
+                    result
+                        .latest_version
+                        .as_ref()
+                        .unwrap_or(&"unknown".to_string())
+                );
+            }
+
+            Ok(result)
+        }
+        _ => Err(format!(
+            "Version check not supported for install method '{}'",
+            tool_def.install_method
+        )),
     }
 }
 
 #[tauri::command]
 pub async fn get_tool_installation_info(
     #[allow(non_snake_case)] toolName: String,
-    _state: tauri::State<'_, AppState>
+    _state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
     eprintln!("ℹ️  Getting installation info for: {}", toolName);
-    
+
     // Look up tool in catalog
     let catalog = get_tool_catalog();
-    let tool_def = catalog.get(&toolName)
+    let tool_def = catalog
+        .get(&toolName)
         .ok_or_else(|| format!("Tool '{}' not found in catalog", toolName))?;
-    
+
     let info = serde_json::json!({
         "name": tool_def.name,
         "install_method": tool_def.install_method,
@@ -1928,14 +2157,15 @@ pub async fn get_tool_installation_info(
         "description": tool_def.description,
         "category": tool_def.category,
     });
-    
+
     Ok(info)
 }
 
 // Elevation Commands
 
 #[tauri::command]
-pub async fn check_elevation_support() -> Result<crate::tools::package_managers::ElevationMethod, String> {
+pub async fn check_elevation_support(
+) -> Result<crate::tools::package_managers::ElevationMethod, String> {
     eprintln!("🔐 Checking elevation support...");
     let method = crate::tools::package_managers::check_elevation_support().await;
     eprintln!("✓ Elevation method: {:?}", method);
@@ -1949,20 +2179,18 @@ pub async fn execute_elevated_command(
     timeout_secs: u64,
 ) -> Result<crate::tools::package_managers::ElevationResult, String> {
     eprintln!("🔐 Executing elevated command: {} {:?}", command, args);
-    
+
     let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = crate::tools::package_managers::execute_elevated(
-        &command,
-        &args_refs,
-        timeout_secs
-    ).await?;
-    
+    let result =
+        crate::tools::package_managers::execute_elevated(&command, &args_refs, timeout_secs)
+            .await?;
+
     if result.success {
         eprintln!("✅ Elevated command succeeded");
     } else {
         eprintln!("❌ Elevated command failed");
     }
-    
+
     Ok(result)
 }
 
@@ -1973,23 +2201,28 @@ pub async fn try_command_with_elevation(
     reason: String,
     timeout_secs: u64,
 ) -> Result<crate::tools::package_managers::ElevationResult, String> {
-    eprintln!("🔐 Trying command with smart elevation: {} {:?}", command, args);
+    eprintln!(
+        "🔐 Trying command with smart elevation: {} {:?}",
+        command, args
+    );
     eprintln!("   Reason: {}", reason);
-    
+
     let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    
+
     match crate::tools::package_managers::execute_with_smart_elevation(
         &command,
         &args_refs,
         &reason,
-        timeout_secs
-    ).await {
+        timeout_secs,
+    )
+    .await
+    {
         Ok(result) => Ok(result),
         Err(e) if e.starts_with("ELEVATION_REQUIRED:") => {
             // Return error to frontend so it can show dialog
             Err(e)
-        },
-        Err(e) => Err(e)
+        }
+        Err(e) => Err(e),
     }
 }
 
@@ -2001,10 +2234,12 @@ pub async fn check_pipx_path() -> Result<serde_json::Value, String> {
         let local_bin = std::env::var("USERPROFILE")
             .map(|p| format!(r"{p}\.local\bin"))
             .unwrap_or_default();
-        
+
         let path = std::env::var("PATH").unwrap_or_default();
-        let in_path = path.split(';').any(|p| p.trim().eq_ignore_ascii_case(&local_bin));
-        
+        let in_path = path
+            .split(';')
+            .any(|p| p.trim().eq_ignore_ascii_case(&local_bin));
+
         // Check for multiple pipx installations
         let old_pipx = std::env::var("USERPROFILE")
             .map(|p| format!(r"{p}\pipx"))
@@ -2012,10 +2247,10 @@ pub async fn check_pipx_path() -> Result<serde_json::Value, String> {
         let new_pipx = std::env::var("LOCALAPPDATA")
             .map(|p| format!(r"{p}\pipx"))
             .unwrap_or_default();
-        
+
         let old_exists = std::path::Path::new(&old_pipx).exists();
         let new_exists = std::path::Path::new(&new_pipx).exists();
-        
+
         Ok(serde_json::json!({
             "in_path": in_path,
             "local_bin": local_bin,
@@ -2026,16 +2261,16 @@ pub async fn check_pipx_path() -> Result<serde_json::Value, String> {
             "new_exists": new_exists
         }))
     }
-    
+
     #[cfg(not(target_os = "windows"))]
     {
         let local_bin = std::env::var("HOME")
             .map(|p| format!("{p}/.local/bin"))
             .unwrap_or_default();
-        
+
         let path = std::env::var("PATH").unwrap_or_default();
         let in_path = path.split(':').any(|p| p == local_bin);
-        
+
         Ok(serde_json::json!({
             "in_path": in_path,
             "local_bin": local_bin,
@@ -2055,14 +2290,14 @@ pub async fn fix_pipx_path() -> Result<String, String> {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
-            
+
             if output.status.success() {
                 Ok(format!("✅ PATH updated successfully!\n\n{}\n\n⚠️ Please restart your terminal and this app for changes to take effect.", stdout))
             } else {
                 Err(format!("Failed to fix PATH: {}", stderr))
             }
         }
-        Err(e) => Err(format!("Failed to execute pipx ensurepath: {}", e))
+        Err(e) => Err(format!("Failed to execute pipx ensurepath: {}", e)),
     }
 }
 
@@ -2074,14 +2309,14 @@ pub async fn cleanup_old_pipx() -> Result<String, String> {
         let old_pipx = std::env::var("USERPROFILE")
             .map(|p| format!(r"{p}\pipx"))
             .map_err(|e| format!("Failed to get USERPROFILE: {}", e))?;
-        
+
         if !std::path::Path::new(&old_pipx).exists() {
             return Ok("No old pipx installation found.".to_string());
         }
-        
+
         // First, try to uninstall all tools from old pipx
         let mut cleanup_messages = Vec::new();
-        
+
         // List tools in old venvs directory
         let old_venvs = format!(r"{}\venvs", old_pipx);
         if let Ok(entries) = std::fs::read_dir(&old_venvs) {
@@ -2099,26 +2334,25 @@ pub async fn cleanup_old_pipx() -> Result<String, String> {
                                 cleanup_messages.push(format!("✅ Uninstalled {}", tool_name));
                             }
                             _ => {
-                                cleanup_messages.push(format!("⚠️  Could not uninstall {}", tool_name));
+                                cleanup_messages
+                                    .push(format!("⚠️  Could not uninstall {}", tool_name));
                             }
                         }
                     }
                 }
             }
         }
-        
+
         // Remove the old directory
         match std::fs::remove_dir_all(&old_pipx) {
             Ok(_) => {
                 cleanup_messages.push(format!("✅ Removed old pipx directory: {}", old_pipx));
                 Ok(cleanup_messages.join("\n"))
             }
-            Err(e) => {
-                Err(format!("Failed to remove old pipx directory: {}", e))
-            }
+            Err(e) => Err(format!("Failed to remove old pipx directory: {}", e)),
         }
     }
-    
+
     #[cfg(not(target_os = "windows"))]
     {
         Ok("This feature is only needed on Windows.".to_string())
@@ -2185,9 +2419,7 @@ pub async fn get_adapters_by_risk_level(
 
 /// Check if an adapter exists for a tool
 #[tauri::command]
-pub async fn has_adapter(
-    #[allow(non_snake_case)] toolName: String,
-) -> Result<bool, String> {
+pub async fn has_adapter(#[allow(non_snake_case)] toolName: String) -> Result<bool, String> {
     let registry = crate::adapters::AdapterRegistry::new();
     Ok(registry.has_adapter(&toolName))
 }
@@ -2198,4 +2430,3 @@ pub async fn get_adapter_categories() -> Result<Vec<String>, String> {
     let registry = crate::adapters::AdapterRegistry::new();
     Ok(registry.get_categories())
 }
-

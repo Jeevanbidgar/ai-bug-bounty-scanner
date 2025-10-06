@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 
 // Event payload structures
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,11 +135,7 @@ impl EventEmitter {
         }
     }
 
-    pub fn workflow_step_started(
-        execution_id: &str,
-        step_id: &str,
-        step_name: &str,
-    ) -> StepEvent {
+    pub fn workflow_step_started(execution_id: &str, step_id: &str, step_name: &str) -> StepEvent {
         StepEvent {
             execution_id: execution_id.to_string(),
             step_id: step_id.to_string(),
@@ -162,11 +158,7 @@ impl EventEmitter {
         }
     }
 
-    pub fn workflow_stdout(
-        execution_id: &str,
-        step_id: &str,
-        line: &str,
-    ) -> StreamEvent {
+    pub fn workflow_stdout(execution_id: &str, step_id: &str, line: &str) -> StreamEvent {
         StreamEvent {
             execution_id: execution_id.to_string(),
             step_id: step_id.to_string(),
@@ -176,11 +168,7 @@ impl EventEmitter {
         }
     }
 
-    pub fn workflow_stderr(
-        execution_id: &str,
-        step_id: &str,
-        line: &str,
-    ) -> StreamEvent {
+    pub fn workflow_stderr(execution_id: &str, step_id: &str, line: &str) -> StreamEvent {
         StreamEvent {
             execution_id: execution_id.to_string(),
             step_id: step_id.to_string(),

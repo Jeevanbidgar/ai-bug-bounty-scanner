@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import type { Tool } from '../services/api'
-import { invoke } from '@tauri-apps/api/tauri'
+import { invoke } from '@tauri-apps/api/core'
 import { useToast } from '../hooks/useToast'
 import Toast from './ui/Toast'
 import apiService from '../services/api'

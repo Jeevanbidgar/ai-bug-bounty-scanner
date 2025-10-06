@@ -20,7 +20,7 @@ impl Version {
     /// Parse a version string like "1.2.3" or "v2.0.1-beta"
     pub fn parse(s: &str) -> Option<Self> {
         let s = s.trim().trim_start_matches('v');
-        
+
         // Split by '-' to separate version from pre-release
         let parts: Vec<&str> = s.split('-').collect();
         let version_part = parts[0];
@@ -227,25 +227,16 @@ mod tests {
 
     #[test]
     fn test_parse_version_from_output() {
-        assert_eq!(
-            parse_version("subfinder v2.5.5"),
-            Some("2.5.5".to_string())
-        );
+        assert_eq!(parse_version("subfinder v2.5.5"), Some("2.5.5".to_string()));
 
         assert_eq!(
             parse_version("nuclei version 3.0.4"),
             Some("3.0.4".to_string())
         );
 
-        assert_eq!(
-            parse_version("nmap version 7.94"),
-            Some("7.94".to_string())
-        );
+        assert_eq!(parse_version("nmap version 7.94"), Some("7.94".to_string()));
 
-        assert_eq!(
-            parse_version("v1.2.3-beta"),
-            Some("1.2.3-beta".to_string())
-        );
+        assert_eq!(parse_version("v1.2.3-beta"), Some("1.2.3-beta".to_string()));
     }
 
     #[test]

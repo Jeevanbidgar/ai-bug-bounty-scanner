@@ -1,14 +1,14 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::path::PathBuf;
-use tokio::sync::RwLock;
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use regex::Regex;
-use chrono::{DateTime, Utc};
+use super::catalog::{get_tool_catalog, ToolDefinition as CatalogToolDefinition};
 use crate::tools::registry::ToolRegistry;
 use crate::workflow::types::WorkflowTemplate;
-use super::catalog::{get_tool_catalog, ToolDefinition as CatalogToolDefinition};
+use anyhow::Result;
+use chrono::{DateTime, Utc};
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 const REFRESH_TTL: u64 = 900; // 15 minutes in seconds
 const VERSION_TIMEOUT: u64 = 5; // seconds
@@ -86,7 +86,7 @@ impl ToolDiscoveryService {
         let catalog = get_tool_catalog();
         let additional_paths = Self::build_additional_search_paths();
         let cache_path = Self::get_cache_file_path();
-        
+
         let mut cache = ToolCache {
             tools: HashMap::new(),
             manual_tools: vec![],
@@ -95,7 +95,9 @@ impl ToolDiscoveryService {
 
         // Initialize cache with placeholder entries from catalog
         for (name, def) in &catalog {
-            cache.tools.insert(name.clone(), ToolRecord::from_catalog_definition(def));
+            cache
+                .tools
+                .insert(name.clone(), ToolRecord::from_catalog_definition(def));
         }
 
         Self {
@@ -115,19 +117,23 @@ impl ToolDiscoveryService {
         #[cfg(debug_assertions)]
         {
             // Development mode: use workspace root
-            let workspace_root = std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."));
-            
+            let workspace_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
             // Go up from src-tauri to workspace root if needed
             let workspace_root = if workspace_root.ends_with("src-tauri") {
-                workspace_root.parent().unwrap_or(&workspace_root).to_path_buf()
+                workspace_root
+                    .parent()
+                    .unwrap_or(&workspace_root)
+                    .to_path_buf()
             } else {
                 workspace_root
             };
-            
-            workspace_root.join("data").join("tool_discovery_cache.json")
+
+            workspace_root
+                .join("data")
+                .join("tool_discovery_cache.json")
         }
-        
+
         #[cfg(not(debug_assertions))]
         {
             // Production mode: use app data directory
@@ -166,10 +172,10 @@ impl ToolDiscoveryService {
             if let Ok(home) = std::env::var("USERPROFILE") {
                 paths.push(PathBuf::from(&home).join("scoop\\shims"));
                 paths.push(PathBuf::from(&home).join("AppData\\Local\\Microsoft\\WindowsApps"));
-                
+
                 // Add pipx bin directory (where pipx installs executables)
                 paths.push(PathBuf::from(&home).join(".local\\bin"));
-                
+
                 // Add Go bin directory
                 paths.push(PathBuf::from(&home).join("go\\bin"));
             }
@@ -199,7 +205,7 @@ impl ToolDiscoveryService {
 
     async fn load_builtin_definitions(&self) -> Result<()> {
         let mut definitions = self.definitions.write().await;
-        
+
         let builtin_tools = self.get_builtin_tool_definitions();
         for tool in builtin_tools {
             definitions.insert(tool.name.clone(), tool);
@@ -275,7 +281,8 @@ impl ToolDiscoveryService {
             },
             ToolDefinition {
                 name: "waybackurls".to_string(),
-                description: "Fetch all the URLs that the Wayback Machine has for the given domain".to_string(),
+                description: "Fetch all the URLs that the Wayback Machine has for the given domain"
+                    .to_string(),
                 category: "url_discovery".to_string(),
                 default_args: vec![],
                 version_command: vec!["waybackurls".to_string(), "-version".to_string()],
@@ -286,7 +293,10 @@ impl ToolDiscoveryService {
                 name: "ffuf".to_string(),
                 description: "Fast web fuzzer written in Go".to_string(),
                 category: "directory_fuzzing".to_string(),
-                default_args: vec!["-w".to_string(), "/usr/share/wordlists/dirb/common.txt".to_string()],
+                default_args: vec![
+                    "-w".to_string(),
+                    "/usr/share/wordlists/dirb/common.txt".to_string(),
+                ],
                 version_command: vec!["ffuf".to_string(), "-V".to_string()],
                 expected_outputs: vec!["ffuf_output.json".to_string()],
                 timeout: 600,
@@ -345,7 +355,11 @@ impl ToolDiscoveryService {
         let definitions = self.definitions.read().await;
 
         for (tool_name, _) in definitions.iter() {
-            if self.check_tool_availability(tool_name).await.unwrap_or(false) {
+            if self
+                .check_tool_availability(tool_name)
+                .await
+                .unwrap_or(false)
+            {
                 available_tools.push(tool_name.clone());
             }
         }
@@ -353,7 +367,10 @@ impl ToolDiscoveryService {
         Ok(available_tools)
     }
 
-    pub async fn get_tool_compatibility(&self, workflow_template: &WorkflowTemplate) -> Result<crate::workflow::types::WorkflowCompatibility> {
+    pub async fn get_tool_compatibility(
+        &self,
+        workflow_template: &WorkflowTemplate,
+    ) -> Result<crate::workflow::types::WorkflowCompatibility> {
         let mut required_tools = Vec::new();
         let mut available_tools = Vec::new();
         let mut missing_tools = Vec::new();
@@ -365,8 +382,12 @@ impl ToolDiscoveryService {
                 let tool_name = first_arg.trim();
                 if !required_tools.contains(&tool_name.to_string()) {
                     required_tools.push(tool_name.to_string());
-                    
-                    if self.check_tool_availability(tool_name).await.unwrap_or(false) {
+
+                    if self
+                        .check_tool_availability(tool_name)
+                        .await
+                        .unwrap_or(false)
+                    {
                         available_tools.push(tool_name.to_string());
                     } else {
                         missing_tools.push(tool_name.to_string());
@@ -401,7 +422,7 @@ impl ToolDiscoveryService {
     }
 
     // New catalog-based methods for enhanced tool discovery
-    
+
     /// Load cached tool records from disk
     pub async fn load_cache(&mut self) -> Result<()> {
         if self.cache_file_path.exists() {
@@ -410,7 +431,10 @@ impl ToolDiscoveryService {
             *self.cache.write().await = cache;
             eprintln!("✅ Loaded cache from: {}", self.cache_file_path.display());
         } else {
-            eprintln!("ℹ️  No cache file found at: {}", self.cache_file_path.display());
+            eprintln!(
+                "ℹ️  No cache file found at: {}",
+                self.cache_file_path.display()
+            );
         }
         Ok(())
     }
@@ -420,7 +444,7 @@ impl ToolDiscoveryService {
         if let Some(parent) = self.cache_file_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        
+
         let cache = self.cache.read().await;
         let json = serde_json::to_string_pretty(&*cache)?;
         tokio::fs::write(&self.cache_file_path, json).await?;
@@ -443,36 +467,50 @@ impl ToolDiscoveryService {
     /// Get all tool records (new catalog-based implementation)
     pub async fn get_all_tool_records(&self, force_refresh: bool) -> Vec<ToolRecord> {
         let mut cache = self.cache.write().await;
-        
-        eprintln!("get_all_tool_records: force_refresh={}, catalog size={}", force_refresh, self.catalog.len());
-        
+
+        eprintln!(
+            "get_all_tool_records: force_refresh={}, catalog size={}",
+            force_refresh,
+            self.catalog.len()
+        );
+
         // Check if this is the first time (no cache exists)
         let is_first_load = cache.last_refresh.is_none() && cache.tools.is_empty();
-        
+
         // Check if refresh needed - but SKIP auto-refresh on first load
         let needs_refresh = if is_first_load && !force_refresh {
             eprintln!("First load detected - skipping auto-refresh. Use force_refresh=true to discover tools.");
-            false  // Don't auto-refresh on first load unless explicitly requested
+            false // Don't auto-refresh on first load unless explicitly requested
         } else {
             force_refresh || self.is_stale(cache.last_refresh.as_ref())
         };
-        
-        eprintln!("needs_refresh={}, cache tools count={}", needs_refresh, cache.tools.len());
-        
+
+        eprintln!(
+            "needs_refresh={}, cache tools count={}",
+            needs_refresh,
+            cache.tools.len()
+        );
+
         if needs_refresh {
             eprintln!("Refreshing tools from catalog...");
             let mut discovered_count = 0;
             let mut missing_count = 0;
             let total_tools = self.catalog.len();
-            
+
             // Refresh all tools from catalog
             for (idx, (name, def)) in self.catalog.iter().enumerate() {
                 let mut record = ToolRecord::from_catalog_definition(def);
                 let progress = ((idx + 1) as f32 / total_tools as f32 * 100.0) as u32;
-                
+
                 // Emit progress event (we'll add window parameter later for Tauri events)
-                eprintln!("🔄 Scanning {}/{}: {} ({}%)", idx + 1, total_tools, name, progress);
-                
+                eprintln!(
+                    "🔄 Scanning {}/{}: {} ({}%)",
+                    idx + 1,
+                    total_tools,
+                    name,
+                    progress
+                );
+
                 // Try to resolve path
                 if let Ok(Some(path)) = self.resolve_tool_path(&record.command_template).await {
                     record.installed = true;
@@ -480,10 +518,12 @@ impl ToolDiscoveryService {
                     record.path = Some(path.clone());
                     discovered_count += 1;
                     eprintln!("✅ {} is available", name);
-                    
+
                     // Try to get version
                     if !def.version_args.is_empty() {
-                        if let Ok(version) = self.capture_tool_version(&path, &def.version_args).await {
+                        if let Ok(version) =
+                            self.capture_tool_version(&path, &def.version_args).await
+                        {
                             record.version = Some(version.clone());
                             record.raw_version = Some(version);
                         }
@@ -494,51 +534,57 @@ impl ToolDiscoveryService {
                     missing_count += 1;
                     eprintln!("❌ {} not found", name);
                 }
-                
+
                 record.last_checked = Some(Utc::now().to_rfc3339());
                 cache.tools.insert(name.clone(), record);
             }
-            
-            eprintln!("✅ Discovery complete: {} available, {} missing out of {} total", 
-                     discovered_count, missing_count, total_tools);
-            
+
+            eprintln!(
+                "✅ Discovery complete: {} available, {} missing out of {} total",
+                discovered_count, missing_count, total_tools
+            );
+
             cache.last_refresh = Some(Utc::now().to_rfc3339());
-            
+
             // Save cache
             drop(cache); // Release write lock before save
             let _ = self.save_cache().await;
             cache = self.cache.write().await;
         }
-        
+
         let result: Vec<ToolRecord> = cache.tools.values().cloned().collect();
         eprintln!("Returning {} tool records", result.len());
         result
     }
 
     /// Get a specific tool record
-    pub async fn get_tool_record(&self, tool_name: &str, force_refresh: bool) -> Option<ToolRecord> {
+    pub async fn get_tool_record(
+        &self,
+        tool_name: &str,
+        force_refresh: bool,
+    ) -> Option<ToolRecord> {
         let cache = self.cache.read().await;
-        
+
         if let Some(record) = cache.tools.get(tool_name) {
             let needs_refresh = force_refresh || self.is_stale(record.last_checked.as_ref());
-            
+
             if !needs_refresh {
                 return Some(record.clone());
             }
         }
-        
+
         drop(cache); // Release read lock
-        
+
         // Refresh this specific tool
         if let Some(def) = self.catalog.get(tool_name) {
             let mut record = ToolRecord::from_catalog_definition(def);
-            
+
             // Try to resolve path
             if let Ok(Some(path)) = self.resolve_tool_path(&record.command_template).await {
                 record.installed = true;
                 record.status = "available".to_string();
                 record.path = Some(path.clone());
-                
+
                 // Try to get version
                 if !def.version_args.is_empty() {
                     if let Ok(version) = self.capture_tool_version(&path, &def.version_args).await {
@@ -550,19 +596,19 @@ impl ToolDiscoveryService {
                 record.installed = false;
                 record.status = "missing".to_string();
             }
-            
+
             record.last_checked = Some(Utc::now().to_rfc3339());
-            
+
             // Update cache
             let mut cache = self.cache.write().await;
             cache.tools.insert(tool_name.to_string(), record.clone());
             drop(cache);
-            
+
             let _ = self.save_cache().await;
-            
+
             return Some(record);
         }
-        
+
         None
     }
 
@@ -574,7 +620,8 @@ impl ToolDiscoveryService {
 
     /// Get all unique categories from the catalog
     pub fn get_categories(&self) -> Vec<String> {
-        let mut categories: Vec<String> = self.catalog
+        let mut categories: Vec<String> = self
+            .catalog
             .values()
             .map(|def| def.category.clone())
             .collect::<std::collections::HashSet<_>>()
@@ -587,7 +634,8 @@ impl ToolDiscoveryService {
     /// Get tools filtered by category
     pub async fn get_tools_by_category(&self, category: &str) -> Vec<ToolRecord> {
         let cache = self.cache.read().await;
-        cache.tools
+        cache
+            .tools
             .values()
             .filter(|tool| tool.category == category)
             .cloned()
@@ -595,19 +643,24 @@ impl ToolDiscoveryService {
     }
 
     /// Add a manual tool
-    pub async fn add_manual_tool(&self, name: &str, path: &str, category: &str) -> Result<ToolRecord> {
+    pub async fn add_manual_tool(
+        &self,
+        name: &str,
+        path: &str,
+        category: &str,
+    ) -> Result<ToolRecord> {
         let mut cache = self.cache.write().await;
-        
+
         // Check if tool already exists
         if cache.tools.contains_key(name) {
             return Err(anyhow::anyhow!("Tool '{}' already exists", name));
         }
-        
+
         // Verify path exists
         if !tokio::fs::try_exists(path).await? {
             return Err(anyhow::anyhow!("Tool path does not exist: {}", path));
         }
-        
+
         // Create manual tool record
         let record = ToolRecord {
             name: name.to_string(),
@@ -626,31 +679,31 @@ impl ToolDiscoveryService {
             last_seen: Some(Utc::now().to_rfc3339()),
             last_error: None,
         };
-        
+
         cache.tools.insert(name.to_string(), record.clone());
         cache.manual_tools.push(name.to_string());
-        
+
         drop(cache);
         let _ = self.save_cache().await;
-        
+
         Ok(record)
     }
 
     /// Remove a manual tool
     pub async fn remove_manual_tool(&self, name: &str) -> Result<bool> {
         let mut cache = self.cache.write().await;
-        
+
         // Check if it's a manual tool
         if !cache.manual_tools.contains(&name.to_string()) {
             return Ok(false);
         }
-        
+
         cache.tools.remove(name);
         cache.manual_tools.retain(|t| t != name);
-        
+
         drop(cache);
         let _ = self.save_cache().await;
-        
+
         Ok(true)
     }
 
@@ -670,12 +723,12 @@ impl ToolDiscoveryService {
     /// Resolve tool path from command candidates
     async fn resolve_tool_path(&self, candidates: &[String]) -> Result<Option<String>> {
         eprintln!("🔎 Resolving tool path for candidates: {:?}", candidates);
-        
+
         for candidate in candidates {
             if candidate.is_empty() {
                 continue;
             }
-            
+
             // Check if it's an absolute path
             if std::path::Path::new(candidate).is_absolute() {
                 if tokio::fs::try_exists(candidate).await? {
@@ -684,13 +737,13 @@ impl ToolDiscoveryService {
                 }
                 continue;
             }
-            
+
             // Try to find in PATH and OS-specific locations
             if let Some(path) = self.which_tool(candidate).await {
                 return Ok(Some(path));
             }
         }
-        
+
         eprintln!("❌ Could not resolve path for any candidate");
         Ok(None)
     }
@@ -698,7 +751,7 @@ impl ToolDiscoveryService {
     /// Find tool in PATH (cross-platform which) with fallback to OS-specific locations
     async fn which_tool(&self, tool_name: &str) -> Option<String> {
         eprintln!("🔍 Searching for tool: {}", tool_name);
-        
+
         // First try: Use which crate for PATH lookup
         if let Ok(path) = which::which(tool_name) {
             if let Some(path_str) = path.to_str() {
@@ -706,7 +759,7 @@ impl ToolDiscoveryService {
                 return Some(path_str.to_string());
             }
         }
-        
+
         // Windows: Try with .exe extension
         #[cfg(target_os = "windows")]
         {
@@ -715,7 +768,7 @@ impl ToolDiscoveryService {
             } else {
                 tool_name.to_string()
             };
-            
+
             if exe_name != tool_name {
                 if let Ok(path) = which::which(&exe_name) {
                     if let Some(path_str) = path.to_str() {
@@ -725,22 +778,22 @@ impl ToolDiscoveryService {
                 }
             }
         }
-        
+
         // Second try: Check OS-specific locations
         let search_paths = self.get_os_specific_search_paths();
         for search_dir in search_paths {
             let candidate = std::path::PathBuf::from(&search_dir).join(tool_name);
-            
+
             #[cfg(target_os = "windows")]
             let candidates = vec![
                 candidate.clone(),
                 candidate.with_extension("exe"),
                 candidate.with_extension("EXE"),
             ];
-            
+
             #[cfg(not(target_os = "windows"))]
             let candidates = vec![candidate];
-            
+
             for candidate_path in candidates {
                 if candidate_path.exists() {
                     if let Ok(metadata) = std::fs::metadata(&candidate_path) {
@@ -750,12 +803,15 @@ impl ToolDiscoveryService {
                             let permissions = metadata.permissions();
                             if permissions.mode() & 0o111 != 0 {
                                 if let Some(path_str) = candidate_path.to_str() {
-                                    eprintln!("✅ Found {} in {}: {}", tool_name, search_dir, path_str);
+                                    eprintln!(
+                                        "✅ Found {} in {}: {}",
+                                        tool_name, search_dir, path_str
+                                    );
                                     return Some(path_str.to_string());
                                 }
                             }
                         }
-                        
+
                         #[cfg(windows)]
                         {
                             if let Some(path_str) = candidate_path.to_str() {
@@ -767,31 +823,31 @@ impl ToolDiscoveryService {
                 }
             }
         }
-        
+
         eprintln!("❌ Tool {} not found in PATH or known locations", tool_name);
         None
     }
-    
+
     /// Get OS-specific search paths for tools
     fn get_os_specific_search_paths(&self) -> Vec<String> {
         let mut paths = Vec::new();
-        
+
         #[cfg(target_os = "macos")]
         {
             // macOS: Check Homebrew locations
             // Apple Silicon (M1/M2) uses /opt/homebrew
             paths.push("/opt/homebrew/bin".to_string());
             paths.push("/opt/homebrew/sbin".to_string());
-            
+
             // Intel Macs use /usr/local
             paths.push("/usr/local/bin".to_string());
             paths.push("/usr/local/sbin".to_string());
-            
+
             // MacPorts
             paths.push("/opt/local/bin".to_string());
             paths.push("/opt/local/sbin".to_string());
         }
-        
+
         #[cfg(target_os = "linux")]
         {
             // Linux: FHS-compliant directories
@@ -801,19 +857,19 @@ impl ToolDiscoveryService {
             paths.push("/usr/sbin".to_string());
             paths.push("/bin".to_string());
             paths.push("/sbin".to_string());
-            
+
             // Linuxbrew/Homebrew on Linux
             paths.push("/home/linuxbrew/.linuxbrew/bin".to_string());
-            
+
             // Snap packages
             paths.push("/snap/bin".to_string());
-            
+
             // User's local bin
             if let Ok(home) = std::env::var("HOME") {
                 paths.push(format!("{}/.local/bin", home));
             }
         }
-        
+
         #[cfg(target_os = "windows")]
         {
             // Windows: Common installation directories
@@ -822,51 +878,56 @@ impl ToolDiscoveryService {
                 paths.push(format!("{}\\Git\\cmd", program_files));
                 paths.push(format!("{}\\Git\\usr\\bin", program_files));
             }
-            
+
             if let Ok(program_files_x86) = std::env::var("ProgramFiles(x86)") {
                 paths.push(program_files_x86.clone());
             }
-            
+
             if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
                 paths.push(format!("{}\\Programs", localappdata));
             }
-            
+
             // Chocolatey
             paths.push("C:\\ProgramData\\chocolatey\\bin".to_string());
-            
+
             // Scoop
             if let Ok(userprofile) = std::env::var("USERPROFILE") {
                 paths.push(format!("{}\\scoop\\shims", userprofile));
             }
         }
-        
+
         // Add any additional search paths provided at construction
         // (self.additional_search_paths would go here if we expose it)
-        
+
         paths
     }
 
     /// Capture tool version by running version command
-    async fn capture_tool_version(&self, tool_path: &str, version_args: &[String]) -> Result<String> {
+    async fn capture_tool_version(
+        &self,
+        tool_path: &str,
+        version_args: &[String],
+    ) -> Result<String> {
         let mut cmd = tokio::process::Command::new(tool_path);
         cmd.args(version_args);
-        
+
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(VERSION_TIMEOUT),
-            cmd.output()
-        ).await??;
-        
+            cmd.output(),
+        )
+        .await??;
+
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         let combined = format!("{}\n{}", stdout, stderr);
-        
+
         // Try to extract version using common patterns
         let version_patterns = vec![
             r"v?(\d+\.\d+\.\d+)",
             r"version\s+v?(\d+\.\d+\.\d+)",
             r"(\d+\.\d+\.\d+)",
         ];
-        
+
         for pattern in version_patterns {
             if let Ok(re) = Regex::new(pattern) {
                 if let Some(caps) = re.captures(&combined) {
@@ -876,8 +937,7 @@ impl ToolDiscoveryService {
                 }
             }
         }
-        
+
         Ok("unknown".to_string())
     }
 }
-

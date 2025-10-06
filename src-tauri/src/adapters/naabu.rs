@@ -67,7 +67,11 @@ impl NaabuAdapter {
         command
     }
 
-    pub fn build_command_with_defaults(&self, target: String, output_file: Option<String>) -> Vec<String> {
+    pub fn build_command_with_defaults(
+        &self,
+        target: String,
+        output_file: Option<String>,
+    ) -> Vec<String> {
         let config = NaabuConfig {
             target,
             output_file,

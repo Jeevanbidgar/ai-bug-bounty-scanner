@@ -1,10 +1,10 @@
+use anyhow::{anyhow, Result};
+use chrono::{DateTime, Duration, Utc};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use anyhow::{Result, anyhow};
-use chrono::{DateTime, Utc, Duration};
-use sha2::{Sha256, Digest};
 use std::fs;
 use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use crate::workflow::types::WorkflowArtifact;
 
@@ -39,7 +39,9 @@ impl ArtifactManager {
 
     /// Enrich a workflow artifact with metadata
     pub async fn enrich_artifact(&self, artifact: &mut WorkflowArtifact) -> Result<()> {
-        let file_path_str = artifact.file_path.as_ref()
+        let file_path_str = artifact
+            .file_path
+            .as_ref()
             .ok_or_else(|| anyhow!("Artifact has no file path"))?;
         let path = Path::new(file_path_str);
 
@@ -58,15 +60,15 @@ impl ArtifactManager {
         // Count lines for text files
         if self.is_text_file(path) {
             let line_count = self.count_lines(path)?;
-            
+
             // Store metadata as JSON
             let mut metadata_map = HashMap::new();
             metadata_map.insert("line_count".to_string(), line_count.to_string());
             metadata_map.insert("is_text".to_string(), "true".to_string());
-            
+
             // Store as JSON string in metadata_ field
             artifact.metadata_ = Some(serde_json::to_string(&metadata_map)?);
-            
+
             eprintln!("Artifact '{}' has {} lines", artifact.name, line_count);
         }
 
@@ -97,7 +99,19 @@ impl ArtifactManager {
             let ext_str = ext.to_string_lossy().to_lowercase();
             matches!(
                 ext_str.as_str(),
-                "txt" | "log" | "json" | "yaml" | "yml" | "xml" | "csv" | "md" | "html" | "js" | "ts" | "py" | "rs"
+                "txt"
+                    | "log"
+                    | "json"
+                    | "yaml"
+                    | "yml"
+                    | "xml"
+                    | "csv"
+                    | "md"
+                    | "html"
+                    | "js"
+                    | "ts"
+                    | "py"
+                    | "rs"
             )
         } else {
             false
@@ -119,7 +133,7 @@ impl ArtifactManager {
     ) -> Option<String> {
         // Parse reference: "artifacts.step_id.artifact_name"
         let parts: Vec<&str> = reference.split('.').collect();
-        
+
         if parts.len() != 3 || parts[0] != "artifacts" {
             return None;
         }
@@ -142,7 +156,7 @@ impl ArtifactManager {
     /// Clean up old artifacts based on age
     pub async fn cleanup_old_artifacts(&self, execution_id: &str) -> Result<usize> {
         let execution_dir = self.base_directory.join(execution_id);
-        
+
         if !execution_dir.exists() {
             return Ok(0);
         }
@@ -154,13 +168,13 @@ impl ArtifactManager {
         for entry in fs::read_dir(&execution_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.is_file() {
                 let metadata = fs::metadata(&path)?;
-                
+
                 if let Ok(modified) = metadata.modified() {
                     let modified_datetime: DateTime<Utc> = modified.into();
-                    
+
                     if modified_datetime < cutoff_date {
                         fs::remove_file(&path)?;
                         deleted_count += 1;
@@ -176,7 +190,7 @@ impl ArtifactManager {
     /// Clean up artifacts exceeding size limit
     pub async fn cleanup_large_artifacts(&self, execution_id: &str) -> Result<usize> {
         let execution_dir = self.base_directory.join(execution_id);
-        
+
         if !execution_dir.exists() {
             return Ok(0);
         }
@@ -186,14 +200,18 @@ impl ArtifactManager {
         for entry in fs::read_dir(&execution_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.is_file() {
                 let metadata = fs::metadata(&path)?;
-                
+
                 if metadata.len() > self.max_size_bytes {
                     fs::remove_file(&path)?;
                     deleted_count += 1;
-                    eprintln!("Deleted large artifact ({}): {}", metadata.len(), path.display());
+                    eprintln!(
+                        "Deleted large artifact ({}): {}",
+                        metadata.len(),
+                        path.display()
+                    );
                 }
             }
         }
@@ -204,7 +222,7 @@ impl ArtifactManager {
     /// Get total size of artifacts for an execution
     pub async fn get_execution_artifacts_size(&self, execution_id: &str) -> Result<u64> {
         let execution_dir = self.base_directory.join(execution_id);
-        
+
         if !execution_dir.exists() {
             return Ok(0);
         }
@@ -214,7 +232,7 @@ impl ArtifactManager {
         for entry in fs::read_dir(&execution_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.is_file() {
                 let metadata = fs::metadata(&path)?;
                 total_size += metadata.len();
@@ -227,7 +245,7 @@ impl ArtifactManager {
     /// List all artifacts for an execution
     pub async fn list_execution_artifacts(&self, execution_id: &str) -> Result<Vec<PathBuf>> {
         let execution_dir = self.base_directory.join(execution_id);
-        
+
         if !execution_dir.exists() {
             return Ok(Vec::new());
         }
@@ -237,7 +255,7 @@ impl ArtifactManager {
         for entry in fs::read_dir(&execution_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.is_file() {
                 artifacts.push(path);
             }
@@ -249,7 +267,7 @@ impl ArtifactManager {
     /// Create artifact directory for an execution
     pub fn create_artifact_directory(&self, execution_id: &str) -> Result<PathBuf> {
         let execution_dir = self.base_directory.join(execution_id);
-        
+
         if !execution_dir.exists() {
             fs::create_dir_all(&execution_dir)?;
         }
@@ -260,7 +278,7 @@ impl ArtifactManager {
     /// Delete all artifacts for an execution
     pub async fn delete_execution_artifacts(&self, execution_id: &str) -> Result<()> {
         let execution_dir = self.base_directory.join(execution_id);
-        
+
         if execution_dir.exists() {
             fs::remove_dir_all(&execution_dir)?;
         }
@@ -331,10 +349,7 @@ mod tests {
             }],
         );
 
-        let resolved = manager.resolve_artifact_reference(
-            "artifacts.step1.output.txt",
-            &artifacts,
-        );
+        let resolved = manager.resolve_artifact_reference("artifacts.step1.output.txt", &artifacts);
 
         assert_eq!(resolved, Some("/path/to/output.txt".to_string()));
     }

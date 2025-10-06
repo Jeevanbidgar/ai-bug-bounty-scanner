@@ -34,7 +34,11 @@ impl WaybackURLsAdapter {
         command
     }
 
-    pub fn build_command_with_defaults(&self, target: String, output_file: Option<String>) -> Vec<String> {
+    pub fn build_command_with_defaults(
+        &self,
+        target: String,
+        output_file: Option<String>,
+    ) -> Vec<String> {
         let config = WaybackURLsConfig {
             target,
             output_file,

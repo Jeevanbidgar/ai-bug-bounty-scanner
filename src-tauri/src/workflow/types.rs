@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowTemplate {
@@ -34,19 +34,19 @@ pub struct WorkflowOutput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowRetry {
-    pub max_attempts: u32,           // Total attempts (including initial try)
-    pub initial_delay_ms: u64,       // Initial delay in milliseconds
-    pub max_delay_ms: u64,           // Maximum delay cap in milliseconds
-    pub backoff_multiplier: f64,     // Multiplier for exponential backoff (e.g., 2.0)
+    pub max_attempts: u32,       // Total attempts (including initial try)
+    pub initial_delay_ms: u64,   // Initial delay in milliseconds
+    pub max_delay_ms: u64,       // Maximum delay cap in milliseconds
+    pub backoff_multiplier: f64, // Multiplier for exponential backoff (e.g., 2.0)
 }
 
 impl Default for WorkflowRetry {
     fn default() -> Self {
         Self {
             max_attempts: 3,
-            initial_delay_ms: 1000,     // 1 second
-            max_delay_ms: 60000,        // 60 seconds
-            backoff_multiplier: 2.0,    // Double the delay each time
+            initial_delay_ms: 1000,  // 1 second
+            max_delay_ms: 60000,     // 60 seconds
+            backoff_multiplier: 2.0, // Double the delay each time
         }
     }
 }
@@ -129,11 +129,11 @@ pub struct WorkflowArtifact {
     pub step_id: String,
     pub name: String,
     pub artifact_type: String,
-    pub file_path: Option<String>,     // Path to the artifact file
-    pub content: Option<String>,       // Optional inline content
-    pub metadata_: Option<String>,     // JSON metadata
-    pub size: Option<u64>,             // File size in bytes
-    pub hash: Option<String>,          // SHA256 hash
+    pub file_path: Option<String>, // Path to the artifact file
+    pub content: Option<String>,   // Optional inline content
+    pub metadata_: Option<String>, // JSON metadata
+    pub size: Option<u64>,         // File size in bytes
+    pub hash: Option<String>,      // SHA256 hash
     pub created_at: DateTime<Utc>,
 }
 
