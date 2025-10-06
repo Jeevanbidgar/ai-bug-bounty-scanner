@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
@@ -369,7 +369,7 @@ impl ManualInstaller {
 
         // Emit installation started event
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_STARTED,
                 EventEmitter::tool_installation_started(tool_name, "manual"),
             );
@@ -430,7 +430,7 @@ impl ManualInstaller {
                         .await;
 
                     if let Some(handle) = app_handle {
-                        let _ = handle.emit_all(
+                        let _ = handle.emit(
                             TOOL_INSTALLATION_COMPLETED,
                             EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                         );
@@ -453,7 +453,7 @@ impl ManualInstaller {
         );
 
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_COMPLETED,
                 EventEmitter::tool_installation_completed(tool_name, true, &success_msg),
             );
@@ -766,7 +766,7 @@ impl ManualInstaller {
             while let Ok(Some(line)) = lines.next_line().await {
                 eprintln!("[{}] {}", tool_name_clone, line);
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
                         EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &line),
                     );
@@ -783,7 +783,7 @@ impl ManualInstaller {
                 eprintln!("[{} stderr] {}", tool_name_clone, line);
                 error_output.push(line.clone());
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
                         EventEmitter::tool_installation_output(&tool_name_clone, "stderr", &line),
                     );
@@ -815,7 +815,7 @@ impl ManualInstaller {
         message: &str,
     ) {
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_OUTPUT,
                 EventEmitter::tool_installation_output(tool_name, output_type, message),
             );

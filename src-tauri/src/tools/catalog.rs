@@ -26,6 +26,7 @@ pub struct ToolDefinition {
     pub gem_package: Option<String>,  // Ruby gem package name
     pub npm_package: Option<String>,  // npm package name for Node.js tools
     pub install_method: String, // Primary installation method: "go", "pipx", "git-pip", "apt", "winget", "cargo", "gem", "npm", "manual", "runtime"
+    pub alternative_install_methods: Vec<String>, // Alternative installation methods available for this tool
 }
 
 impl ToolDefinition {
@@ -47,6 +48,7 @@ impl ToolDefinition {
             gem_package: None,
             npm_package: None,
             install_method: "manual".to_string(),
+            alternative_install_methods: vec![],
         }
     }
 
@@ -75,6 +77,10 @@ impl ToolDefinition {
     pub fn with_git_repo(mut self, repo: &str) -> Self {
         self.git_repo = Some(repo.to_string());
         self.install_method = "git-pip".to_string();
+        // If git_repo is provided, add pipx as alternative method
+        if !self.alternative_install_methods.contains(&"pipx".to_string()) {
+            self.alternative_install_methods.push("pipx".to_string());
+        }
         self
     }
 
@@ -116,6 +122,11 @@ impl ToolDefinition {
 
     pub fn with_install_method(mut self, method: &str) -> Self {
         self.install_method = method.to_string();
+        self
+    }
+
+    pub fn with_alternative_methods(mut self, methods: Vec<&str>) -> Self {
+        self.alternative_install_methods = methods.iter().map(|s| s.to_string()).collect();
         self
     }
 }

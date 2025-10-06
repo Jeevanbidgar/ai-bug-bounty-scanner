@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 mod adapters;
 mod commands;
@@ -22,7 +22,7 @@ fn main() {
         .setup(|app| {
             let app_handle = app.handle();
             let app_data_dir = app
-                .path_resolver()
+                .path()
                 .app_data_dir()
                 .expect("Failed to get app data dir");
 
@@ -96,6 +96,7 @@ fn main() {
             crate::commands::get_os_info,
             // Tool installation commands (Phase 7)
             crate::commands::install_tool,
+            crate::commands::install_tool_with_method,
             crate::commands::update_tool,
             crate::commands::uninstall_tool,
             crate::commands::check_tool_installed,

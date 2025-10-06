@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
@@ -78,7 +78,7 @@ impl PipxManager {
 
         // Emit installation started event
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_STARTED,
                 EventEmitter::tool_installation_started(tool_name, "pipx"),
             );
@@ -112,7 +112,7 @@ impl PipxManager {
                 eprintln!("❌ {}", error_msg);
 
                 if let Some(handle) = app_handle {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_COMPLETED,
                         EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                     );
@@ -143,7 +143,7 @@ impl PipxManager {
             while let Ok(Some(line)) = lines.next_line().await {
                 eprintln!("[pipx stdout] {}", line);
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
                         EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &line),
                     );
@@ -161,7 +161,7 @@ impl PipxManager {
                 eprintln!("[pipx stderr] {}", line);
                 error_output.push(line.clone());
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
                         EventEmitter::tool_installation_output(&tool_name_clone, "stderr", &line),
                     );
@@ -238,7 +238,7 @@ impl PipxManager {
 
                 // Emit completion event
                 if let Some(handle) = app_handle {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_COMPLETED,
                         EventEmitter::tool_installation_completed(
                             tool_name,
@@ -260,7 +260,7 @@ impl PipxManager {
                 eprintln!("❌ {}", error_msg);
 
                 if let Some(handle) = app_handle {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_COMPLETED,
                         EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                     );

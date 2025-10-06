@@ -4,10 +4,13 @@
 
 // Check if we're running in Tauri
 const isTauriEnvironment = () => {
-  // More robust Tauri detection
+  // More robust Tauri detection for Tauri 2.0
   if (typeof window === 'undefined') return false
 
-  // Check for Tauri global object
+  // Check for Tauri global object (Tauri 2.0)
+  if ('__TAURI_INTERNALS__' in window) return true
+
+  // Check for Tauri global object (Tauri 1.x fallback)
   if ('__TAURI__' in window) return true
 
   // Check for Tauri protocol
@@ -15,8 +18,9 @@ const isTauriEnvironment = () => {
     const loc = (window as any).location
     if (loc?.protocol === 'tauri:') return true
 
-    // Check for Tauri origin
+    // Check for Tauri origin (including http://tauri.localhost in dev mode)
     if (loc?.origin.startsWith('tauri://')) return true
+    if (loc?.origin.includes('tauri.localhost')) return true
   } catch (e) {
     // window.location might not be available in some contexts
   }
@@ -76,6 +80,8 @@ export interface Tool {
   last_checked: string | null
   last_seen: string | null
   last_error: string | null
+  install_method?: string // Primary installation method
+  alternative_install_methods?: string[] // Alternative methods (e.g., ["pipx", "git-pip"])
 }
 
 export interface Report {
@@ -332,7 +338,7 @@ export interface WaybackURLsConfig {
   output_file?: string | null
 }
 
-export type AdapterConfig = 
+export type AdapterConfig =
   | { type: 'Subfinder'; config: SubfinderConfig }
   | { type: 'Amass'; config: AmassConfig }
   | { type: 'Naabu'; config: NaabuConfig }
@@ -350,20 +356,20 @@ class ApiService {
     }
 
     try {
-      const { invoke } = await import('@tauri-apps/api/tauri')
+      const { invoke } = await import('@tauri-apps/api/core')
       const result = await invoke(command, args)
       return result as T
     } catch (error) {
       // Only log errors that aren't expected/handled
       const errorMsg = String(error)
-      const isExpectedError = errorMsg.includes('not supported') || 
-                             errorMsg.includes('is not installed') ||
-                             errorMsg.includes('not found')
-      
+      const isExpectedError = errorMsg.includes('not supported') ||
+        errorMsg.includes('is not installed') ||
+        errorMsg.includes('not found')
+
       if (!isExpectedError) {
         console.error(`❌ Tauri command failed: ${command}`, error)
       }
-      
+
       // Re-throw the error with better context
       throw new Error(`Failed to execute command '${command}': ${error}`)
     }
@@ -487,17 +493,17 @@ class ApiService {
   }
 
   async getTool(toolName: string, forceRefresh = false): Promise<{ data: Tool | null }> {
-    const tool = await this.invokeCommand('get_tool', { 
-      toolName, 
-      forceRefresh 
+    const tool = await this.invokeCommand('get_tool', {
+      toolName,
+      forceRefresh
     }) as Tool | null
     return { data: tool }
   }
 
   async checkToolAvailability(toolName: string): Promise<{ available: boolean }> {
-    const tool = await this.invokeCommand('get_tool', { 
-      toolName, 
-      forceRefresh: false 
+    const tool = await this.invokeCommand('get_tool', {
+      toolName,
+      forceRefresh: false
     }) as Tool | null
     return { available: tool?.installed || false }
   }
@@ -737,13 +743,23 @@ class ApiService {
   }
 
   // Tool Installation Commands (Phase 8)
-  
+
   async installTool(toolName: string): Promise<{ success: boolean; message: string; steps: any[]; requires_restart: boolean }> {
     try {
       const result = await this.invokeCommand('install_tool', { toolName }) as { success: boolean; message: string; steps: any[]; requires_restart: boolean }
       return result
     } catch (error) {
       console.error('Failed to install tool:', error)
+      throw error
+    }
+  }
+
+  async installToolWithMethod(toolName: string, installMethod: string): Promise<{ success: boolean; message: string; steps: any[]; requires_restart: boolean }> {
+    try {
+      const result = await this.invokeCommand('install_tool_with_method', { toolName, installMethod }) as { success: boolean; message: string; steps: any[]; requires_restart: boolean }
+      return result
+    } catch (error) {
+      console.error('Failed to install tool with method:', error)
       throw error
     }
   }
@@ -834,7 +850,7 @@ class ApiService {
   }
 
   // Adapter Commands - Tool Command Builders
-  
+
   async buildToolCommand(adapterConfig: AdapterConfig): Promise<string[]> {
     try {
       const command = await this.invokeCommand('build_tool_command', { adapterType: adapterConfig }) as string[]
@@ -924,7 +940,7 @@ class ApiService {
   }
 
   // Package Manager Commands
-  
+
   async detectPackageManagers(): Promise<PackageManagerInfo[]> {
     try {
       const managers = await this.invokeCommand('detect_package_managers') as PackageManagerInfo[]
@@ -986,7 +1002,7 @@ class ApiService {
   }
 
   // Elevation Commands
-  
+
   async checkElevationSupport(): Promise<ElevationMethod> {
     try {
       const method = await this.invokeCommand('check_elevation_support') as ElevationMethod
@@ -1036,7 +1052,7 @@ class ApiService {
   }
 
   // Pipx Path Management (Windows)
-  
+
   async checkPipxPath(): Promise<{
     in_path: boolean
     pipx_bin_path: string | null

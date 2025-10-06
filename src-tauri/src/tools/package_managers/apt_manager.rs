@@ -1,7 +1,7 @@
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
 use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
@@ -28,7 +28,15 @@ impl AptManager {
 
     fn emit_output(&self, tool_name: &str, message: &str) {
         let event = EventEmitter::tool_installation_output(tool_name, "stdout", message);
-        let _ = self.app_handle.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+        let _ = self.app_handle.emit(TOOL_INSTALLATION_OUTPUT, event);
+    }
+
+    /// Check if pkexec is available (for GUI password prompt)
+    async fn is_pkexec_available(&self) -> bool {
+        match Command::new("which").arg("pkexec").output().await {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
+        }
     }
 
     /// Install a tool via apt install with live streaming
@@ -56,14 +64,31 @@ impl AptManager {
             tool_name,
             &format!("Installing {} via apt...\n", package_name),
         );
-        self.emit_output(
-            tool_name,
-            "⚠️  This requires sudo permissions and may prompt for password\n",
-        );
+
+        // Use pkexec for GUI password prompt if available, otherwise fall back to sudo
+        let (elevation_cmd, elevation_args) = if self.is_pkexec_available().await {
+            self.emit_output(
+                tool_name,
+                "🔐 Using pkexec (GUI password dialog will appear)...\n",
+            );
+            (
+                "pkexec",
+                vec!["apt", "install", "-y", package_name],
+            )
+        } else {
+            self.emit_output(
+                tool_name,
+                "⚠️  Using sudo (password prompt in terminal)...\n",
+            );
+            (
+                "sudo",
+                vec!["apt", "install", "-y", package_name],
+            )
+        };
 
         // Run apt install with -y flag for non-interactive mode
-        let mut child = Command::new("sudo")
-            .args(&["apt", "install", "-y", package_name])
+        let mut child = Command::new(elevation_cmd)
+            .args(&elevation_args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -85,7 +110,7 @@ impl AptManager {
                         "stdout",
                         &format!("{}\n", line),
                     );
-                    let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                    let _ = app_handle_clone.emit(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
@@ -102,7 +127,7 @@ impl AptManager {
                         "stderr",
                         &format!("{}\n", line),
                     );
-                    let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                    let _ = app_handle_clone2.emit(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
@@ -160,7 +185,7 @@ impl AptManager {
                         "stdout",
                         &format!("{}\n", line),
                     );
-                    let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                    let _ = app_handle_clone.emit(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
@@ -177,7 +202,7 @@ impl AptManager {
                         "stderr",
                         &format!("{}\n", line),
                     );
-                    let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                    let _ = app_handle_clone2.emit(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });

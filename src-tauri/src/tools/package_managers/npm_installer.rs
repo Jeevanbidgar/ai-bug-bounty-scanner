@@ -3,7 +3,7 @@ use crate::tools::catalog::ToolDefinition;
 use crate::tools::package_managers::{detection::detect_manager, PackageManagerType};
 use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
@@ -208,14 +208,48 @@ impl NpmInstaller {
             .as_ref()
             .ok_or_else(|| anyhow!("Tool {} does not have npm_package defined", tool.name))?;
 
-        self.emit_output(
-            tool_name,
-            &format!("📦 Installing {} via npm globally...\n", package_name),
-        );
+        // Platform-specific installation strategy
+        // Linux/macOS: Install to user directory (~/.local) to avoid permission issues
+        // Windows: Install globally (standard behavior)
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let prefix_path = if let Ok(home) = std::env::var("HOME") {
+            format!("{}/.local", home)
+        } else {
+            String::new()
+        };
 
-        // Run npm install -g with detected path
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let install_args: Vec<&str> = if !prefix_path.is_empty() {
+            self.emit_output(
+                tool_name,
+                &format!("📦 Installing {} to user directory (~/.local)...\n", package_name),
+            );
+            self.emit_output(
+                tool_name,
+                "💡 Note: Ensure ~/.local/bin is in your PATH\n",
+            );
+            vec!["install", "-g", package_name, "--prefix", &prefix_path]
+        } else {
+            // Fallback to global if HOME not found (unlikely)
+            self.emit_output(
+                tool_name,
+                &format!("📦 Installing {} via npm globally...\n", package_name),
+            );
+            vec!["install", "-g", package_name]
+        };
+
+        #[cfg(target_os = "windows")]
+        let install_args: Vec<&str> = {
+            self.emit_output(
+                tool_name,
+                &format!("📦 Installing {} via npm globally...\n", package_name),
+            );
+            vec!["install", "-g", package_name]
+        };
+
+        // Run npm install with platform-specific args
         let mut child = Command::new(&npm_path)
-            .args(&["install", "-g", package_name])
+            .args(&install_args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -241,7 +275,7 @@ impl NpmInstaller {
                                 "stdout",
                                 &format!("{}\n", line),
                             );
-                            let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                            let _ = app_handle_clone.emit(TOOL_INSTALLATION_OUTPUT, event);
                         }
                         Ok(None) => break,
                         Err(e) => {
@@ -269,7 +303,7 @@ impl NpmInstaller {
                                 "stderr",
                                 &format!("{}\n", line),
                             );
-                            let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                            let _ = app_handle_clone2.emit(TOOL_INSTALLATION_OUTPUT, event);
                         }
                         Ok(None) => break,
                         Err(e) => {
@@ -465,6 +499,6 @@ impl NpmInstaller {
 
     fn emit_output(&self, tool_name: &str, message: &str) {
         let event = EventEmitter::tool_installation_output(tool_name, "stdout", message);
-        let _ = self.app_handle.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+        let _ = self.app_handle.emit(TOOL_INSTALLATION_OUTPUT, event);
     }
 }

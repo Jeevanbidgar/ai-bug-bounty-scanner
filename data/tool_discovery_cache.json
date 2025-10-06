@@ -1,195 +1,1111 @@
 {
-  "subfinder": {
-    "name": "subfinder",
-    "description": "Fast passive subdomain discovery tool",
-    "category": "recon",
-    "status": "available",
-    "installed": true,
-    "command_template": [
-      "subfinder"
-    ],
-    "output_format": "text",
-    "version": "2.8.0",
-    "raw_version": "[\u001b[34mINF\u001b[0m] Current Version: v2.8.0\r\n[\u001b[34mINF\u001b[0m] Subfinder Config Directory: C:\\Users\\jeevan\\AppData\\Roaming\\subfinder",
-    "path": "D:\\setups\\subfinder-2.8.0\\subfinder.EXE",
-    "os_dependencies": [],
-    "missing_dependencies": [],
-    "last_checked": "2025-10-01T11:12:42.934435+00:00",
-    "last_seen": "2025-10-01T11:12:42.934435+00:00",
-    "last_error": null
+  "tools": {
+    "socat": {
+      "name": "socat",
+      "description": "Multipurpose relay",
+      "category": "network",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "socat"
+      ],
+      "output_format": "text",
+      "version": "1.8.0",
+      "raw_version": "1.8.0",
+      "path": "/usr/bin/socat",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:31.284413809+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "knockpy": {
+      "name": "knockpy",
+      "description": "Subdomain scanner",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "knockpy"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:50.343382169+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "meg": {
+      "name": "meg",
+      "description": "Fetch many paths for many hosts",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "meg"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:20.149302265+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gau": {
+      "name": "gau",
+      "description": "Get all URLs from various sources",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "gau"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:29.820362243+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "sublist3r": {
+      "name": "sublist3r",
+      "description": "Fast subdomains enumeration tool",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "sublist3r"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": "/usr/bin/sublist3r",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:43.050182398+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "git": {
+      "name": "git",
+      "description": "Version control system",
+      "category": "utility",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "git"
+      ],
+      "output_format": "text",
+      "version": "2.50.1",
+      "raw_version": "2.50.1",
+      "path": "/usr/bin/git",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:30.000693515+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "dnsenum": {
+      "name": "dnsenum",
+      "description": "DNS enumeration tool",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "dnsenum"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": "/usr/bin/dnsenum",
+      "os_dependencies": [
+        "perl"
+      ],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:16.833037103+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "metasploit": {
+      "name": "metasploit",
+      "description": "Penetration testing framework",
+      "category": "exploitation",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "msfconsole"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": "/usr/bin/msfconsole",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:49.509562500+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gospider": {
+      "name": "gospider",
+      "description": "Fast web spider",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "gospider"
+      ],
+      "output_format": "text",
+      "version": "1.1.0",
+      "raw_version": "1.1.0",
+      "path": "/usr/bin/gospider",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:10.014677273+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gauplus": {
+      "name": "gauplus",
+      "description": "Modified GAU with additional features",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "gauplus"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:25.256521667+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gobuster": {
+      "name": "gobuster",
+      "description": "Directory/DNS brute force tool",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "gobuster"
+      ],
+      "output_format": "text",
+      "version": "1.24.4",
+      "raw_version": "1.24.4",
+      "path": "/usr/bin/gobuster",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:59.556050564+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "nuclei": {
+      "name": "nuclei",
+      "description": "Fast and customizable vulnerability scanner",
+      "category": "vulnerability",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "nuclei"
+      ],
+      "output_format": "jsonl",
+      "version": "3.4.10",
+      "raw_version": "3.4.10",
+      "path": "/usr/bin/nuclei",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:34.002569528+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "dnsrecon": {
+      "name": "dnsrecon",
+      "description": "DNS enumeration script",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "dnsrecon"
+      ],
+      "output_format": "text",
+      "version": "1.2.0",
+      "raw_version": "1.2.0",
+      "path": "/usr/bin/dnsrecon",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:59.390965092+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "python": {
+      "name": "python",
+      "description": "Python interpreter",
+      "category": "utility",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "python",
+        "python3"
+      ],
+      "output_format": "text",
+      "version": "3.13.6",
+      "raw_version": "3.13.6",
+      "path": "/usr/bin/python",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:54.942497014+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "wpscan": {
+      "name": "wpscan",
+      "description": "WordPress vulnerability scanner",
+      "category": "vulnerability",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "wpscan"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": "/usr/bin/wpscan",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:09.599062530+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "feroxbuster": {
+      "name": "feroxbuster",
+      "description": "Fast content discovery tool",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "feroxbuster"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:51.682633753+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "jq": {
+      "name": "jq",
+      "description": "JSON processor",
+      "category": "utility",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "jq"
+      ],
+      "output_format": "text",
+      "version": "1.8.1",
+      "raw_version": "1.8.1",
+      "path": "/usr/bin/jq",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:50.322128395+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "amass": {
+      "name": "amass",
+      "description": "Comprehensive network reconnaissance tool",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "amass"
+      ],
+      "output_format": "json",
+      "version": "4.2.0",
+      "raw_version": "4.2.0",
+      "path": "/usr/bin/amass",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:32.504041512+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "linkfinder": {
+      "name": "linkfinder",
+      "description": "Find endpoints in JS files",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "linkfinder"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:04.576391793+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "wget": {
+      "name": "wget",
+      "description": "Network downloader",
+      "category": "utility",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "wget"
+      ],
+      "output_format": "text",
+      "version": "1.25.0",
+      "raw_version": "1.25.0",
+      "path": "/usr/bin/wget",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:30.793115722+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "xsstrike": {
+      "name": "xsstrike",
+      "description": "XSS detection suite",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "xsstrike"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:50.039283460+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "aquatone": {
+      "name": "aquatone",
+      "description": "Domain flyover tool (DEPRECATED - upstream archived, Go 1.20+ incompatible)",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "aquatone"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:34.005664875+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "rustscan": {
+      "name": "rustscan",
+      "description": "Modern port scanner",
+      "category": "network",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "rustscan"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:29.826581698+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "interactsh-client": {
+      "name": "interactsh-client",
+      "description": "OAST client",
+      "category": "testing",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "interactsh-client"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:29.824859643+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "cloudfail": {
+      "name": "cloudfail",
+      "description": "Find origin servers behind CDN",
+      "category": "cloud",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "cloudfail"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:20.151002812+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "nikto": {
+      "name": "nikto",
+      "description": "Web server scanner",
+      "category": "vulnerability",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "nikto"
+      ],
+      "output_format": "text",
+      "version": "unknown",
+      "raw_version": "unknown",
+      "path": "/usr/bin/nikto",
+      "os_dependencies": [
+        "perl"
+      ],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:38.041509627+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "katana": {
+      "name": "katana",
+      "description": "Web crawler from ProjectDiscovery",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "katana",
+        "katana.exe"
+      ],
+      "output_format": "json",
+      "version": "1.2.1",
+      "raw_version": "1.2.1",
+      "path": "/usr/local/bin/katana",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:11.794006600+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "s3scanner": {
+      "name": "s3scanner",
+      "description": "S3 bucket scanner",
+      "category": "cloud",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "s3scanner"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:30.997229945+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "go": {
+      "name": "go",
+      "description": "Go programming language",
+      "category": "utility",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "go"
+      ],
+      "output_format": "text",
+      "version": "1.24.4",
+      "raw_version": "1.24.4",
+      "path": "/usr/bin/go",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:30.463680645+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "assetfinder": {
+      "name": "assetfinder",
+      "description": "Find domains and subdomains",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "assetfinder",
+        "assetfinder.exe"
+      ],
+      "output_format": "text",
+      "version": "unknown",
+      "raw_version": "unknown",
+      "path": "/usr/bin/assetfinder",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:31.279425727+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "param-miner": {
+      "name": "param-miner",
+      "description": "Parameter mining tool",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "param-miner"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:04.566467457+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "trufflehog": {
+      "name": "trufflehog",
+      "description": "Find secrets in git repos",
+      "category": "security",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "trufflehog"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:25.242320235+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "nmap": {
+      "name": "nmap",
+      "description": "Network discovery and security auditing tool",
+      "category": "network",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "nmap"
+      ],
+      "output_format": "xml",
+      "version": "5.4.7",
+      "raw_version": "5.4.7",
+      "path": "/usr/bin/nmap",
+      "os_dependencies": [
+        "libpcap"
+      ],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:30.976775752+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "sqlmap": {
+      "name": "sqlmap",
+      "description": "Automatic SQL injection tool",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "sqlmap"
+      ],
+      "output_format": "text",
+      "version": "1.9.8",
+      "raw_version": "1.9.8",
+      "path": "/usr/bin/sqlmap",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:57.226785616+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "subjs": {
+      "name": "subjs",
+      "description": "Find JavaScript files",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "subjs"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:30.648394717+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gitleaks": {
+      "name": "gitleaks",
+      "description": "Secret scanning tool",
+      "category": "security",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "gitleaks"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:25.215885959+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "naabu": {
+      "name": "naabu",
+      "description": "Fast port scanner",
+      "category": "network",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "naabu"
+      ],
+      "output_format": "text",
+      "version": "2.3.5",
+      "raw_version": "2.3.5",
+      "path": "/usr/local/bin/naabu",
+      "os_dependencies": [
+        "libpcap"
+      ],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:51.675335940+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "arjun": {
+      "name": "arjun",
+      "description": "HTTP parameter discovery tool",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "arjun",
+        "arjun.exe"
+      ],
+      "output_format": "text",
+      "version": "unknown",
+      "raw_version": "unknown",
+      "path": "/home/kalijeevan/.local/bin/arjun",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:36.374711526+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "waybackurls": {
+      "name": "waybackurls",
+      "description": "Wayback Machine URL fetcher",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "waybackurls"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:30.472407897+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "httprobe": {
+      "name": "httprobe",
+      "description": "HTTP/HTTPS probe",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "httprobe"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:25.246735951+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "dirbuster": {
+      "name": "dirbuster",
+      "description": "Web directory brute forcer (Java)",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "dirbuster"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": "/usr/bin/dirbuster",
+      "os_dependencies": [
+        "java"
+      ],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:04.560525863+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "whatweb": {
+      "name": "whatweb",
+      "description": "Web technology identification",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "whatweb"
+      ],
+      "output_format": "text",
+      "version": "0.6.1",
+      "raw_version": "0.6.1",
+      "path": "/usr/bin/whatweb",
+      "os_dependencies": [
+        "ruby"
+      ],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:54.928506777+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "gowitness": {
+      "name": "gowitness",
+      "description": "Web screenshot utility",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "gowitness"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:57.227257695+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "masscan": {
+      "name": "masscan",
+      "description": "TCP port scanner",
+      "category": "network",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "masscan"
+      ],
+      "output_format": "text",
+      "version": "1.3.2",
+      "raw_version": "1.3.2",
+      "path": "/usr/bin/masscan",
+      "os_dependencies": [
+        "libpcap"
+      ],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:43.126149311+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "curl": {
+      "name": "curl",
+      "description": "Transfer data with URLs",
+      "category": "utility",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "curl"
+      ],
+      "output_format": "text",
+      "version": "8.14.1",
+      "raw_version": "8.14.1",
+      "path": "/usr/bin/curl",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:31.840220965+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "dalfox": {
+      "name": "dalfox",
+      "description": "Fast XSS scanner",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "dalfox"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:38.042698004+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "ffuf": {
+      "name": "ffuf",
+      "description": "Fast web fuzzer",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "ffuf"
+      ],
+      "output_format": "json",
+      "version": "2.1.0",
+      "raw_version": "2.1.0",
+      "path": "/usr/bin/ffuf",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:50.033799535+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "searchsploit": {
+      "name": "searchsploit",
+      "description": "Exploit database search",
+      "category": "exploitation",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "searchsploit"
+      ],
+      "output_format": "text",
+      "version": "2.0.0",
+      "raw_version": "2.0.0",
+      "path": "/usr/bin/searchsploit",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:25.614482789+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "eyewitness": {
+      "name": "eyewitness",
+      "description": "Website screenshot tool",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "eyewitness"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:36.376313956+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "hakrawler": {
+      "name": "hakrawler",
+      "description": "Simple, fast web crawler",
+      "category": "web",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "hakrawler"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:11.805397013+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "wappalyzer": {
+      "name": "wappalyzer",
+      "description": "Technology detection",
+      "category": "recon",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "wappalyzer"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:20.150084691+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "httpx": {
+      "name": "httpx",
+      "description": "Fast HTTP probe",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "httpx",
+        "httpx.exe"
+      ],
+      "output_format": "json",
+      "version": "1.7.1",
+      "raw_version": "1.7.1",
+      "path": "/usr/local/bin/httpx",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:20.107291019+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "wfuzz": {
+      "name": "wfuzz",
+      "description": "Web application fuzzer",
+      "category": "web",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "wfuzz"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": "/usr/bin/wfuzz",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:30.645390141+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "subfinder": {
+      "name": "subfinder",
+      "description": "Fast passive subdomain discovery tool",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "subfinder"
+      ],
+      "output_format": "json",
+      "version": "2.6.0",
+      "raw_version": "2.6.0",
+      "path": "/usr/bin/subfinder",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:44.466013851+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "joomscan": {
+      "name": "joomscan",
+      "description": "Joomla vulnerability scanner",
+      "category": "vulnerability",
+      "status": "missing",
+      "installed": false,
+      "command_template": [
+        "joomscan"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": null,
+      "os_dependencies": [
+        "perl"
+      ],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:06:59.391375545+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "netcat": {
+      "name": "netcat",
+      "description": "Network utility",
+      "category": "network",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "nc",
+        "netcat"
+      ],
+      "output_format": "text",
+      "version": "unknown",
+      "raw_version": "unknown",
+      "path": "/usr/bin/nc",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:10.189252205+00:00",
+      "last_seen": null,
+      "last_error": null
+    },
+    "fierce": {
+      "name": "fierce",
+      "description": "DNS reconnaissance tool",
+      "category": "recon",
+      "status": "available",
+      "installed": true,
+      "command_template": [
+        "fierce"
+      ],
+      "output_format": "text",
+      "version": null,
+      "raw_version": null,
+      "path": "/usr/bin/fierce",
+      "os_dependencies": [],
+      "missing_dependencies": [],
+      "last_checked": "2025-10-06T17:07:25.191164982+00:00",
+      "last_seen": null,
+      "last_error": null
+    }
   },
-  "amass": {
-    "name": "amass",
-    "description": "Comprehensive network reconnaissance tool",
-    "category": "recon",
-    "status": "available",
-    "installed": true,
-    "command_template": [
-      "amass"
-    ],
-    "output_format": "text",
-    "version": "5.0.0",
-    "raw_version": "v5.0.0",
-    "path": "D:\\Preqin\\tools\\amass_windows_amd64\\amass.EXE",
-    "os_dependencies": [],
-    "missing_dependencies": [],
-    "last_checked": "2025-10-01T11:12:43.009042+00:00",
-    "last_seen": "2025-10-01T11:12:43.009042+00:00",
-    "last_error": null
-  },
-  "nuclei": {
-    "name": "nuclei",
-    "description": "Fast and customizable vulnerability scanner",
-    "category": "vulnerability",
-    "status": "available",
-    "installed": true,
-    "command_template": [
-      "nuclei"
-    ],
-    "output_format": "json",
-    "version": "3.4.10",
-    "raw_version": "[\u001b[34mINF\u001b[0m] Nuclei Engine Version: v3.4.10\r\n[\u001b[34mINF\u001b[0m] Nuclei Config Directory: C:\\Users\\jeevan\\AppData\\Roaming\\nuclei\r\n[\u001b[34mINF\u001b[0m] Nuclei Cache Directory: C:\\Users\\jeevan\\AppData\\Local\\nuclei\r\n[\u001b[34mINF\u001b[0m] PDCP Directory: C:\\Users\\jeevan\\.pdcp",
-    "path": "C:\\Users\\jeevan\\go\\bin\\nuclei.EXE",
-    "os_dependencies": [],
-    "missing_dependencies": [],
-    "last_checked": "2025-10-01T11:12:43.070852+00:00",
-    "last_seen": "2025-10-01T11:12:43.070852+00:00",
-    "last_error": null
-  },
-  "nmap": {
-    "name": "nmap",
-    "description": "Network discovery and security auditing tool",
-    "category": "network",
-    "status": "available",
-    "installed": true,
-    "command_template": [
-      "nmap"
-    ],
-    "output_format": "xml",
-    "version": "7.97",
-    "raw_version": "Nmap version 7.97 ( https://nmap.org )\r\nPlatform: i686-pc-windows-windows\r\nCompiled with: nmap-liblua-5.4.7 openssl-3.0.16 nmap-libssh2-1.11.1 nmap-libz-1.3.1 nmap-libpcre2-10.45 Npcap-1.82 nmap-libdnet-1.18.0 ipv6\r\nCompiled without:\r\nAvailable nsock engines: iocp poll select",
-    "path": "C:\\Program Files (x86)\\Nmap\\nmap.EXE",
-    "os_dependencies": [],
-    "missing_dependencies": [],
-    "last_checked": "2025-10-01T11:12:43.618499+00:00",
-    "last_seen": "2025-10-01T11:12:43.618499+00:00",
-    "last_error": null
-  },
-  "gau": {
-    "name": "gau",
-    "description": "Get all URLs from various sources",
-    "category": "recon",
-    "status": "available",
-    "installed": true,
-    "command_template": [
-      "gau"
-    ],
-    "output_format": "text",
-    "version": "2.2.4",
-    "raw_version": "gau version: 2.2.4",
-    "path": "C:\\Users\\jeevan\\go\\bin\\gau.EXE",
-    "os_dependencies": [],
-    "missing_dependencies": [],
-    "last_checked": "2025-10-01T11:12:43.665112+00:00",
-    "last_seen": "2025-10-01T11:12:43.665112+00:00",
-    "last_error": null
-  },
-  "naabu": {
-    "name": "naabu",
-    "description": "Fast port scanner",
-    "category": "network",
-    "status": "available",
-    "installed": true,
-    "command_template": [
-      "naabu"
-    ],
-    "output_format": "text",
-    "version": "2.3.5",
-    "raw_version": "__\n  ___  ___  ___ _/ /  __ __\n / _ \\/ _ \\/ _ \\/ _ \\/ // /\n/_//_/\\_,_/\\_,_/_.__/\\_,_/\n\r\n\t\tprojectdiscovery.io\n\r\n[\u001b[34mINF\u001b[0m] Current Version: 2.3.5",
-    "path": "C:\\Users\\jeevan\\go\\bin\\naabu.EXE",
-    "os_dependencies": [
-      "Npcap",
-      "WinPcap"
-    ],
-    "missing_dependencies": [],
-    "last_checked": "2025-10-01T11:12:43.688343+00:00",
-    "last_seen": "2025-10-01T11:12:43.688343+00:00",
-    "last_error": null
-  },
-  "sqlmap": {
-    "name": "sqlmap",
-    "description": "Automatic SQL injection tool",
-    "category": "web",
-    "status": "available",
-    "installed": true,
-    "command_template": [
-      "sqlmap"
-    ],
-    "output_format": "text",
-    "version": null,
-    "raw_version": null,
-    "path": "C:\\Users\\jeevan\\AppData\\Roaming\\Python\\Python313\\Scripts\\sqlmap.EXE",
-    "os_dependencies": [],
-    "missing_dependencies": [],
-    "last_checked": "2025-10-01T11:12:44.003390+00:00",
-    "last_seen": "2025-10-01T11:12:44.003390+00:00",
-    "last_error": null
-  },
-  "ffuf": {
-    "name": "ffuf",
-    "description": "Fast web fuzzer",
-    "category": "web",
-    "status": "available",
-    "installed": true,
-    "command_template": [
-      "ffuf"
-    ],
-    "output_format": "text",
-    "version": "2.1.0",
-    "raw_version": "Fuzz Faster U Fool - v2.1.0-dev\n\nHTTP OPTIONS:\n  -H                  Header `\"Name: Value\"`, separated by colon. Multiple -H flags are accepted.\n  -X                  HTTP method to use\n  -b                  Cookie data `\"NAME1=VALUE1; NAME2=VALUE2\"` for copy as curl functionality.\n  -cc                 Client cert for authentication. Client key needs to be defined as well for this to work\n  -ck                 Client key for authentication. Client certificate needs to be defined as well for this to work\n  -d                  POST data\n  -http2              Use HTTP2 protocol (default: false)\n  -ignore-body        Do not fetch the response content. (default: false)\n  -r                  Follow redirects (default: false)\n  -raw                Do not encode URI (default: false)\n  -recursion          Scan recursively. Only FUZZ keyword is supported, and URL (-u) has to end in it. (default: false)\n  -recursion-depth    Maximum recursion depth. (default: 0)\n  -recursion-strategy Recursion strategy: \"default\" for a redirect based, and \"greedy\" to recurse on all matches (default: default)\n  -replay-proxy       Replay matched requests using this proxy.\n  -sni                Target TLS SNI, does not support FUZZ keyword\n  -timeout            HTTP request timeout in seconds. (default: 10)\n  -u                  Target URL\n  -x                  Proxy URL (SOCKS5 or HTTP). For example: http://127.0.0.1:8080 or socks5://127.0.0.1:8080\n\nGENERAL OPTIONS:\n  -V                  Show version information. (default: false)\n  -ac                 Automatically calibrate filtering options (default: false)\n  -acc                Custom auto-calibration string. Can be used multiple times. Implies -ac\n  -ach                Per host autocalibration (default: false)\n  -ack                Autocalibration keyword (default: FUZZ)\n  -acs                Custom auto-calibration strategies. Can be used multiple times. Implies -ac\n  -c                  Colorize output. (default: false)\n  -config             Load configuration from a file\n  -json               JSON output, printing newline-delimited JSON records (default: false)\n  -maxtime            Maximum running time in seconds for entire process. (default: 0)\n  -maxtime-job        Maximum running time in seconds per job. (default: 0)\n  -noninteractive     Disable the interactive console functionality (default: false)\n  -p                  Seconds of `delay` between requests, or a range of random delay. For example \"0.1\" or \"0.1-2.0\"\n  -rate               Rate of requests per second (default: 0)\n  -s                  Do not print additional information (silent mode) (default: false)\n  -sa                 Stop on all error cases. Implies -sf and -se. (default: false)\n  -scraperfile        Custom scraper file path\n  -scrapers           Active scraper groups (default: all)\n  -se                 Stop on spurious errors (default: false)\n  -search             Search for a FFUFHASH payload from ffuf history\n  -sf                 Stop when > 95% of responses return 403 Forbidden (default: false)\n  -t                  Number of concurrent threads. (default: 40)\n  -v                  Verbose output, printing full URL and redirect location (if any) with the results. (default: false)\n\nMATCHER OPTIONS:\n  -mc                 Match HTTP status codes, or \"all\" for everything. (default: 200-299,301,302,307,401,403,405,500)\n  -ml                 Match amount of lines in response\n  -mmode              Matcher set operator. Either of: and, or (default: or)\n  -mr                 Match regexp\n  -ms                 Match HTTP response size\n  -mt                 Match how many milliseconds to the first response byte, either greater or less than. EG: >100 or <100\n  -mw                 Match amount of words in response\n\nFILTER OPTIONS:\n  -fc                 Filter HTTP status codes from response. Comma separated list of codes and ranges\n  -fl                 Filter by amount of lines in response. Comma separated list of line counts and ranges\n  -fmode              Filter set operator. Either of: and, or (default: or)\n  -fr                 Filter regexp\n  -fs                 Filter HTTP response size. Comma separated list of sizes and ranges\n  -ft                 Filter by number of milliseconds to the first response byte, either greater or less than. EG: >100 or <100\n  -fw                 Filter by amount of words in response. Comma separated list of word counts and ranges\n\nINPUT OPTIONS:\n  -D                  DirSearch wordlist compatibility mode. Used in conjunction with -e flag. (default: false)\n  -e                  Comma separated list of extensions. Extends FUZZ keyword.\n  -enc                Encoders for keywords, eg. 'FUZZ:urlencode b64encode'\n  -ic                 Ignore wordlist comments (default: false)\n  -input-cmd          Command producing the input. --input-num is required when using this input method. Overrides -w.\n  -input-num          Number of inputs to test. Used in conjunction with --input-cmd. (default: 100)\n  -input-shell        Shell to be used for running command\n  -mode               Multi-wordlist operation mode. Available modes: clusterbomb, pitchfork, sniper (default: clusterbomb)\n  -request            File containing the raw http request\n  -request-proto      Protocol to use along with raw request (default: https)\n  -w                  Wordlist file path and (optional) keyword separated by colon. eg. '/path/to/wordlist:KEYWORD'\n\nOUTPUT OPTIONS:\n  -debug-log          Write all of the internal logging to the specified file.\n  -o                  Write output to file\n  -od                 Directory path to store matched results to.\n  -of                 Output file format. Available formats: json, ejson, html, md, csv, ecsv (or, 'all' for all formats) (default: json)\n  -or                 Don't create the output file if we don't have results (default: false)\n\nEXAMPLE USAGE:\n  Fuzz file paths from wordlist.txt, match all responses but filter out those with content-size 42.\n  Colored, verbose output.\n    ffuf -w wordlist.txt -u https://example.org/FUZZ -mc all -fs 42 -c -v\n\n  Fuzz Host-header, match HTTP 200 responses.\n    ffuf -w hosts.txt -u https://example.org/ -H \"Host: FUZZ\" -mc 200\n\n  Fuzz POST JSON data. Match all responses not containing text \"error\".\n    ffuf -w entries.txt -u https://example.org/ -X POST -H \"Content-Type: application/json\" \\\n      -d '{\"name\": \"FUZZ\", \"anotherkey\": \"anothervalue\"}' -fr \"error\"\n\n  Fuzz multiple locations. Match only responses reflecting the value of \"VAL\" keyword. Colored.\n    ffuf -w params.txt:PARAM -w values.txt:VAL -u https://example.org/?PARAM=VAL -mr \"VAL\" -c\n\n  More information and examples: https://github.com/ffuf/ffuf",
-    "path": "C:\\Users\\jeevan\\go\\bin\\ffuf.EXE",
-    "os_dependencies": [],
-    "missing_dependencies": [],
-    "last_checked": "2025-10-01T11:12:49.026947+00:00",
-    "last_seen": "2025-10-01T11:12:49.026947+00:00",
-    "last_error": null
-  },
-  "gobuster": {
-    "name": "gobuster",
-    "description": "Directory brute force tool",
-    "category": "web",
-    "status": "available",
-    "installed": true,
-    "command_template": [
-      "gobuster"
-    ],
-    "output_format": "text",
-    "version": null,
-    "raw_version": null,
-    "path": "C:\\Users\\jeevan\\go\\bin\\gobuster.EXE",
-    "os_dependencies": [],
-    "missing_dependencies": [],
-    "last_checked": "2025-10-01T11:12:49.065852+00:00",
-    "last_seen": "2025-10-01T11:12:49.065852+00:00",
-    "last_error": null
-  },
-  "waybackurls": {
-    "name": "waybackurls",
-    "description": "Wayback Machine URL fetcher",
-    "category": "recon",
-    "status": "available",
-    "installed": true,
-    "command_template": [
-      "waybackurls"
-    ],
-    "output_format": "text",
-    "version": null,
-    "raw_version": "flag provided but not defined: -version\nUsage of C:\\Users\\jeevan\\go\\bin\\waybackurls.EXE:\n  -dates\n    \tshow date of fetch in the first column\n  -get-versions\n    \tlist URLs for crawled versions of input URL(s)\n  -no-subs\n    \tdon't include subdomains of the target domain",
-    "path": "C:\\Users\\jeevan\\go\\bin\\waybackurls.EXE",
-    "os_dependencies": [],
-    "missing_dependencies": [],
-    "last_checked": "2025-10-01T11:12:54.083555+00:00",
-    "last_seen": "2025-10-01T11:12:54.083555+00:00",
-    "last_error": null
-  }
+  "manual_tools": [],
+  "last_refresh": "2025-10-06T17:07:34.005748655+00:00"
 }

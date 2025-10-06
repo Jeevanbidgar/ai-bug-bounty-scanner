@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Stdio;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use uuid::Uuid;
@@ -32,7 +32,7 @@ impl GoInstallManager {
 
     /// Emit installation output to frontend
     fn emit_output(&self, event_id: &str, output: &str) {
-        let _ = self.app_handle.emit_all(
+        let _ = self.app_handle.emit(
             "tool:installation_output",
             serde_json::json!({
                 "event_id": event_id,
@@ -158,7 +158,7 @@ impl GoInstallManager {
                         let mut lines = reader.lines();
 
                         while let Ok(Some(line)) = lines.next_line().await {
-                            let _ = app_handle_clone.emit_all(
+                            let _ = app_handle_clone.emit(
                                 "tool:installation_output",
                                 serde_json::json!({
                                     "event_id": event_id_clone,
@@ -177,7 +177,7 @@ impl GoInstallManager {
                         let mut lines = reader.lines();
 
                         while let Ok(Some(line)) = lines.next_line().await {
-                            let _ = app_handle_clone2.emit_all(
+                            let _ = app_handle_clone2.emit(
                                 "tool:installation_output",
                                 serde_json::json!({
                                     "event_id": event_id_clone2,

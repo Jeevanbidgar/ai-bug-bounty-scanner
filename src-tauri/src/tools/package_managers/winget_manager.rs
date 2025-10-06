@@ -2,7 +2,7 @@ use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
 use crate::tools::package_managers::{detect_manager, PackageManagerType};
 use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
@@ -39,7 +39,7 @@ impl WingetManager {
 
     fn emit_output(&self, tool_name: &str, message: &str) {
         let event = EventEmitter::tool_installation_output(tool_name, "stdout", message);
-        let _ = self.app_handle.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+        let _ = self.app_handle.emit(TOOL_INSTALLATION_OUTPUT, event);
     }
 
     /// Install a tool via winget install with live streaming
@@ -101,7 +101,7 @@ impl WingetManager {
                         "stdout",
                         &format!("{}\n", line),
                     );
-                    let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                    let _ = app_handle_clone.emit(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
@@ -118,7 +118,7 @@ impl WingetManager {
                         "stderr",
                         &format!("{}\n", line),
                     );
-                    let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                    let _ = app_handle_clone2.emit(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
@@ -185,7 +185,7 @@ impl WingetManager {
                         "stdout",
                         &format!("{}\n", line),
                     );
-                    let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                    let _ = app_handle_clone.emit(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
@@ -202,7 +202,7 @@ impl WingetManager {
                         "stderr",
                         &format!("{}\n", line),
                     );
-                    let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                    let _ = app_handle_clone2.emit(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });

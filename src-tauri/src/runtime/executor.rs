@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::RwLock;
@@ -87,7 +87,7 @@ impl ProcessExecutor {
                 );
 
                 // Emit retry event
-                let _ = self.app_handle.emit_all(
+                let _ = self.app_handle.emit(
                     "workflow:step_retry",
                     serde_json::json!({
                         "execution_id": execution_id,
@@ -153,7 +153,7 @@ impl ProcessExecutor {
         let step_id = &step.id;
 
         // Emit step started event (only on first attempt)
-        let _ = self.app_handle.emit_all(
+        let _ = self.app_handle.emit(
             "workflow:step_started",
             serde_json::json!({
                 "execution_id": execution_id,
@@ -277,7 +277,7 @@ impl ProcessExecutor {
             Err(_) => {
                 // Timeout occurred
                 let _ = child.kill().await;
-                let _ = self.app_handle.emit_all(
+                let _ = self.app_handle.emit(
                     "workflow:step_failed",
                     serde_json::json!({
                         "execution_id": execution_id,
@@ -296,7 +296,7 @@ impl ProcessExecutor {
 
         // Emit step completion event
         if exit_code == 0 {
-            let _ = self.app_handle.emit_all(
+            let _ = self.app_handle.emit(
                 "workflow:step_completed",
                 serde_json::json!({
                     "execution_id": execution_id,
@@ -306,7 +306,7 @@ impl ProcessExecutor {
                 }),
             );
         } else {
-            let _ = self.app_handle.emit_all(
+            let _ = self.app_handle.emit(
                 "workflow:step_failed",
                 serde_json::json!({
                     "execution_id": execution_id,
@@ -343,7 +343,7 @@ impl ProcessExecutor {
                 line = stdout_lines.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            let _ = app_handle.emit_all("workflow:stdout", serde_json::json!({
+                            let _ = app_handle.emit("workflow:stdout", serde_json::json!({
                                 "execution_id": execution_id,
                                 "step_id": step_id,
                                 "line": line,
@@ -360,7 +360,7 @@ impl ProcessExecutor {
                 line = stderr_lines.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            let _ = app_handle.emit_all("workflow:stderr", serde_json::json!({
+                            let _ = app_handle.emit("workflow:stderr", serde_json::json!({
                                 "execution_id": execution_id,
                                 "step_id": step_id,
                                 "line": line,

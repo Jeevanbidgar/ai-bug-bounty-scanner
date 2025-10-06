@@ -18,11 +18,13 @@ function App() {
     // Check if we're in Tauri environment and try to connect to backend
     const initializeApp = async () => {
       try {
-        // Check if we're in a Tauri environment
-        const isTauriEnv = typeof window !== 'undefined' && '__TAURI__' in window
+        // Check if we're in a Tauri environment (updated for Tauri 2.0)
+        const isTauriEnv = typeof window !== 'undefined' &&
+          ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
 
         console.log('🚀 App initialization started')
         console.log('Environment check:', {
+          hasTauriInternals: '__TAURI_INTERNALS__' in window,
           hasTauri: '__TAURI__' in window,
           isTauriEnv
         })
@@ -34,7 +36,7 @@ function App() {
           // Try to connect to Rust backend via Tauri commands
           try {
             console.log('🔧 Testing Rust backend connection...')
-            const { invoke } = await import('@tauri-apps/api/tauri')
+            const { invoke } = await import('@tauri-apps/api/core')
             console.log('Tauri invoke imported successfully')
 
             // Test if we can call a simple Tauri command

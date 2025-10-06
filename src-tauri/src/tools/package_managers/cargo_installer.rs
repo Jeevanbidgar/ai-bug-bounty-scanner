@@ -3,7 +3,7 @@ use crate::tools::catalog::ToolDefinition;
 use anyhow::{anyhow, Context, Result};
 use std::path::PathBuf;
 use std::process::Stdio;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
@@ -36,7 +36,7 @@ impl CargoInstaller {
 
     fn emit_output(&self, tool_name: &str, message: &str) {
         let event = EventEmitter::tool_installation_output(tool_name, "stdout", message);
-        let _ = self.app_handle.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+        let _ = self.app_handle.emit(TOOL_INSTALLATION_OUTPUT, event);
     }
 
     pub async fn install(&self, tool: &ToolDefinition, tool_name: &str) -> Result<String> {
@@ -84,7 +84,7 @@ impl CargoInstaller {
                         "stdout",
                         &format!("{}\n", line),
                     );
-                    let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                    let _ = app_handle_clone.emit(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
@@ -101,7 +101,7 @@ impl CargoInstaller {
                         "stderr",
                         &format!("{}\n", line),
                     );
-                    let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                    let _ = app_handle_clone2.emit(TOOL_INSTALLATION_OUTPUT, event);
                 }
             }
         });
@@ -176,7 +176,7 @@ impl CargoInstaller {
                                 "stdout",
                                 &format!("{}\n", line),
                             );
-                            let _ = app_handle_clone.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                            let _ = app_handle_clone.emit(TOOL_INSTALLATION_OUTPUT, event);
                         }
                         Ok(None) => break,
                         Err(e) => {
@@ -202,7 +202,7 @@ impl CargoInstaller {
                                 "stderr",
                                 &format!("{}\n", line),
                             );
-                            let _ = app_handle_clone2.emit_all(TOOL_INSTALLATION_OUTPUT, event);
+                            let _ = app_handle_clone2.emit(TOOL_INSTALLATION_OUTPUT, event);
                         }
                         Ok(None) => break,
                         Err(e) => {

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
@@ -70,6 +70,105 @@ impl GitPipInstaller {
         false
     }
 
+    /// Check if pipx is installed (preferred for Linux)
+    pub async fn is_pipx_available(&self) -> bool {
+        match Command::new("pipx").arg("--version").output().await {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
+        }
+    }
+
+    /// Install a Python tool via pipx (Linux-preferred method)
+    pub async fn install_with_pipx(
+        &self,
+        git_repo: &str,
+        tool_name: &str,
+        app_handle: Option<&tauri::AppHandle>,
+    ) -> Result<InstallationResult, String> {
+        // Check prerequisites
+        if !self.is_pipx_available().await {
+            return Err("pipx is not installed. Please install pipx first.".to_string());
+        }
+
+        // Emit installation started event
+        if let Some(handle) = app_handle {
+            let _ = handle.emit(
+                TOOL_INSTALLATION_STARTED,
+                serde_json::json!({
+                    "tool_name": tool_name,
+                    "method": "pipx"
+                }),
+            );
+        }
+
+        // Run pipx install
+        let install_arg = format!("git+{}", git_repo);
+        let mut child = Command::new("pipx")
+            .arg("install")
+            .arg(&install_arg)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn pipx: {}", e))?;
+
+        // Stream output
+        if let Some(stdout) = child.stdout.take() {
+            let reader = BufReader::new(stdout);
+            let mut lines = reader.lines();
+            
+            while let Ok(Some(line)) = lines.next_line().await {
+                if let Some(handle) = app_handle {
+                    let _ = handle.emit(
+                        TOOL_INSTALLATION_OUTPUT,
+                        serde_json::json!({
+                            "tool_name": tool_name,
+                            "output": line
+                        }),
+                    );
+                }
+            }
+        }
+
+        // Wait for completion
+        let status = child
+            .wait()
+            .await
+            .map_err(|e| format!("Failed to wait for pipx: {}", e))?;
+
+        let result = if status.success() {
+            InstallationResult {
+                success: true,
+                message: format!("Successfully installed {} via pipx", tool_name),
+                tool_name: tool_name.to_string(),
+                installed_path: Some(format!("~/.local/bin/{}", tool_name)),
+            }
+        } else {
+            InstallationResult {
+                success: false,
+                message: format!("Failed to install {} via pipx", tool_name),
+                tool_name: tool_name.to_string(),
+                installed_path: None,
+            }
+        };
+
+        // Emit completion event
+        if let Some(handle) = app_handle {
+            let _ = handle.emit(
+                TOOL_INSTALLATION_COMPLETED,
+                serde_json::json!({
+                    "tool_name": tool_name,
+                    "success": result.success,
+                    "message": &result.message
+                }),
+            );
+        }
+
+        if result.success {
+            Ok(result)
+        } else {
+            Err(result.message)
+        }
+    }
     /// Get the python command (python3 or python)
     async fn get_python_command(&self) -> Option<String> {
         for python_cmd in &["python3", "python"] {
@@ -123,7 +222,7 @@ impl GitPipInstaller {
 
         // Emit installation started event
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_STARTED,
                 EventEmitter::tool_installation_started(tool_name, "git-pip"),
             );
@@ -135,7 +234,7 @@ impl GitPipInstaller {
             eprintln!("❌ {}", error_msg);
 
             if let Some(handle) = app_handle {
-                let _ = handle.emit_all(
+                let _ = handle.emit(
                     TOOL_INSTALLATION_COMPLETED,
                     EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                 );
@@ -177,7 +276,7 @@ impl GitPipInstaller {
         if !clone_result {
             let error_msg = format!("Failed to clone repository: {}", git_repo);
             if let Some(handle) = app_handle {
-                let _ = handle.emit_all(
+                let _ = handle.emit(
                     TOOL_INSTALLATION_COMPLETED,
                     EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                 );
@@ -247,7 +346,7 @@ impl GitPipInstaller {
                 if !setup_result {
                     let error_msg = format!("Failed to install {} with pip or setup.py", tool_name);
                     if let Some(handle) = app_handle {
-                        let _ = handle.emit_all(
+                        let _ = handle.emit(
                             TOOL_INSTALLATION_COMPLETED,
                             EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                         );
@@ -262,7 +361,7 @@ impl GitPipInstaller {
             } else {
                 let error_msg = format!("Failed to install {}: no setup.py found", tool_name);
                 if let Some(handle) = app_handle {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_COMPLETED,
                         EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                     );
@@ -281,7 +380,7 @@ impl GitPipInstaller {
         eprintln!("{}", success_msg);
 
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_COMPLETED,
                 EventEmitter::tool_installation_completed(tool_name, true, &success_msg),
             );
@@ -318,7 +417,7 @@ impl GitPipInstaller {
                 eprintln!("❌ {}", error_msg);
 
                 if let Some(handle) = app_handle {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
                         EventEmitter::tool_installation_output(tool_name, "stderr", &error_msg),
                     );
@@ -345,7 +444,7 @@ impl GitPipInstaller {
             while let Ok(Some(line)) = lines.next_line().await {
                 eprintln!("[{}] {}", step_name_clone, line);
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
                         EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &line),
                     );
@@ -362,7 +461,7 @@ impl GitPipInstaller {
             while let Ok(Some(line)) = lines.next_line().await {
                 eprintln!("[{} stderr] {}", step_name_clone, line);
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
                         EventEmitter::tool_installation_output(&tool_name_clone, "stderr", &line),
                     );

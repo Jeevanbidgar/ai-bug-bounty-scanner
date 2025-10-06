@@ -3,7 +3,7 @@ use chrono::Utc;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -88,7 +88,7 @@ impl WorkflowEngine {
             execution.inputs.clone(),
             &working_directory,
         );
-        let _ = self.app_handle.emit_all(WORKFLOW_EXECUTION_STARTED, event);
+        let _ = self.app_handle.emit(WORKFLOW_EXECUTION_STARTED, event);
 
         // Execute workflow in background
         let engine_clone = self.clone();
@@ -138,7 +138,7 @@ impl WorkflowEngine {
                 };
                 let _ = self
                     .app_handle
-                    .emit_all(WORKFLOW_EXECUTION_COMPLETED, event);
+                    .emit(WORKFLOW_EXECUTION_COMPLETED, event);
             }
             Err(e) => {
                 // Update execution status to failed
@@ -155,7 +155,7 @@ impl WorkflowEngine {
                     execution_id: execution_id.clone(),
                     timestamp: Utc::now().to_rfc3339(),
                 };
-                let _ = self.app_handle.emit_all(WORKFLOW_EXECUTION_FAILED, event);
+                let _ = self.app_handle.emit(WORKFLOW_EXECUTION_FAILED, event);
 
                 return Err(e);
             }
@@ -219,7 +219,7 @@ impl WorkflowEngine {
 
                 let event =
                     EventEmitter::workflow_step_started(&execution_id, &step_id, &step_name);
-                let _ = self.app_handle.emit_all(WORKFLOW_STEP_STARTED, event);
+                let _ = self.app_handle.emit(WORKFLOW_STEP_STARTED, event);
 
                 match handle.await {
                     Ok(Ok(artifacts)) => {
@@ -245,7 +245,7 @@ impl WorkflowEngine {
                             0,
                             artifacts.len(),
                         );
-                        let _ = self.app_handle.emit_all(WORKFLOW_STEP_COMPLETED, event);
+                        let _ = self.app_handle.emit(WORKFLOW_STEP_COMPLETED, event);
 
                         // Update progress
                         let progress = (completed_steps.len() as u32 * 100) / total_steps;
@@ -274,7 +274,7 @@ impl WorkflowEngine {
                             &step_id,
                             &step_name,
                         );
-                        let _ = self.app_handle.emit_all(WORKFLOW_STEP_FAILED, event);
+                        let _ = self.app_handle.emit(WORKFLOW_STEP_FAILED, event);
 
                         // Update execution status to failed
                         self.update_execution_status(
@@ -372,7 +372,7 @@ impl WorkflowEngine {
             progress,
             current_step.map(|s| s.to_string()),
         );
-        let _ = self.app_handle.emit_all(WORKFLOW_STATUS_UPDATE, event);
+        let _ = self.app_handle.emit(WORKFLOW_STATUS_UPDATE, event);
 
         Ok(())
     }
@@ -385,7 +385,7 @@ impl WorkflowEngine {
         }
 
         // Emit progress update event
-        let _ = self.app_handle.emit_all(
+        let _ = self.app_handle.emit(
             "workflow:progress_update",
             serde_json::json!({
                 "execution_id": execution_id,
@@ -427,7 +427,7 @@ impl WorkflowEngine {
         }
 
         // Emit cancellation event
-        let _ = self.app_handle.emit_all(
+        let _ = self.app_handle.emit(
             "workflow:execution_cancelled",
             serde_json::json!({
                 "execution_id": execution_id,
