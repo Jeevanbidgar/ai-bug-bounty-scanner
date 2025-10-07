@@ -15,6 +15,9 @@ pub mod nuclei;
 pub mod gau;
 pub mod waybackurls;
 
+// Generic adapter (supports 30+ tools with common patterns)
+pub mod generic;
+
 // Central adapter registry
 pub mod registry;
 

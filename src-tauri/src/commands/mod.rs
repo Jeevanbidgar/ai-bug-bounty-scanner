@@ -2104,6 +2104,8 @@ pub async fn check_tool_update(
                         .as_ref()
                         .unwrap_or(&"unknown".to_string())
                 );
+            } else {
+                eprintln!("   ❓ Unable to determine update status");
             }
 
             Ok(result)

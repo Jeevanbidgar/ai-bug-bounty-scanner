@@ -9,7 +9,9 @@ import {
   Trash2,
   AlertTriangle,
   Loader2,
-  ArrowUpCircle
+  ArrowUpCircle,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card'
@@ -33,7 +35,9 @@ const ToolsPage = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [packageManagerFilter, setPackageManagerFilter] = useState('all')
   const [showAddToolDialog, setShowAddToolDialog] = useState(false)
+  const [isManualToolSectionExpanded, setIsManualToolSectionExpanded] = useState(false)
   const [manualToolName, setManualToolName] = useState('')
   const [manualToolPath, setManualToolPath] = useState('')
   const [manualToolCategory, setManualToolCategory] = useState('custom')
@@ -128,35 +132,54 @@ const ToolsPage = () => {
     queryFn: () => apiService.getManualTools(),
   })
 
-  // Check for updates on installed tools
-  useEffect(() => {
-    const checkUpdatesForInstalledTools = async () => {
-      if (!tools?.data) return
+  // Check for updates mutation - triggered manually via button click
+  const checkUpdatesMutation = useMutation({
+    mutationFn: async () => {
+      if (!tools?.data) return {}
+      
+      info('Checking for updates...')
       
       // Only check installed tools with valid paths
       const installedTools = tools.data.filter((t: Tool) => t.installed && t.path)
       const updates: Record<string, { hasUpdate: boolean; latestVersion: string | null }> = {}
       
-      // Check updates for installed tools (limit to avoid too many concurrent requests)
-      const toolsToCheck = installedTools.slice(0, 10) // Check first 10 installed tools
+      let checkedCount = 0
+      let updatesFound = 0
       
-      for (const tool of toolsToCheck) {
+      // Check updates for all installed tools
+      for (const tool of installedTools) {
         try {
           const result = await apiService.checkToolUpdate(tool.name)
           updates[tool.name] = {
             hasUpdate: result.has_update,
             latestVersion: result.latest_version
           }
+          if (result.has_update) {
+            updatesFound++
+          }
+          checkedCount++
         } catch (error) {
           // Silently ignore all errors - version checking may not be supported for all tools
         }
       }
       
-      setToolUpdates(updates)
-    }
-    
-    checkUpdatesForInstalledTools()
-  }, [tools?.data])
+      return { updates, checkedCount, updatesFound }
+    },
+    onSuccess: (data) => {
+      if (data) {
+        setToolUpdates(data.updates)
+        if (data.updatesFound > 0) {
+          success(`Found ${data.updatesFound} update(s) available for ${data.checkedCount} tool(s)`)
+        } else {
+          success(`All ${data.checkedCount} tool(s) are up to date`)
+        }
+      }
+    },
+    onError: (error) => {
+      showError('Failed to check for updates')
+      console.error('Update check error:', error)
+    },
+  })
 
   const filteredTools = useMemo(() => {
     console.log('Filtering tools with:', { 
@@ -164,6 +187,7 @@ const ToolsPage = () => {
       searchTerm, 
       categoryFilter, 
       statusFilter,
+      packageManagerFilter,
       toolUpdatesCount: Object.keys(toolUpdates).length 
     })
     
@@ -175,12 +199,22 @@ const ToolsPage = () => {
         (statusFilter === 'installed' && tool.installed) ||
         (statusFilter === 'not-installed' && !tool.installed) ||
         (statusFilter === 'updates-available' && tool.installed && toolUpdates[tool.name]?.hasUpdate)
-      return matchesSearch && matchesCategory && matchesStatus
+      
+      // Package manager filter logic - match against install_method
+      const matchesPackageManager = packageManagerFilter === 'all' || 
+        (tool.install_method && (
+          tool.install_method === packageManagerFilter ||
+          // Handle git-pip as pipx/git
+          (packageManagerFilter === 'pipx' && tool.install_method === 'git-pip') ||
+          (packageManagerFilter === 'git' && tool.install_method === 'git-pip')
+        ))
+      
+      return matchesSearch && matchesCategory && matchesStatus && matchesPackageManager
     })
     
     console.log('Filtered result:', filtered.length, 'tools')
     return filtered
-  }, [tools?.data, searchTerm, categoryFilter, statusFilter, toolUpdates])
+  }, [tools?.data, searchTerm, categoryFilter, statusFilter, packageManagerFilter, toolUpdates])
 
   const getCategoryDisplayName = (category: string) => {
     const categoryNames: Record<string, string> = {
@@ -295,23 +329,44 @@ const ToolsPage = () => {
             Manage and monitor available security scanning tools
           </p>
         </div>
-        <Button 
-          onClick={() => refreshMutation.mutate()} 
-          className="w-fit"
-          disabled={refreshMutation.isPending}
-        >
-          {refreshMutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Refreshing...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh Status
-            </>
-          )}
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={() => checkUpdatesMutation.mutate()} 
+            className="w-fit bg-purple-600 hover:bg-purple-700"
+            disabled={checkUpdatesMutation.isPending}
+            title="Check for updates on installed tools"
+          >
+            {checkUpdatesMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Checking...
+              </>
+            ) : (
+              <>
+                <ArrowUpCircle className="mr-2 h-4 w-4" />
+                Check Updates
+              </>
+            )}
+          </Button>
+          <Button 
+            onClick={() => refreshMutation.mutate()} 
+            className="w-fit"
+            disabled={refreshMutation.isPending}
+            title="Refresh tool discovery status"
+          >
+            {refreshMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh Status
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Package Managers Section */}
@@ -356,68 +411,114 @@ const ToolsPage = () => {
             <SelectItem value="updates-available">Updates Available</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={packageManagerFilter} onValueChange={setPackageManagerFilter}>
+          <SelectTrigger className="w-full lg:w-48">
+            <SelectValue placeholder="Package Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Package Managers</SelectItem>
+            <SelectItem value="go">Go</SelectItem>
+            <SelectItem value="cargo">Cargo (Rust)</SelectItem>
+            <SelectItem value="npm">npm (Node.js)</SelectItem>
+            <SelectItem value="gem">gem (Ruby)</SelectItem>
+            <SelectItem value="pipx">Pipx (Python)</SelectItem>
+            <SelectItem value="apt">APT (Linux)</SelectItem>
+            <SelectItem value="winget">WinGet (Windows)</SelectItem>
+            <SelectItem value="git">Git</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Manual Tool Management */}
-      <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-blue-400">
-                <Plus className="h-5 w-5" />
-                Manual Tool Management
-              </CardTitle>
-              <CardDescription className="text-gray-400">
-                Add tools that weren't automatically discovered or are in non-standard locations
-              </CardDescription>
-            </div>
-            <Button
-              onClick={() => setShowAddToolDialog(true)}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Tool
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {(manualTools?.data?.manual_tools?.length ?? 0) > 0 ? (
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-gray-300">Manually Added Tools:</h4>
-              <div className="grid gap-3">
-                {(manualTools?.data?.manual_tools ?? []).map((toolName: string) => {
-                  const tool = tools?.data?.find((t: Tool) => t.name === toolName)
-                  return (
-                    <div key={toolName} className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-700">
-                      <div className="flex items-center gap-3">
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                        <div>
-                          <span className="font-medium text-white">{toolName}</span>
-                          {tool && <div className="text-sm text-gray-400">{tool.path}</div>}
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => removeManualToolMutation.mutate(toolName)}
-                        className="text-red-400 border-red-400 hover:bg-red-400 hover:text-white"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )
-                })}
+      {/* Manual Tool Management - Collapsible */}
+      <div className="space-y-2">
+        {!isManualToolSectionExpanded ? (
+          <Button
+            onClick={() => setIsManualToolSectionExpanded(true)}
+            variant="outline"
+            size="sm"
+            className="w-auto bg-gray-800 hover:bg-gray-700 border-gray-600 text-gray-300"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Tool Manually
+            {(manualTools?.data?.manual_tools?.length ?? 0) > 0 && (
+              <Badge className="ml-2 bg-blue-600 text-white">
+                {manualTools?.data?.manual_tools?.length}
+              </Badge>
+            )}
+          </Button>
+        ) : (
+          <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <CardTitle className="flex items-center gap-2 text-blue-400">
+                    <Plus className="h-5 w-5" />
+                    Manual Tool Management
+                  </CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Add tools that weren't automatically discovered or are in non-standard locations
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setShowAddToolDialog(true)}
+                    className="bg-blue-600 hover:bg-blue-700"
+                    size="sm"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Tool
+                  </Button>
+                  <Button
+                    onClick={() => setIsManualToolSectionExpanded(false)}
+                    variant="ghost"
+                    size="sm"
+                    className="text-gray-400 hover:text-white"
+                  >
+                    <ChevronUp className="h-5 w-5" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-400">
-              <Plus className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No manually added tools yet</p>
-              <p className="text-sm">Click "Add Tool" to add tools in non-standard locations</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardHeader>
+            <CardContent>
+              {(manualTools?.data?.manual_tools?.length ?? 0) > 0 ? (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-gray-300">Manually Added Tools:</h4>
+                  <div className="grid gap-3">
+                    {(manualTools?.data?.manual_tools ?? []).map((toolName: string) => {
+                      const tool = tools?.data?.find((t: Tool) => t.name === toolName)
+                      return (
+                        <div key={toolName} className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-700">
+                          <div className="flex items-center gap-3">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <div>
+                              <span className="font-medium text-white">{toolName}</span>
+                              {tool && <div className="text-sm text-gray-400">{tool.path}</div>}
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeManualToolMutation.mutate(toolName)}
+                            className="text-red-400 border-red-400 hover:bg-red-400 hover:text-white"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-400">
+                  <Plus className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No manually added tools yet</p>
+                  <p className="text-sm">Click "Add Tool" to add tools in non-standard locations</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* Add Manual Tool Dialog */}
       {showAddToolDialog && (

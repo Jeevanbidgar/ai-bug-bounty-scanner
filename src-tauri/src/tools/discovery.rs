@@ -41,6 +41,7 @@ pub struct ToolRecord {
     pub last_checked: Option<String>,
     pub last_seen: Option<String>,
     pub last_error: Option<String>,
+    pub install_method: Option<String>, // Installation method: "go", "pipx", "git-pip", etc.
 }
 
 impl ToolRecord {
@@ -61,6 +62,7 @@ impl ToolRecord {
             last_checked: None,
             last_seen: None,
             last_error: None,
+            install_method: Some(def.install_method.clone()),
         }
     }
 }
@@ -678,6 +680,7 @@ impl ToolDiscoveryService {
             last_checked: Some(Utc::now().to_rfc3339()),
             last_seen: Some(Utc::now().to_rfc3339()),
             last_error: None,
+            install_method: Some("manual".to_string()),
         };
 
         cache.tools.insert(name.to_string(), record.clone());
@@ -939,5 +942,193 @@ impl ToolDiscoveryService {
         }
 
         Ok("unknown".to_string())
+    }
+
+    /// Enhanced recheck that looks in package-manager-specific locations
+    pub async fn recheck_tool_enhanced(
+        &self,
+        tool_name: &str,
+        install_method: Option<&str>
+    ) -> Option<ToolRecord> {
+        let def = self.catalog.get(tool_name)?;
+        
+        // Get standard search paths
+        let mut search_paths: Vec<PathBuf> = self.get_os_specific_search_paths()
+            .into_iter()
+            .map(PathBuf::from)
+            .collect();
+        
+        // Add package-manager-specific paths
+        if let Some(method) = install_method {
+            search_paths.extend(self.get_pm_specific_paths(method).await);
+        }
+        
+        eprintln!("🔍 Enhanced search for {} in {} paths", tool_name, search_paths.len());
+        
+        // Search in all paths
+        for candidate in &def.command_candidates {
+            for search_dir in &search_paths {
+                // Try exact candidate name
+                let tool_path = search_dir.join(candidate);
+                if tool_path.exists() && tool_path.is_file() {
+                    eprintln!("✅ Found {} at {}", tool_name, tool_path.display());
+                    return self.check_tool_at_path_direct(tool_name, &tool_path).await;
+                }
+                
+                // Try with common extensions on Windows
+                #[cfg(target_os = "windows")]
+                for ext in &[".exe", ".cmd", ".bat", ".ps1"] {
+                    let tool_path_ext = search_dir.join(format!("{}{}", candidate, ext));
+                    if tool_path_ext.exists() && tool_path_ext.is_file() {
+                        eprintln!("✅ Found {} at {}", tool_name, tool_path_ext.display());
+                        return self.check_tool_at_path_direct(tool_name, &tool_path_ext).await;
+                    }
+                }
+            }
+        }
+        
+        eprintln!("❌ Could not find {} in enhanced search", tool_name);
+        None
+    }
+    
+    /// Check tool at specific path and update cache
+    async fn check_tool_at_path_direct(&self, tool_name: &str, tool_path: &PathBuf) -> Option<ToolRecord> {
+        let def = self.catalog.get(tool_name)?;
+        let mut record = ToolRecord::from_catalog_definition(def);
+        
+        record.installed = true;
+        record.status = "available".to_string();
+        record.path = Some(tool_path.to_string_lossy().to_string());
+        
+        // Try to get version
+        if !def.version_args.is_empty() {
+            if let Ok(version) = self.capture_tool_version(
+                &tool_path.to_string_lossy(), 
+                &def.version_args
+            ).await {
+                record.version = Some(version.clone());
+                record.raw_version = Some(version);
+            }
+        }
+        
+        record.last_checked = Some(Utc::now().to_rfc3339());
+        
+        // Update cache
+        let mut cache = self.cache.write().await;
+        cache.tools.insert(tool_name.to_string(), record.clone());
+        drop(cache);
+        
+        let _ = self.save_cache().await;
+        
+        Some(record)
+    }
+    
+    async fn get_pm_specific_paths(&self, install_method: &str) -> Vec<PathBuf> {
+        match install_method {
+            "npm" => self.get_npm_paths().await,
+            "winget" => self.get_winget_paths().await,
+            "cargo" => self.get_cargo_paths().await,
+            _ => vec![]
+        }
+    }
+    
+    async fn get_npm_paths(&self) -> Vec<PathBuf> {
+        let mut paths = vec![];
+        
+        eprintln!("🔍 Getting npm-specific paths...");
+        
+        // Try to get npm prefix
+        if let Ok(output) = tokio::process::Command::new("npm")
+            .args(&["prefix", "-g"])
+            .output()
+            .await
+        {
+            if output.status.success() {
+                let prefix = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                eprintln!("   npm prefix: {}", prefix);
+                paths.push(PathBuf::from(format!("{}/node_modules/.bin", prefix)));
+                paths.push(PathBuf::from(format!("{}\\node_modules\\.bin", prefix)));
+            }
+        }
+        
+        // Common npm global locations on Windows
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(appdata) = std::env::var("APPDATA") {
+                let npm_path = PathBuf::from(format!("{}\\npm", appdata));
+                eprintln!("   Checking: {}", npm_path.display());
+                paths.push(npm_path);
+            }
+            if let Ok(programfiles) = std::env::var("ProgramFiles") {
+                paths.push(PathBuf::from(format!("{}\\nodejs", programfiles)));
+            }
+        }
+        
+        // Common npm global locations on Unix
+        #[cfg(not(target_os = "windows"))]
+        {
+            if let Ok(home) = std::env::var("HOME") {
+                paths.push(PathBuf::from(format!("{}/.npm-global/bin", home)));
+                paths.push(PathBuf::from("/usr/local/bin"));
+                paths.push(PathBuf::from("/usr/bin"));
+            }
+        }
+        
+        eprintln!("   Found {} npm paths", paths.len());
+        paths
+    }
+    
+    async fn get_winget_paths(&self) -> Vec<PathBuf> {
+        let mut paths = vec![];
+        
+        eprintln!("🔍 Getting WinGet-specific paths...");
+        
+        #[cfg(target_os = "windows")]
+        {
+            // Common WinGet install locations
+            if let Ok(userprofile) = std::env::var("USERPROFILE") {
+                paths.push(PathBuf::from(format!("{}\\AppData\\Local\\Microsoft\\WinGet\\Packages", userprofile)));
+                paths.push(PathBuf::from(format!("{}\\AppData\\Local\\Microsoft\\WinGet\\Links", userprofile)));
+            }
+            
+            paths.push(PathBuf::from("C:\\Program Files"));
+            paths.push(PathBuf::from("C:\\Program Files (x86)"));
+            
+            // Check ProgramFiles environment variables
+            if let Ok(pf) = std::env::var("ProgramFiles") {
+                paths.push(PathBuf::from(pf));
+            }
+            if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+                paths.push(PathBuf::from(pf86));
+            }
+            
+            // Local bin directories
+            if let Ok(userprofile) = std::env::var("USERPROFILE") {
+                paths.push(PathBuf::from(format!("{}\\AppData\\Local\\Programs", userprofile)));
+            }
+        }
+        
+        eprintln!("   Found {} WinGet paths", paths.len());
+        paths
+    }
+    
+    async fn get_cargo_paths(&self) -> Vec<PathBuf> {
+        let mut paths = vec![];
+        
+        // Cargo bin directory
+        if let Ok(home) = std::env::var("CARGO_HOME") {
+            paths.push(PathBuf::from(format!("{}/bin", home)));
+        } else if let Ok(home) = std::env::var("HOME") {
+            paths.push(PathBuf::from(format!("{}/.cargo/bin", home)));
+        }
+        
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(userprofile) = std::env::var("USERPROFILE") {
+                paths.push(PathBuf::from(format!("{}\\.cargo\\bin", userprofile)));
+            }
+        }
+        
+        paths
     }
 }
