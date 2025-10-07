@@ -45,11 +45,11 @@ const ToolsPage = () => {
   const [toolUpdates, setToolUpdates] = useState<Record<string, { hasUpdate: boolean; latestVersion: string | null }>>({})
   const [isInitialDiscovery, setIsInitialDiscovery] = useState(false)
   const [discoveryProgress, setDiscoveryProgress] = useState(0)
-  
+
   // State for installation progress modal
   const [isInstalling, setIsInstalling] = useState(false)
   const [installingTool, setInstallingTool] = useState<string | null>(null)
-  
+
   const queryClient = useQueryClient()
   const { toasts, success, error: showError, info, removeToast } = useToast()
 
@@ -69,7 +69,7 @@ const ToolsPage = () => {
       // If we have no tools (empty cache), trigger discovery explicitly
       if (tools && tools.data && tools.data.length === 0 && !isLoading) {
         setIsInitialDiscovery(true)
-        
+
         // Trigger discovery with forceRefresh=true
         try {
           await apiService.getTools(true)
@@ -87,7 +87,7 @@ const ToolsPage = () => {
         }
       }
     }
-    
+
     triggerInitialDiscovery()
   }, [isLoading, tools, isInitialDiscovery, refetch])
 
@@ -136,16 +136,16 @@ const ToolsPage = () => {
   const checkUpdatesMutation = useMutation({
     mutationFn: async () => {
       if (!tools?.data) return {}
-      
+
       info('Checking for updates...')
-      
+
       // Only check installed tools with valid paths
       const installedTools = tools.data.filter((t: Tool) => t.installed && t.path)
       const updates: Record<string, { hasUpdate: boolean; latestVersion: string | null }> = {}
-      
+
       let checkedCount = 0
       let updatesFound = 0
-      
+
       // Check updates for all installed tools
       for (const tool of installedTools) {
         try {
@@ -162,7 +162,7 @@ const ToolsPage = () => {
           // Silently ignore all errors - version checking may not be supported for all tools
         }
       }
-      
+
       return { updates, checkedCount, updatesFound }
     },
     onSuccess: (data) => {
@@ -182,36 +182,35 @@ const ToolsPage = () => {
   })
 
   const filteredTools = useMemo(() => {
-    console.log('Filtering tools with:', { 
-      totalTools: tools?.data?.length, 
-      searchTerm, 
-      categoryFilter, 
+    console.log('Filtering tools with:', {
+      totalTools: tools?.data?.length,
+      searchTerm,
+      categoryFilter,
       statusFilter,
       packageManagerFilter,
-      toolUpdatesCount: Object.keys(toolUpdates).length 
+      toolUpdatesCount: Object.keys(toolUpdates).length
     })
-    
+
     const filtered = (tools?.data || []).filter((tool: Tool) => {
       const matchesSearch = tool.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           tool.description.toLowerCase().includes(searchTerm.toLowerCase())
+        tool.description.toLowerCase().includes(searchTerm.toLowerCase())
       const matchesCategory = categoryFilter === 'all' || tool.category === categoryFilter
       const matchesStatus = statusFilter === 'all' ||
         (statusFilter === 'installed' && tool.installed) ||
         (statusFilter === 'not-installed' && !tool.installed) ||
         (statusFilter === 'updates-available' && tool.installed && toolUpdates[tool.name]?.hasUpdate)
-      
+
       // Package manager filter logic - match against install_method
-      const matchesPackageManager = packageManagerFilter === 'all' || 
+      const matchesPackageManager = packageManagerFilter === 'all' ||
         (tool.install_method && (
           tool.install_method === packageManagerFilter ||
-          // Handle git-pip as pipx/git
-          (packageManagerFilter === 'pipx' && tool.install_method === 'git-pip') ||
-          (packageManagerFilter === 'git' && tool.install_method === 'git-pip')
+          // Handle git-pip as Python (includes both pipx-installable and no-pipx)
+          (packageManagerFilter === 'git-pip' && (tool.install_method === 'git-pip' || tool.install_method.includes('git')))
         ))
-      
+
       return matchesSearch && matchesCategory && matchesStatus && matchesPackageManager
     })
-    
+
     console.log('Filtered result:', filtered.length, 'tools')
     return filtered
   }, [tools?.data, searchTerm, categoryFilter, statusFilter, packageManagerFilter, toolUpdates])
@@ -267,7 +266,7 @@ const ToolsPage = () => {
           {discoveryProgress > 0 && discoveryProgress < 100 && (
             <div className="space-y-2">
               <div className="w-full bg-gray-700 rounded-full h-2">
-                <div 
+                <div
                   className="bg-blue-500 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${discoveryProgress}%` }}
                 ></div>
@@ -299,8 +298,8 @@ const ToolsPage = () => {
             <p className="text-red-300 mb-4">
               {error instanceof Error ? error.message : 'An unexpected error occurred'}
             </p>
-            <Button 
-              onClick={() => refetch()} 
+            <Button
+              onClick={() => refetch()}
               variant="outline"
               className="border-red-600 text-red-400 hover:bg-red-900/30"
             >
@@ -317,10 +316,10 @@ const ToolsPage = () => {
     <div className="space-y-6">
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
-      
+
       {/* PipxPathWarning Banner */}
       <PipxPathWarning />
-      
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
@@ -330,8 +329,8 @@ const ToolsPage = () => {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            onClick={() => checkUpdatesMutation.mutate()} 
+          <Button
+            onClick={() => checkUpdatesMutation.mutate()}
             className="w-fit bg-purple-600 hover:bg-purple-700"
             disabled={checkUpdatesMutation.isPending}
             title="Check for updates on installed tools"
@@ -348,8 +347,8 @@ const ToolsPage = () => {
               </>
             )}
           </Button>
-          <Button 
-            onClick={() => refreshMutation.mutate()} 
+          <Button
+            onClick={() => refreshMutation.mutate()}
             className="w-fit"
             disabled={refreshMutation.isPending}
             title="Refresh tool discovery status"
@@ -370,7 +369,7 @@ const ToolsPage = () => {
       </div>
 
       {/* Package Managers Section */}
-      <PackageManagerPanel 
+      <PackageManagerPanel
         onInstallComplete={() => {
           success('Package manager installed successfully!')
           refetch()
@@ -419,12 +418,11 @@ const ToolsPage = () => {
             <SelectItem value="all">All Package Managers</SelectItem>
             <SelectItem value="go">Go</SelectItem>
             <SelectItem value="cargo">Cargo (Rust)</SelectItem>
-            <SelectItem value="npm">npm (Node.js)</SelectItem>
             <SelectItem value="gem">gem (Ruby)</SelectItem>
-            <SelectItem value="pipx">Pipx (Python)</SelectItem>
+            <SelectItem value="git-pip">Python (pipx/git)</SelectItem>
             <SelectItem value="apt">APT (Linux)</SelectItem>
-            <SelectItem value="winget">WinGet (Windows)</SelectItem>
-            <SelectItem value="git">Git</SelectItem>
+            <SelectItem value="manual">Manual Install</SelectItem>
+            <SelectItem value="runtime">Runtime/System</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -609,7 +607,7 @@ const ToolsPage = () => {
         ) : (
           filteredTools.map((tool: Tool) => {
             return (
-              <div 
+              <div
                 key={tool.name}
                 className="cursor-pointer"
                 onClick={() => setSelectedTool(tool)}
@@ -630,71 +628,71 @@ const ToolsPage = () => {
                     </div>
                     <CardDescription>{tool.description}</CardDescription>
                   </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Category:</span>
-                    <Badge variant="outline">
-                      {getCategoryDisplayName(tool.category)}
-                    </Badge>
-                  </div>
-
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Version:</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-white">
-                        {tool.version || tool.raw_version || 'Unknown'}
-                      </span>
-                      {toolUpdates[tool.name]?.hasUpdate && toolUpdates[tool.name]?.latestVersion && (
-                        <span className="text-xs text-green-400">
-                          → {toolUpdates[tool.name].latestVersion}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Status:</span>
-                    <div className="flex items-center space-x-1">
-                      {tool.installed ? (
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <XCircle className="h-4 w-4 text-red-500" />
-                      )}
-                      <span className={tool.installed ? 'text-green-400' : 'text-red-400'}>
-                        {tool.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  {tool.last_checked && (
+                  <CardContent className="space-y-4">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Last Check:</span>
-                      <span className="text-gray-300">
-                        {new Date(tool.last_checked).toLocaleDateString()}
-                      </span>
+                      <span className="text-gray-400">Category:</span>
+                      <Badge variant="outline">
+                        {getCategoryDisplayName(tool.category)}
+                      </Badge>
                     </div>
-                  )}
 
-                  <div className="pt-2 border-t border-gray-700">
-                    <div className="text-xs text-gray-400 mb-2">Command Template:</div>
-                    <code className="text-xs text-gray-300 bg-gray-800 p-2 rounded block overflow-x-auto">
-                      {tool.command_template.join(' ')}
-                    </code>
-                    {tool.path && (
-                      <div className="mt-2 text-xs text-gray-400">
-                        <span className="font-medium text-gray-300">Executable:</span>
-                        <div className="truncate text-gray-400">{tool.path}</div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-400">Version:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white">
+                          {tool.version || tool.raw_version || 'Unknown'}
+                        </span>
+                        {toolUpdates[tool.name]?.hasUpdate && toolUpdates[tool.name]?.latestVersion && (
+                          <span className="text-xs text-green-400">
+                            → {toolUpdates[tool.name].latestVersion}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-400">Status:</span>
+                      <div className="flex items-center space-x-1">
+                        {tool.installed ? (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        )}
+                        <span className={tool.installed ? 'text-green-400' : 'text-red-400'}>
+                          {tool.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    {tool.last_checked && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400">Last Check:</span>
+                        <span className="text-gray-300">
+                          {new Date(tool.last_checked).toLocaleDateString()}
+                        </span>
                       </div>
                     )}
-                    {tool.missing_dependencies.length > 0 && (
-                      <div className="mt-2 text-xs text-red-400">
-                        <span className="font-medium text-red-300">Missing dependencies:</span>
-                        <div>{tool.missing_dependencies.join(', ')}</div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+
+                    <div className="pt-2 border-t border-gray-700">
+                      <div className="text-xs text-gray-400 mb-2">Command Template:</div>
+                      <code className="text-xs text-gray-300 bg-gray-800 p-2 rounded block overflow-x-auto">
+                        {tool.command_template.join(' ')}
+                      </code>
+                      {tool.path && (
+                        <div className="mt-2 text-xs text-gray-400">
+                          <span className="font-medium text-gray-300">Executable:</span>
+                          <div className="truncate text-gray-400">{tool.path}</div>
+                        </div>
+                      )}
+                      {tool.missing_dependencies.length > 0 && (
+                        <div className="mt-2 text-xs text-red-400">
+                          <span className="font-medium text-red-300">Missing dependencies:</span>
+                          <div>{tool.missing_dependencies.join(', ')}</div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             )
           })
@@ -749,7 +747,7 @@ const ToolsPage = () => {
 
       {/* Tool Detail Modal */}
       {selectedTool && (
-        <ToolDetailModal 
+        <ToolDetailModal
           tool={selectedTool}
           onClose={() => setSelectedTool(null)}
           onInstallStart={(toolName) => {
@@ -760,15 +758,15 @@ const ToolsPage = () => {
           onToolUpdate={(updatedTool) => {
             // Update the selected tool in local state
             setSelectedTool(updatedTool)
-            
+
             // CRITICAL FIX: Update React Query cache directly
             // This prevents the tool from reverting to "Not Installed" when modal closes
             queryClient.setQueryData(['tools'], (oldData: any) => {
               if (!oldData?.data) return oldData
-              
+
               return {
                 ...oldData,
-                data: oldData.data.map((tool: Tool) => 
+                data: oldData.data.map((tool: Tool) =>
                   tool.name === updatedTool.name ? updatedTool : tool
                 )
               }

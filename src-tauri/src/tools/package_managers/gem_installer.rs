@@ -399,52 +399,165 @@ impl GemInstaller {
             .as_ref()
             .ok_or_else(|| anyhow!("Tool {} does not have gem_package defined", tool.name))?;
 
-        // Run gem update
-        let mut child = Command::new("gem")
-            .args(&["update", package_name])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("Failed to spawn gem update")?;
+        // On Linux, try to detect if we need elevated privileges
+        // First, try without elevation (works for user-installed gems)
+        #[cfg(target_os = "linux")]
+        {
+            use crate::tools::package_managers::elevation_helper::ElevationHelper;
+            
+            // First attempt without elevation (for user gems in ~/.local/share/gem)
+            let mut child = Command::new("gem")
+                .args(&["update", package_name])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .context("Failed to spawn gem update")?;
 
-        // Stream output
-        if let Some(stdout) = child.stdout.take() {
-            let reader = BufReader::new(stdout);
-            let mut lines = reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                self.emit_output(tool_name, &format!("{}\n", line));
+            // Stream output
+            if let Some(stdout) = child.stdout.take() {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    self.emit_output(tool_name, &format!("{}\n", line));
+                }
             }
-        }
 
-        if let Some(stderr) = child.stderr.take() {
-            let reader = BufReader::new(stderr);
-            let mut lines = reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                self.emit_output(tool_name, &format!("{}\n", line));
+            let mut stderr_output = String::new();
+            if let Some(stderr) = child.stderr.take() {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    stderr_output.push_str(&line);
+                    stderr_output.push('\n');
+                    self.emit_output(tool_name, &format!("{}\n", line));
+                }
             }
-        }
 
-        let status = child.wait().await?;
+            let status = child.wait().await?;
 
-        if !status.success() {
-            let error_msg = if let Some(code) = status.code() {
-                format!("❌ Failed to update {} (exit code: {})\n", tool.name, code)
-            } else {
-                format!("❌ Failed to update {} (process terminated)\n", tool.name)
-            };
-            self.emit_output(tool_name, &error_msg);
+            // If it failed due to permissions, retry with pkexec
+            if !status.success() && (stderr_output.contains("Permission denied") || stderr_output.contains("cannot open directory")) {
+                self.emit_output(tool_name, "⚠️ Permission denied, retrying with elevated privileges...\n");
+                
+                let elevation = ElevationHelper::new();
+                let elevation_msg = elevation.get_elevation_message().await;
+                self.emit_output(tool_name, elevation_msg);
+
+                let (elevation_cmd, elevation_args) = elevation
+                    .elevate_command(&["gem", "update", package_name])
+                    .await;
+
+                let mut child = Command::new(elevation_cmd)
+                    .args(&elevation_args)
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .context("Failed to spawn gem update with elevation")?;
+
+                // Stream output
+                if let Some(stdout) = child.stdout.take() {
+                    let reader = BufReader::new(stdout);
+                    let mut lines = reader.lines();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        self.emit_output(tool_name, &format!("{}\n", line));
+                    }
+                }
+
+                if let Some(stderr) = child.stderr.take() {
+                    let reader = BufReader::new(stderr);
+                    let mut lines = reader.lines();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        self.emit_output(tool_name, &format!("{}\n", line));
+                    }
+                }
+
+                let status = child.wait().await?;
+
+                if !status.success() {
+                    let error_msg = if let Some(code) = status.code() {
+                        format!("❌ Failed to update {} with elevated privileges (exit code: {})\n", tool.name, code)
+                    } else {
+                        format!("❌ Failed to update {} with elevated privileges (process terminated)\n", tool.name)
+                    };
+                    self.emit_output(tool_name, &error_msg);
+                    return Err(anyhow!("Gem update failed for {}. Check if the gem is installed.", tool.name));
+                }
+
+                self.emit_output(
+                    tool_name,
+                    &format!("✅ Successfully updated {} with elevated privileges\n", tool.name),
+                );
+                return Ok(format!("Successfully updated {}", tool.name));
+            } else if !status.success() {
+                let error_msg = if let Some(code) = status.code() {
+                    format!("❌ Failed to update {} (exit code: {})\n", tool.name, code)
+                } else {
+                    format!("❌ Failed to update {} (process terminated)\n", tool.name)
+                };
+                self.emit_output(tool_name, &error_msg);
+                self.emit_output(
+                    tool_name,
+                    "💡 Tip: The gem may not be installed or may require different permissions\n",
+                );
+                return Err(anyhow!("Gem update failed for {}. Check if the gem is installed and you have proper permissions.", tool.name));
+            }
+
             self.emit_output(
                 tool_name,
-                "💡 Tip: The gem may not be installed or may require different permissions\n",
+                &format!("✅ Successfully updated {}\n", tool.name),
             );
-            return Err(anyhow!("Gem update failed for {}. Check if the gem is installed and you have proper permissions.", tool.name));
+            return Ok(format!("Successfully updated {}", tool.name));
         }
 
-        self.emit_output(
-            tool_name,
-            &format!("✅ Successfully updated {}\n", tool.name),
-        );
-        Ok(format!("Successfully updated {}", tool.name))
+        // Windows - no elevation needed
+        #[cfg(not(target_os = "linux"))]
+        {
+            let mut child = Command::new("gem")
+                .args(&["update", package_name])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .context("Failed to spawn gem update")?;
+
+            // Stream output
+            if let Some(stdout) = child.stdout.take() {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    self.emit_output(tool_name, &format!("{}\n", line));
+                }
+            }
+
+            if let Some(stderr) = child.stderr.take() {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    self.emit_output(tool_name, &format!("{}\n", line));
+                }
+            }
+
+            let status = child.wait().await?;
+
+            if !status.success() {
+                let error_msg = if let Some(code) = status.code() {
+                    format!("❌ Failed to update {} (exit code: {})\n", tool.name, code)
+                } else {
+                    format!("❌ Failed to update {} (process terminated)\n", tool.name)
+                };
+                self.emit_output(tool_name, &error_msg);
+                self.emit_output(
+                    tool_name,
+                    "💡 Tip: The gem may not be installed or may require different permissions\n",
+                );
+                return Err(anyhow!("Gem update failed for {}. Check if the gem is installed and you have proper permissions.", tool.name));
+            }
+
+            self.emit_output(
+                tool_name,
+                &format!("✅ Successfully updated {}\n", tool.name),
+            );
+            return Ok(format!("Successfully updated {}", tool.name));
+        }
     }
 
     /// Uninstall a gem package

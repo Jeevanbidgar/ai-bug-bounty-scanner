@@ -430,7 +430,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     }
   }
 
-  const canInstall = installationInfo && ['go', 'pipx', 'git-pip', 'apt', 'winget', 'cargo', 'gem', 'npm'].includes(installationInfo.install_method)
+  const canInstall = installationInfo && ['go', 'pipx', 'git-pip', 'apt', 'cargo', 'gem', 'manual'].includes(installationInfo.install_method)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -523,10 +523,10 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                           installationInfo.install_method === 'pipx' ? 'bg-yellow-700 text-yellow-100' :
                             installationInfo.install_method === 'git-pip' ? 'bg-yellow-700 text-yellow-100' :
                               installationInfo.install_method === 'apt' ? 'bg-blue-700 text-blue-100' :
-                                installationInfo.install_method === 'winget' ? 'bg-blue-700 text-blue-100' :
-                                  installationInfo.install_method === 'cargo' ? 'bg-orange-700 text-orange-100' :
-                                    installationInfo.install_method === 'gem' ? 'bg-red-700 text-red-100' :
-                                      installationInfo.install_method === 'npm' ? 'bg-red-700 text-red-100' :
+                                installationInfo.install_method === 'cargo' ? 'bg-orange-700 text-orange-100' :
+                                  installationInfo.install_method === 'gem' ? 'bg-red-700 text-red-100' :
+                                    installationInfo.install_method === 'manual' ? 'bg-purple-700 text-purple-100' :
+                                      installationInfo.install_method === 'runtime' ? 'bg-gray-700 text-gray-100' :
                                         'bg-gray-700 text-gray-100'
                       }>
                         {installationInfo.install_method}
@@ -797,8 +797,8 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                   <button
                     onClick={() => setSelectedInstallMethod(tool.install_method || null)}
                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${(selectedInstallMethod === tool.install_method || selectedInstallMethod === null)
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                       }`}
                   >
                     {tool.install_method || 'default'}
@@ -811,8 +811,8 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                       key={method}
                       onClick={() => setSelectedInstallMethod(method)}
                       className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${selectedInstallMethod === method
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                         }`}
                     >
                       {method}

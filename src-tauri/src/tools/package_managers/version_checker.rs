@@ -381,6 +381,350 @@ pub async fn check_pipx_update(package_name: &str) -> Result<VersionCheckResult,
     }
 }
 
+/// Check for updates for an npm package using `npm outdated -g`
+pub async fn check_npm_update(package_name: &str) -> Result<VersionCheckResult, String> {
+    // First check if npm is installed
+    let npm_cmd = if cfg!(target_os = "windows") {
+        "npm.cmd"
+    } else {
+        "npm"
+    };
+
+    let check_install = Command::new(npm_cmd)
+        .arg("--version")
+        .output()
+        .await;
+
+    if check_install.is_err() || !check_install.unwrap().status.success() {
+        return Ok(VersionCheckResult::error(
+            "npm is not installed".to_string(),
+            "npm".to_string(),
+        ));
+    }
+
+    // Get the current version using `npm list -g <package> --depth=0 --json`
+    let list_output = Command::new(npm_cmd)
+        .args(&["list", "-g", package_name, "--depth=0", "--json"])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute npm list: {}", e))?;
+
+    let current_version = if list_output.status.success() {
+        let stdout = String::from_utf8_lossy(&list_output.stdout);
+        
+        // Parse JSON to extract version
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+            json["dependencies"][package_name]["version"]
+                .as_str()
+                .map(|v| normalize_version(v))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if current_version.is_none() {
+        return Ok(VersionCheckResult::error(
+            format!("Package {} is not installed via npm", package_name),
+            "npm".to_string(),
+        ));
+    }
+
+    let current = current_version.unwrap();
+
+    // Check for updates using `npm outdated -g <package> --json`
+    let outdated_output = Command::new(npm_cmd)
+        .args(&["outdated", "-g", package_name, "--json"])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute npm outdated: {}", e))?;
+
+    // npm outdated returns exit code 1 if there are outdated packages, so we check stdout instead
+    let stdout = String::from_utf8_lossy(&outdated_output.stdout);
+
+    if stdout.trim().is_empty() {
+        // No output means package is up-to-date
+        return Ok(VersionCheckResult::no_update(current, "npm".to_string()));
+    }
+
+    // Parse JSON output
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+        if let Some(package_info) = json.get(package_name) {
+            if let Some(latest) = package_info["latest"].as_str() {
+                let latest_version = normalize_version(latest);
+                
+                // Compare versions
+                match (Version::parse(&current), Version::parse(&latest_version)) {
+                    (Some(current_v), Some(latest_v)) => {
+                        if latest_v > current_v {
+                            return Ok(VersionCheckResult::has_update(
+                                current,
+                                latest_version,
+                                "npm".to_string(),
+                            ));
+                        } else {
+                            return Ok(VersionCheckResult::no_update(current, "npm".to_string()));
+                        }
+                    }
+                    _ => {
+                        // If version parsing fails, assume there's an update if versions differ
+                        if current != latest_version {
+                            return Ok(VersionCheckResult::has_update(
+                                current,
+                                latest_version,
+                                "npm".to_string(),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // If we couldn't parse the output, assume no update
+    Ok(VersionCheckResult::no_update(current, "npm".to_string()))
+}
+
+/// Check for updates for a Ruby gem using `gem list` and `gem search`
+pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, String> {
+    // First check if gem is installed
+    let gem_cmd = if cfg!(target_os = "windows") {
+        "gem.cmd"
+    } else {
+        "gem"
+    };
+
+    let check_install = Command::new(gem_cmd)
+        .arg("--version")
+        .output()
+        .await;
+
+    if check_install.is_err() || !check_install.unwrap().status.success() {
+        return Ok(VersionCheckResult::error(
+            "gem is not installed".to_string(),
+            "gem".to_string(),
+        ));
+    }
+
+    // Get the current version using `gem list <package> --exact --local`
+    let list_output = Command::new(gem_cmd)
+        .args(&["list", package_name, "--exact", "--local"])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute gem list: {}", e))?;
+
+    let current_version = if list_output.status.success() {
+        let stdout = String::from_utf8_lossy(&list_output.stdout);
+        // Output format: "package_name (version, version2, ...)"
+        // Extract the first version
+        if let Some(line) = stdout.lines().next() {
+            if let Some(versions_part) = line.split('(').nth(1) {
+                if let Some(first_version) = versions_part.split(',').next() {
+                    Some(normalize_version(first_version.trim().trim_end_matches(')')))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if current_version.is_none() {
+        return Ok(VersionCheckResult::error(
+            format!("Package {} is not installed via gem", package_name),
+            "gem".to_string(),
+        ));
+    }
+
+    let current = current_version.unwrap();
+
+    // Check for the latest version using `gem search ^<package>$ --remote`
+    let search_output = Command::new(gem_cmd)
+        .args(&["search", &format!("^{}$", package_name), "--remote"])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute gem search: {}", e))?;
+
+    if !search_output.status.success() {
+        return Ok(VersionCheckResult::error(
+            "Failed to search for gem updates".to_string(),
+            "gem".to_string(),
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&search_output.stdout);
+    
+    // Parse the output for the latest version
+    // Output format: "package_name (version, version2, ...)"
+    let latest_version = if let Some(line) = stdout.lines().next() {
+        if let Some(versions_part) = line.split('(').nth(1) {
+            if let Some(first_version) = versions_part.split(',').next() {
+                Some(normalize_version(first_version.trim().trim_end_matches(')')))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(latest) = latest_version {
+        // Compare versions
+        match (Version::parse(&current), Version::parse(&latest)) {
+            (Some(current_v), Some(latest_v)) => {
+                if latest_v > current_v {
+                    return Ok(VersionCheckResult::has_update(
+                        current,
+                        latest,
+                        "gem".to_string(),
+                    ));
+                } else {
+                    return Ok(VersionCheckResult::no_update(current, "gem".to_string()));
+                }
+            }
+            _ => {
+                // If version parsing fails, assume there's an update if versions differ
+                if current != latest {
+                    return Ok(VersionCheckResult::has_update(
+                        current,
+                        latest,
+                        "gem".to_string(),
+                    ));
+                } else {
+                    return Ok(VersionCheckResult::no_update(current, "gem".to_string()));
+                }
+            }
+        }
+    }
+
+    Ok(VersionCheckResult::no_update(current, "gem".to_string()))
+}
+
+/// Check for updates for a Cargo package using `cargo install --list` and crates.io
+pub async fn check_cargo_update(package_name: &str) -> Result<VersionCheckResult, String> {
+    // First check if cargo is installed
+    let check_install = Command::new("cargo")
+        .arg("--version")
+        .output()
+        .await;
+
+    if check_install.is_err() || !check_install.unwrap().status.success() {
+        return Ok(VersionCheckResult::error(
+            "cargo is not installed".to_string(),
+            "cargo".to_string(),
+        ));
+    }
+
+    // Get the current version using `cargo install --list`
+    let list_output = Command::new("cargo")
+        .args(&["install", "--list"])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute cargo install --list: {}", e))?;
+
+    let current_version = if list_output.status.success() {
+        let stdout = String::from_utf8_lossy(&list_output.stdout);
+        
+        // Find the package in the output
+        // Format: "package_name v1.2.3:"
+        let mut found_version: Option<String> = None;
+        for line in stdout.lines() {
+            if line.starts_with(package_name) && line.contains(" v") {
+                if let Some(version_part) = line.split(" v").nth(1) {
+                    let version = version_part.trim_end_matches(':');
+                    found_version = Some(normalize_version(version));
+                    break;
+                }
+            }
+        }
+        found_version
+    } else {
+        None
+    };
+
+    if current_version.is_none() {
+        return Ok(VersionCheckResult::error(
+            format!("Package {} is not installed via cargo", package_name),
+            "cargo".to_string(),
+        ));
+    }
+
+    let current = current_version.unwrap();
+
+    // Check crates.io for the latest version using cargo search
+    let search_output = Command::new("cargo")
+        .args(&["search", package_name, "--limit", "1"])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute cargo search: {}", e))?;
+
+    if !search_output.status.success() {
+        return Ok(VersionCheckResult::error(
+            "Failed to search for cargo updates".to_string(),
+            "cargo".to_string(),
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&search_output.stdout);
+    
+    // Parse the output for the latest version
+    // Format: "package_name = "1.2.3"    # description"
+    let latest_version = if let Some(line) = stdout.lines().next() {
+        if let Some(version_part) = line.split('=').nth(1) {
+            let version = version_part
+                .trim()
+                .trim_start_matches('"')
+                .split('"')
+                .next()
+                .unwrap_or("");
+            Some(normalize_version(version))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(latest) = latest_version {
+        // Compare versions
+        match (Version::parse(&current), Version::parse(&latest)) {
+            (Some(current_v), Some(latest_v)) => {
+                if latest_v > current_v {
+                    return Ok(VersionCheckResult::has_update(
+                        current,
+                        latest,
+                        "cargo".to_string(),
+                    ));
+                } else {
+                    return Ok(VersionCheckResult::no_update(current, "cargo".to_string()));
+                }
+            }
+            _ => {
+                // If version parsing fails, assume there's an update if versions differ
+                if current != latest {
+                    return Ok(VersionCheckResult::has_update(
+                        current,
+                        latest,
+                        "cargo".to_string(),
+                    ));
+                } else {
+                    return Ok(VersionCheckResult::no_update(current, "cargo".to_string()));
+                }
+            }
+        }
+    }
+
+    Ok(VersionCheckResult::no_update(current, "cargo".to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

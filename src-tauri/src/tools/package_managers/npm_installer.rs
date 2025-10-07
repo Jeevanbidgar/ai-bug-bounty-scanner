@@ -379,7 +379,7 @@ impl NpmInstaller {
             }
         }
 
-        Ok(format!("Successfully installed {} via npm", tool.name))
+                Ok(format!("Successfully installed {} globally via npm", tool.name))
     }
 
     /// Verify that the tool is installed and get version
@@ -424,52 +424,116 @@ impl NpmInstaller {
             .as_ref()
             .ok_or_else(|| anyhow!("Tool {} does not have npm_package defined", tool.name))?;
 
-        // Run npm update -g
-        let mut child = Command::new("npm")
-            .args(&["update", "-g", package_name])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("Failed to spawn npm update")?;
+        // Check if we need privilege elevation on Linux
+        // npm global packages typically install to /usr/local which requires sudo/pkexec
+        #[cfg(target_os = "linux")]
+        {
+            use crate::tools::package_managers::elevation_helper::ElevationHelper;
+            
+            let elevation = ElevationHelper::new();
+            let elevation_msg = elevation.get_elevation_message().await;
+            self.emit_output(tool_name, elevation_msg);
 
-        // Stream output
-        if let Some(stdout) = child.stdout.take() {
-            let reader = BufReader::new(stdout);
-            let mut lines = reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                self.emit_output(tool_name, &format!("{}\n", line));
+            let (elevation_cmd, elevation_args) = elevation
+                .elevate_command(&["npm", "update", "-g", package_name])
+                .await;
+
+            let mut child = Command::new(elevation_cmd)
+                .args(&elevation_args)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .context("Failed to spawn npm update")?;
+
+            // Stream output
+            if let Some(stdout) = child.stdout.take() {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    self.emit_output(tool_name, &format!("{}\n", line));
+                }
             }
-        }
 
-        if let Some(stderr) = child.stderr.take() {
-            let reader = BufReader::new(stderr);
-            let mut lines = reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                self.emit_output(tool_name, &format!("{}\n", line));
+            if let Some(stderr) = child.stderr.take() {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    self.emit_output(tool_name, &format!("{}\n", line));
+                }
             }
+
+            let status = child.wait().await?;
+
+            if !status.success() {
+                let error_msg = if let Some(code) = status.code() {
+                    format!("❌ Failed to update {} (exit code: {})\n", tool.name, code)
+                } else {
+                    format!("❌ Failed to update {} (process terminated)\n", tool.name)
+                };
+                self.emit_output(tool_name, &error_msg);
+                self.emit_output(tool_name, "💡 Tip: The package may not be installed globally or may require different permissions\n");
+                return Err(anyhow!(
+                    "npm update failed for {}. Check if the package is installed globally.",
+                    tool.name
+                ));
+            }
+
+            self.emit_output(
+                tool_name,
+                &format!("✅ Successfully updated {}\n", tool.name),
+            );
+            return Ok(format!("Successfully updated {}", tool.name));
         }
 
-        let status = child.wait().await?;
+        // Windows - no elevation needed, npm handles permissions
+        #[cfg(not(target_os = "linux"))]
+        {
+            let mut child = Command::new("npm")
+                .args(&["update", "-g", package_name])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .context("Failed to spawn npm update")?;
 
-        if !status.success() {
-            let error_msg = if let Some(code) = status.code() {
-                format!("❌ Failed to update {} (exit code: {})\n", tool.name, code)
-            } else {
-                format!("❌ Failed to update {} (process terminated)\n", tool.name)
-            };
-            self.emit_output(tool_name, &error_msg);
-            self.emit_output(tool_name, "💡 Tip: The package may not be installed globally or may require different permissions\n");
-            return Err(anyhow!(
-                "npm update failed for {}. Check if the package is installed globally.",
-                tool.name
-            ));
+            // Stream output
+            if let Some(stdout) = child.stdout.take() {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    self.emit_output(tool_name, &format!("{}\n", line));
+                }
+            }
+
+            if let Some(stderr) = child.stderr.take() {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    self.emit_output(tool_name, &format!("{}\n", line));
+                }
+            }
+
+            let status = child.wait().await?;
+
+            if !status.success() {
+                let error_msg = if let Some(code) = status.code() {
+                    format!("❌ Failed to update {} (exit code: {})\n", tool.name, code)
+                } else {
+                    format!("❌ Failed to update {} (process terminated)\n", tool.name)
+                };
+                self.emit_output(tool_name, &error_msg);
+                self.emit_output(tool_name, "💡 Tip: The package may not be installed globally or may require different permissions\n");
+                return Err(anyhow!(
+                    "npm update failed for {}. Check if the package is installed globally.",
+                    tool.name
+                ));
+            }
+
+            self.emit_output(
+                tool_name,
+                &format!("✅ Successfully updated {}\n", tool.name),
+            );
+            return Ok(format!("Successfully updated {}", tool.name));
         }
-
-        self.emit_output(
-            tool_name,
-            &format!("✅ Successfully updated {}\n", tool.name),
-        );
-        Ok(format!("Successfully updated {}", tool.name))
     }
 
     /// Uninstall an npm package

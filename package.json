@@ -4,6 +4,7 @@
   "description": "AI-powered security tool orchestration platform - Desktop Application",
   "private": true,
   "scripts": {
+    "postinstall": "node -e \"try { require('fs').chmodSync('./node_modules/.bin/tauri', 0o755); } catch(e) {}\"",
     "dev": "npm run -w frontend dev && tauri dev",
     "dev:tauri": "npm run -w frontend dev:tauri",
     "build": "tauri build",

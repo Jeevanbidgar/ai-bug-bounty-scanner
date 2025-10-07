@@ -118,3 +118,10 @@ htmlcov/
 # Node
 package-lock.json
 yarn.lock
+# Phase documentation files
+*_COMPLETE.md
+*_FIXES*.md
+*_BREAKDOWN.md
+*_RESULTS*.md
+*_INSTALLATION*.md
+ACTUAL_*.md

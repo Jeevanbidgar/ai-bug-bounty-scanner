@@ -386,20 +386,22 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "vulnerability",
             vec!["wpscan"],
         )
-        .with_gem_package("wpscan")
-        .with_apt_package("wpscan"),
+        .with_apt_package("wpscan")  // Set apt package (for metadata)
+        .with_gem_package("wpscan")  // Set gem as primary method (last call wins)
+        .with_alternative_methods(vec!["apt"]),  // Explicitly add apt as alternative
     );
 
     catalog.insert(
         "joomscan".to_string(),
         ToolDefinition::new(
             "joomscan",
-            "Joomla vulnerability scanner",
+            "Joomla vulnerability scanner (Perl script - requires manual setup after cloning)",
             "vulnerability",
-            vec!["joomscan"],
+            vec!["joomscan", "joomscan.pl"],
         )
         .with_os_dependencies(vec!["perl"])
-        .with_git_repo("https://github.com/OWASP/joomscan.git"),
+        .with_git_repo("https://github.com/OWASP/joomscan.git")
+        .with_install_method("manual"),
     );
 
     // === Directory & File Brute Forcing ===
@@ -463,27 +465,20 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
         .with_git_repo("https://github.com/s0md3v/Arjun.git"),
     );
 
-    catalog.insert(
-        "param-miner".to_string(),
-        ToolDefinition::new(
-            "param-miner",
-            "Parameter mining tool",
-            "web",
-            vec!["param-miner"],
-        )
-        .with_install_method("manual"),
-    );
+    // Note: param-miner removed - it's a Burp Suite extension (Java), not a CLI tool
+    // Original repo: https://github.com/PortSwigger/param-miner
+    // For parameter discovery, use arjun instead
 
     // === SQL Injection ===
     catalog.insert(
         "sqlmap".to_string(),
         ToolDefinition::new(
             "sqlmap",
-            "Automatic SQL injection tool",
+            "Automatic SQL injection tool (Python script - no setup.py)",
             "web",
             vec!["sqlmap"],
         )
-        .with_git_repo("https://github.com/sqlmapproject/sqlmap.git"),
+        .with_git_repo_no_pipx("https://github.com/sqlmapproject/sqlmap.git"),
     );
 
     // === XSS Detection ===
@@ -495,20 +490,21 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
 
     catalog.insert(
         "xsstrike".to_string(),
-        ToolDefinition::new("xsstrike", "XSS detection suite", "web", vec!["xsstrike"])
-            .with_git_repo("https://github.com/s0md3v/XSStrike.git"),
+        ToolDefinition::new("xsstrike", "XSS detection suite (Python script - no setup.py)", "web", vec!["xsstrike"])
+            .with_git_repo_no_pipx("https://github.com/s0md3v/XSStrike.git"),
     );
 
     // === Technology Detection ===
+    // Note: wappalyzer npm package is deprecated - using webanalyze instead
     catalog.insert(
-        "wappalyzer".to_string(),
+        "webanalyze".to_string(),
         ToolDefinition::new(
-            "wappalyzer",
-            "Technology detection",
+            "webanalyze",
+            "Web technology detection and fingerprinting (Wappalyzer alternative)",
             "recon",
-            vec!["wappalyzer"],
+            vec!["webanalyze"],
         )
-        .with_npm_package("wappalyzer"),
+        .with_go_module("github.com/rverton/webanalyze/cmd/webanalyze@latest"),
     );
 
     catalog.insert(
@@ -520,8 +516,9 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             vec!["whatweb"],
         )
         .with_os_dependencies(vec!["ruby"])
-        .with_gem_package("whatweb")
-        .with_apt_package("whatweb"),
+        .with_apt_package("whatweb")  // Set apt package (for metadata)
+        .with_gem_package("whatweb")  // Set gem as primary method (last call wins)
+        .with_alternative_methods(vec!["apt"]),  // Explicitly add apt as alternative
     );
 
     // === Screenshot & Visual Recon ===
@@ -672,11 +669,11 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
         "cloudfail".to_string(),
         ToolDefinition::new(
             "cloudfail",
-            "Find origin servers behind CDN",
+            "Find origin servers behind CDN (Python script - no setup.py)",
             "cloud",
             vec!["cloudfail"],
         )
-        .with_git_repo("https://github.com/m0rtem/CloudFail.git"),
+        .with_git_repo_no_pipx("https://github.com/m0rtem/CloudFail.git"),
     );
 
     // === Utilities ===

@@ -36,7 +36,8 @@ pub use manual_installer::ManualInstaller;
 pub use npm_installer::NpmInstaller;
 pub use pipx_manager::PipxManager;
 pub use version_checker::{
-    check_apt_update, check_go_update, check_pipx_update, check_winget_update, VersionCheckResult,
+    check_apt_update, check_cargo_update, check_gem_update, check_go_update, 
+    check_npm_update, check_pipx_update, check_winget_update, VersionCheckResult,
 };
 pub use winget_manager::WingetManager;
 

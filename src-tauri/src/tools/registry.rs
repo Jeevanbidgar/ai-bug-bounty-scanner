@@ -37,7 +37,7 @@ impl ToolRegistry {
             }
         }
 
-        // Try to find the tool using the `which` crate
+        // Try to find the tool using the `which` crate (searches PATH)
         if let Ok(path) = which(tool_name) {
             let path_str = path.to_string_lossy().to_string();
 
@@ -56,7 +56,82 @@ impl ToolRegistry {
             return Some(path_str);
         }
 
+        // If not found in PATH, search additional common directories
+        let additional_paths = self.get_additional_search_paths();
+        for search_dir in additional_paths {
+            let tool_path = search_dir.join(tool_name);
+            
+            // Check exact match
+            if tool_path.exists() && tool_path.is_file() {
+                let path_str = tool_path.to_string_lossy().to_string();
+                
+                // Cache the result
+                let mut tools = self.tools.write().await;
+                tools.insert(
+                    tool_name.to_string(),
+                    ToolInfo {
+                        name: tool_name.to_string(),
+                        path: path_str.clone(),
+                        version: None,
+                        category: "unknown".to_string(),
+                    },
+                );
+                
+                return Some(path_str);
+            }
+            
+            // On Windows, try with .exe extension
+            #[cfg(target_os = "windows")]
+            {
+                let tool_path_exe = search_dir.join(format!("{}.exe", tool_name));
+                if tool_path_exe.exists() && tool_path_exe.is_file() {
+                    let path_str = tool_path_exe.to_string_lossy().to_string();
+                    
+                    let mut tools = self.tools.write().await;
+                    tools.insert(
+                        tool_name.to_string(),
+                        ToolInfo {
+                            name: tool_name.to_string(),
+                            path: path_str.clone(),
+                            version: None,
+                            category: "unknown".to_string(),
+                        },
+                    );
+                    
+                    return Some(path_str);
+                }
+            }
+        }
+
         None
+    }
+
+    fn get_additional_search_paths(&self) -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(home) = std::env::var("USERPROFILE") {
+                paths.push(PathBuf::from(&home).join("go\\bin"));
+                paths.push(PathBuf::from(&home).join(".cargo\\bin"));
+                paths.push(PathBuf::from(&home).join(".local\\bin"));
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            if let Ok(home) = std::env::var("HOME") {
+                paths.push(PathBuf::from(&home).join("go/bin"));
+                paths.push(PathBuf::from(&home).join(".cargo/bin"));
+                paths.push(PathBuf::from(&home).join(".local/bin"));
+            }
+            
+            // Also check /usr/local/bin and /usr/bin (common on Linux)
+            paths.push(PathBuf::from("/usr/local/bin"));
+            paths.push(PathBuf::from("/usr/bin"));
+        }
+
+        paths
     }
 
     pub async fn register_tool(&self, name: String, path: String, category: String) -> Result<()> {
