@@ -3,40 +3,41 @@
 // This module provides detection and management of various package managers
 // used to install security tools across different platforms.
 
-pub mod detection;
-pub mod version;
-pub mod installation;
-pub mod elevation;
-pub mod go_install;
-pub mod version_checker;
-pub mod pipx_manager;
-pub mod git_pip_installer;
 pub mod apt_manager;
-pub mod winget_manager;
-pub mod manual_installer;
 pub mod cargo_installer;
+pub mod detection;
+pub mod elevation;
 pub mod gem_installer;
+pub mod git_pip_installer;
+pub mod go_install;
+pub mod installation;
+pub mod manual_installer;
 pub mod npm_installer;
+pub mod pipx_manager;
+pub mod version;
+pub mod version_checker;
+pub mod winget_manager;
 
-pub use detection::{PackageManagerInfo, detect_all_managers, detect_manager};
-pub use installation::{InstallationResult, install_pipx, install_go_windows, install_winget_windows};
-pub use elevation::{ElevationMethod, ElevationResult, execute_with_smart_elevation, execute_elevated, check_elevation_support};
-pub use go_install::GoInstallManager;
-pub use pipx_manager::PipxManager;
-pub use git_pip_installer::GitPipInstaller;
 pub use apt_manager::AptManager;
-pub use winget_manager::WingetManager;
-pub use manual_installer::ManualInstaller;
 pub use cargo_installer::CargoInstaller;
-pub use gem_installer::GemInstaller;
-pub use npm_installer::NpmInstaller;
-pub use version_checker::{
-    VersionCheckResult, 
-    check_go_update, 
-    check_apt_update, 
-    check_winget_update,
-    check_pipx_update
+pub use detection::{detect_all_managers, detect_manager, PackageManagerInfo};
+pub use elevation::{
+    check_elevation_support, execute_elevated, execute_with_smart_elevation, ElevationMethod,
+    ElevationResult,
 };
+pub use gem_installer::GemInstaller;
+pub use git_pip_installer::GitPipInstaller;
+pub use go_install::GoInstallManager;
+pub use installation::{
+    install_go_windows, install_pipx, install_winget_windows, InstallationResult,
+};
+pub use manual_installer::ManualInstaller;
+pub use npm_installer::NpmInstaller;
+pub use pipx_manager::PipxManager;
+pub use version_checker::{
+    check_apt_update, check_go_update, check_pipx_update, check_winget_update, VersionCheckResult,
+};
+pub use winget_manager::WingetManager;
 
 #[cfg(target_os = "linux")]
 pub use installation::install_apt_package;
@@ -93,13 +94,13 @@ impl PackageManagerType {
     /// Get the color badge for UI display
     pub fn badge_color(&self) -> &'static str {
         match self {
-            Self::Go => "green",       // 🟢 Primary method
-            Self::Pipx => "yellow",    // 🟡 Python tools
-            Self::Apt => "blue",       // 🔵 System packages
-            Self::WinGet => "blue",    // 🔵 System packages
-            Self::Cargo => "orange",   // 🟠 Rust tools
-            Self::Npm => "red",        // 🔴 Node tools
-            Self::Gem => "red",        // 🔴 Ruby tools
+            Self::Go => "green",     // 🟢 Primary method
+            Self::Pipx => "yellow",  // 🟡 Python tools
+            Self::Apt => "blue",     // 🔵 System packages
+            Self::WinGet => "blue",  // 🔵 System packages
+            Self::Cargo => "orange", // 🟠 Rust tools
+            Self::Npm => "red",      // 🔴 Node tools
+            Self::Gem => "red",      // 🔴 Ruby tools
         }
     }
 }

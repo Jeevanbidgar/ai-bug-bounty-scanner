@@ -1,11 +1,13 @@
-use tokio::process::Command;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use serde::{Deserialize, Serialize};
-use std::process::Stdio;
 use std::path::{Path, PathBuf};
-use tauri::Manager;
+use std::process::Stdio;
+use tauri::{Emitter, Manager};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
 
-use crate::events::{EventEmitter, TOOL_INSTALLATION_STARTED, TOOL_INSTALLATION_OUTPUT, TOOL_INSTALLATION_COMPLETED};
+use crate::events::{
+    EventEmitter, TOOL_INSTALLATION_COMPLETED, TOOL_INSTALLATION_OUTPUT, TOOL_INSTALLATION_STARTED,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManualInstaller;
@@ -317,11 +319,12 @@ impl ManualInstaller {
             // Windows: use AppData\Local\Programs\SecurityTools
             let local_appdata = std::env::var("LOCALAPPDATA")
                 .unwrap_or_else(|_| "C:\\Users\\Public\\AppData\\Local".to_string());
-            PathBuf::from(local_appdata).join("Programs").join("SecurityTools")
+            PathBuf::from(local_appdata)
+                .join("Programs")
+                .join("SecurityTools")
         } else {
             // Linux/Kali: use ~/.local/bin
-            let home = std::env::var("HOME")
-                .unwrap_or_else(|_| "/root".to_string());
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
             PathBuf::from(home).join(".local").join("bin")
         }
     }
@@ -333,9 +336,11 @@ impl ManualInstaller {
                 .unwrap_or_else(|_| "C:\\Users\\Public\\AppData\\Local".to_string());
             PathBuf::from(local_appdata).join("SecurityTools")
         } else {
-            let home = std::env::var("HOME")
-                .unwrap_or_else(|_| "/root".to_string());
-            PathBuf::from(home).join(".local").join("share").join("security-tools")
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+            PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join("security-tools")
         }
     }
 
@@ -346,7 +351,7 @@ impl ManualInstaller {
         app_handle: Option<&tauri::AppHandle>,
     ) -> Result<InstallationResult, String> {
         let steps = Self::get_install_steps(tool_name);
-        
+
         if steps.is_empty() {
             return Ok(InstallationResult {
                 success: false,
@@ -356,13 +361,17 @@ impl ManualInstaller {
             });
         }
 
-        eprintln!("📦 Installing {} via manual steps ({} steps)", tool_name, steps.len());
+        eprintln!(
+            "📦 Installing {} via manual steps ({} steps)",
+            tool_name,
+            steps.len()
+        );
 
         // Emit installation started event
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_STARTED,
-                EventEmitter::tool_installation_started(tool_name, "manual")
+                EventEmitter::tool_installation_started(tool_name, "manual"),
             );
         }
 
@@ -385,12 +394,21 @@ impl ManualInstaller {
         // Execute each step
         for (i, step) in steps.iter().enumerate() {
             let step_num = i + 1;
-            let step_desc = format!("Step {}/{}: {}", step_num, steps.len(), Self::step_description(step));
-            
-            self.emit_output(app_handle, tool_name, "stdout", &step_desc).await;
+            let step_desc = format!(
+                "Step {}/{}: {}",
+                step_num,
+                steps.len(),
+                Self::step_description(step)
+            );
+
+            self.emit_output(app_handle, tool_name, "stdout", &step_desc)
+                .await;
             eprintln!("  {}", step_desc);
 
-            match self.execute_step(step, &current_dir, tool_name, app_handle).await {
+            match self
+                .execute_step(step, &current_dir, tool_name, app_handle)
+                .await
+            {
                 Ok(result) => {
                     if let Some(new_dir) = result.new_working_dir {
                         current_dir = new_dir;
@@ -398,19 +416,26 @@ impl ManualInstaller {
                     if result.installed_path.is_some() {
                         installed_path = result.installed_path;
                     }
-                    self.emit_output(app_handle, tool_name, "stdout", &format!("✅ {}", result.message)).await;
+                    self.emit_output(
+                        app_handle,
+                        tool_name,
+                        "stdout",
+                        &format!("✅ {}", result.message),
+                    )
+                    .await;
                 }
                 Err(e) => {
                     let error_msg = format!("Failed at step {}: {}", step_num, e);
-                    self.emit_output(app_handle, tool_name, "stderr", &error_msg).await;
-                    
+                    self.emit_output(app_handle, tool_name, "stderr", &error_msg)
+                        .await;
+
                     if let Some(handle) = app_handle {
-                        let _ = handle.emit_all(
+                        let _ = handle.emit(
                             TOOL_INSTALLATION_COMPLETED,
-                            EventEmitter::tool_installation_completed(tool_name, false, &error_msg)
+                            EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                         );
                     }
-                    
+
                     return Ok(InstallationResult {
                         success: false,
                         message: error_msg,
@@ -421,12 +446,16 @@ impl ManualInstaller {
             }
         }
 
-        let success_msg = format!("Successfully installed {} using {} manual steps", tool_name, steps.len());
-        
+        let success_msg = format!(
+            "Successfully installed {} using {} manual steps",
+            tool_name,
+            steps.len()
+        );
+
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_COMPLETED,
-                EventEmitter::tool_installation_completed(tool_name, true, &success_msg)
+                EventEmitter::tool_installation_completed(tool_name, true, &success_msg),
             );
         }
 
@@ -449,12 +478,18 @@ impl ManualInstaller {
                     "Installing Python package".to_string()
                 }
             }
-            InstallStep::PipInstallEditable => "Installing in editable mode (pip install -e .)".to_string(),
+            InstallStep::PipInstallEditable => {
+                "Installing in editable mode (pip install -e .)".to_string()
+            }
             InstallStep::RunCommand { command, .. } => format!("Running command: {}", command),
             InstallStep::CreateSymlink { target, .. } => format!("Creating symlink to {}", target),
-            InstallStep::Chmod { path, mode } => format!("Setting permissions {} on {}", mode, path),
+            InstallStep::Chmod { path, mode } => {
+                format!("Setting permissions {} on {}", mode, path)
+            }
             InstallStep::MakeInstall => "Running make install".to_string(),
-            InstallStep::ConfigureEnvironment { var_name, .. } => format!("Configuring environment variable {}", var_name),
+            InstallStep::ConfigureEnvironment { var_name, .. } => {
+                format!("Configuring environment variable {}", var_name)
+            }
         }
     }
 
@@ -468,7 +503,7 @@ impl ManualInstaller {
         match step {
             InstallStep::GitClone { url, target_dir } => {
                 let target_path = current_dir.join(target_dir);
-                
+
                 // Skip if already cloned
                 if target_path.exists() {
                     return Ok(StepResult {
@@ -484,7 +519,8 @@ impl ManualInstaller {
                     current_dir,
                     tool_name,
                     app_handle,
-                ).await?;
+                )
+                .await?;
 
                 Ok(StepResult {
                     message: format!("Cloned {} to {}", url, target_dir),
@@ -512,21 +548,20 @@ impl ManualInstaller {
             }
 
             InstallStep::PipInstall { requirements_file } => {
-                let python_cmd = if cfg!(target_os = "windows") { "python" } else { "python3" };
-                
+                let python_cmd = if cfg!(target_os = "windows") {
+                    "python"
+                } else {
+                    "python3"
+                };
+
                 let args = if let Some(req_file) = requirements_file {
                     vec!["-m", "pip", "install", "-r", req_file]
                 } else {
                     vec!["-m", "pip", "install", "."]
                 };
 
-                self.run_command_with_output(
-                    python_cmd,
-                    &args,
-                    current_dir,
-                    tool_name,
-                    app_handle,
-                ).await?;
+                self.run_command_with_output(python_cmd, &args, current_dir, tool_name, app_handle)
+                    .await?;
 
                 Ok(StepResult {
                     message: "Python dependencies installed".to_string(),
@@ -536,15 +571,20 @@ impl ManualInstaller {
             }
 
             InstallStep::PipInstallEditable => {
-                let python_cmd = if cfg!(target_os = "windows") { "python" } else { "python3" };
-                
+                let python_cmd = if cfg!(target_os = "windows") {
+                    "python"
+                } else {
+                    "python3"
+                };
+
                 self.run_command_with_output(
                     python_cmd,
                     &["-m", "pip", "install", "-e", "."],
                     current_dir,
                     tool_name,
                     app_handle,
-                ).await?;
+                )
+                .await?;
 
                 Ok(StepResult {
                     message: "Installed in editable mode".to_string(),
@@ -555,14 +595,15 @@ impl ManualInstaller {
 
             InstallStep::RunCommand { command, args } => {
                 let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-                
+
                 self.run_command_with_output(
                     command,
                     &args_str,
                     current_dir,
                     tool_name,
                     app_handle,
-                ).await?;
+                )
+                .await?;
 
                 Ok(StepResult {
                     message: format!("Command {} executed successfully", command),
@@ -596,7 +637,7 @@ impl ManualInstaller {
                     } else {
                         format!("@echo off\n\"{}\" %*", source_path.display())
                     };
-                    
+
                     let target_bat = format!("{}.bat", target);
                     std::fs::write(&target_bat, batch_content)
                         .map_err(|e| format!("Failed to create batch file: {}", e))?;
@@ -611,7 +652,7 @@ impl ManualInstaller {
                     #[cfg(unix)]
                     {
                         use std::os::unix::fs::PermissionsExt;
-                        
+
                         std::os::unix::fs::symlink(&source_path, &target_path)
                             .map_err(|e| format!("Failed to create symlink: {}", e))?;
 
@@ -641,19 +682,15 @@ impl ManualInstaller {
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    
+
                     let file_path = current_dir.join(path);
                     let mut perms = std::fs::metadata(&file_path)
                         .map_err(|e| format!("Failed to get permissions: {}", e))?
                         .permissions();
-                    
+
                     // Parse mode (simple implementation)
-                    let mode_int = if mode == "+x" {
-                        0o755
-                    } else {
-                        0o644
-                    };
-                    
+                    let mode_int = if mode == "+x" { 0o755 } else { 0o644 };
+
                     perms.set_mode(mode_int);
                     std::fs::set_permissions(&file_path, perms)
                         .map_err(|e| format!("Failed to set permissions: {}", e))?;
@@ -673,7 +710,8 @@ impl ManualInstaller {
                     current_dir,
                     tool_name,
                     app_handle,
-                ).await?;
+                )
+                .await?;
 
                 Ok(StepResult {
                     message: "Make install completed".to_string(),
@@ -682,10 +720,16 @@ impl ManualInstaller {
                 })
             }
 
-            InstallStep::ConfigureEnvironment { var_name, var_value } => {
+            InstallStep::ConfigureEnvironment {
+                var_name,
+                var_value,
+            } => {
                 // For PATH, this is informational only (requires restart)
                 Ok(StepResult {
-                    message: format!("Environment variable {} configured (restart required)", var_name),
+                    message: format!(
+                        "Environment variable {} configured (restart required)",
+                        var_name
+                    ),
                     new_working_dir: None,
                     installed_path: None,
                 })
@@ -722,9 +766,9 @@ impl ManualInstaller {
             while let Ok(Some(line)) = lines.next_line().await {
                 eprintln!("[{}] {}", tool_name_clone, line);
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
-                        EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &line)
+                        EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &line),
                     );
                 }
             }
@@ -739,32 +783,26 @@ impl ManualInstaller {
                 eprintln!("[{} stderr] {}", tool_name_clone, line);
                 error_output.push(line.clone());
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
-                        EventEmitter::tool_installation_output(&tool_name_clone, "stderr", &line)
+                        EventEmitter::tool_installation_output(&tool_name_clone, "stderr", &line),
                     );
                 }
             }
             error_output
         });
 
-        let (status, _, stderr_result) = tokio::join!(
-            child.wait(),
-            stdout_task,
-            stderr_task
-        );
+        let (status, _, stderr_result) = tokio::join!(child.wait(), stdout_task, stderr_task);
 
         let stderr_output = stderr_result.unwrap_or_default();
 
         match status {
             Ok(exit_status) if exit_status.success() => Ok(()),
-            Ok(exit_status) => {
-                Err(format!(
-                    "Command failed with exit code {}: {}",
-                    exit_status.code().unwrap_or(-1),
-                    stderr_output.join("\n")
-                ))
-            }
+            Ok(exit_status) => Err(format!(
+                "Command failed with exit code {}: {}",
+                exit_status.code().unwrap_or(-1),
+                stderr_output.join("\n")
+            )),
             Err(e) => Err(format!("Failed to wait for command: {}", e)),
         }
     }
@@ -777,9 +815,9 @@ impl ManualInstaller {
         message: &str,
     ) {
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_OUTPUT,
-                EventEmitter::tool_installation_output(tool_name, output_type, message)
+                EventEmitter::tool_installation_output(tool_name, output_type, message),
             );
         }
     }

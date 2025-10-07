@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import type { Tool } from '../services/api'
-import { invoke } from '@tauri-apps/api/tauri'
+import { invoke } from '@tauri-apps/api/core'
 import { useToast } from '../hooks/useToast'
 import Toast from './ui/Toast'
 import apiService from '../services/api'
@@ -36,6 +36,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false)
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
   const [installationInfo, setInstallationInfo] = useState<any>(null)
+  const [selectedInstallMethod, setSelectedInstallMethod] = useState<string | null>(null)
   const { toasts, success, error: showError, info, removeToast } = useToast()
 
   useEffect(() => {
@@ -47,7 +48,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
         console.error('Failed to get OS info:', error)
       }
     }
-    
+
     const fetchInstallationInfo = async () => {
       try {
         const installData = await apiService.getToolInstallationInfo(tool.name)
@@ -56,7 +57,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
         console.error('Failed to get installation info:', error)
       }
     }
-    
+
     const fetchVersion = async () => {
       if (tool.installed) {
         try {
@@ -69,7 +70,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
         }
       }
     }
-    
+
     const checkForUpdates = async () => {
       if (tool.installed) {
         try {
@@ -86,7 +87,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
         }
       }
     }
-    
+
     fetchOsInfo()
     fetchInstallationInfo()
     fetchVersion()
@@ -170,7 +171,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
       // This would call a backend command to test run the tool
       // For now, we'll simulate it
       await new Promise(resolve => setTimeout(resolve, 1000))
-      
+
       if (tool.raw_version) {
         setTestOutput(tool.raw_version)
       } else {
@@ -186,20 +187,20 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
   const handleRecheck = async () => {
     setIsRechecking(true)
     const previousStatus = tool.installed
-    
+
     try {
       // Call the Tauri command directly to check just this tool
       const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
-      
+
       if (updatedTool) {
         // Update the local state
         setTool(updatedTool)
-        
+
         // Notify parent component of the update
         if (onToolUpdate) {
           onToolUpdate(updatedTool)
         }
-        
+
         // Fetch version if installed
         if (updatedTool.installed) {
           try {
@@ -215,7 +216,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
             console.error('Failed to fetch version:', error)
           }
         }
-        
+
         // Show appropriate notification
         if (updatedTool.installed && !previousStatus) {
           success(`${updatedTool.name} is now available!`)
@@ -235,7 +236,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Never'
-    
+
     try {
       const date = new Date(dateString)
       return date.toLocaleString()
@@ -244,43 +245,77 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     }
   }
 
-  const handleInstall = async () => {
+  const handleInstall = async (installMethod?: string) => {
     setIsInstalling(true)
-    
+
     // Notify parent to show installation progress modal
     if (onInstallStart) {
       onInstallStart(tool.name)
     }
-    
+
     try {
-      info(`Installing ${tool.name}...`)
-      const result = await apiService.installTool(tool.name)
-      
-      if (result.success) {
-        success(result.message)
-        
-        // Recheck tool status after installation
-        const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
-        if (updatedTool) {
-          // Fetch version
-          try {
-            const version = await apiService.getToolVersion(tool.name)
-            if (version) {
-              updatedTool.raw_version = version
+      const methodToUse = installMethod || selectedInstallMethod || tool.install_method
+
+      if (methodToUse && methodToUse !== tool.install_method) {
+        info(`Installing ${tool.name} via ${methodToUse}...`)
+        const result = await apiService.installToolWithMethod(tool.name, methodToUse)
+
+        if (result.success) {
+          success(result.message)
+
+          // Recheck tool status after installation
+          const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
+          if (updatedTool) {
+            // Fetch version
+            try {
+              const version = await apiService.getToolVersion(tool.name)
+              if (version) {
+                updatedTool.raw_version = version
+              }
+            } catch (error) {
+              console.error('Failed to fetch version:', error)
             }
-          } catch (error) {
-            console.error('Failed to fetch version:', error)
+
+            setTool(updatedTool)
+
+            // Notify parent component
+            if (onToolUpdate) {
+              onToolUpdate(updatedTool)
+            }
           }
-          
-          setTool(updatedTool)
-          
-          // Notify parent component
-          if (onToolUpdate) {
-            onToolUpdate(updatedTool)
-          }
+        } else {
+          showError(result.message)
         }
       } else {
-        showError(result.message)
+        info(`Installing ${tool.name}...`)
+        const result = await apiService.installTool(tool.name)
+
+        if (result.success) {
+          success(result.message)
+
+          // Recheck tool status after installation
+          const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
+          if (updatedTool) {
+            // Fetch version
+            try {
+              const version = await apiService.getToolVersion(tool.name)
+              if (version) {
+                updatedTool.raw_version = version
+              }
+            } catch (error) {
+              console.error('Failed to fetch version:', error)
+            }
+
+            setTool(updatedTool)
+
+            // Notify parent component
+            if (onToolUpdate) {
+              onToolUpdate(updatedTool)
+            }
+          }
+        } else {
+          showError(result.message)
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to install tool'
@@ -292,14 +327,14 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
 
   const handleUpdate = async () => {
     setIsUpdating(true)
-    
+
     try {
       info(`Updating ${tool.name}...`)
       const result = await apiService.updateTool(tool.name)
-      
+
       if (result.success) {
         success(result.message)
-        
+
         // Recheck tool status after update
         const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
         if (updatedTool) {
@@ -312,11 +347,11 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
           } catch (error) {
             console.error('Failed to fetch version:', error)
           }
-          
+
           setTool(updatedTool)
           setUpdateAvailable(false) // Reset update flag
           setLatestVersion(null)
-          
+
           // Notify parent component
           if (onToolUpdate) {
             onToolUpdate(updatedTool)
@@ -335,17 +370,17 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
 
   const handleCheckForUpdates = async () => {
     setIsCheckingUpdate(true)
-    
+
     try {
       info(`Checking for ${tool.name} updates...`)
-      
+
       const result = await apiService.checkToolUpdate(tool.name)
-      
+
       if (result.error) {
         showError(`Update check failed: ${result.error}`)
         return
       }
-      
+
       if (result.has_update) {
         setUpdateAvailable(true)
         setLatestVersion(result.latest_version)
@@ -355,7 +390,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
         setLatestVersion(null)
         success(`${tool.name} is up to date (v${result.current_version})`)
       }
-      
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to check for updates'
       showError(errorMessage)
@@ -368,20 +403,20 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     if (!confirm(`Are you sure you want to uninstall ${tool.name}?`)) {
       return
     }
-    
+
     setIsUninstalling(true)
-    
+
     try {
       info(`Uninstalling ${tool.name}...`)
       const message = await apiService.uninstallTool(tool.name)
-      
+
       success(message)
-      
+
       // Recheck tool status after uninstallation
       const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
       if (updatedTool) {
         setTool(updatedTool)
-        
+
         // Notify parent component
         if (onToolUpdate) {
           onToolUpdate(updatedTool)
@@ -485,14 +520,14 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                     <div className="flex items-center gap-2">
                       <Badge className={
                         installationInfo.install_method === 'go' ? 'bg-green-700 text-green-100' :
-                        installationInfo.install_method === 'pipx' ? 'bg-yellow-700 text-yellow-100' :
-                        installationInfo.install_method === 'git-pip' ? 'bg-yellow-700 text-yellow-100' :
-                        installationInfo.install_method === 'apt' ? 'bg-blue-700 text-blue-100' :
-                        installationInfo.install_method === 'winget' ? 'bg-blue-700 text-blue-100' :
-                        installationInfo.install_method === 'cargo' ? 'bg-orange-700 text-orange-100' :
-                        installationInfo.install_method === 'gem' ? 'bg-red-700 text-red-100' :
-                        installationInfo.install_method === 'npm' ? 'bg-red-700 text-red-100' :
-                        'bg-gray-700 text-gray-100'
+                          installationInfo.install_method === 'pipx' ? 'bg-yellow-700 text-yellow-100' :
+                            installationInfo.install_method === 'git-pip' ? 'bg-yellow-700 text-yellow-100' :
+                              installationInfo.install_method === 'apt' ? 'bg-blue-700 text-blue-100' :
+                                installationInfo.install_method === 'winget' ? 'bg-blue-700 text-blue-100' :
+                                  installationInfo.install_method === 'cargo' ? 'bg-orange-700 text-orange-100' :
+                                    installationInfo.install_method === 'gem' ? 'bg-red-700 text-red-100' :
+                                      installationInfo.install_method === 'npm' ? 'bg-red-700 text-red-100' :
+                                        'bg-gray-700 text-gray-100'
                       }>
                         {installationInfo.install_method}
                       </Badge>
@@ -624,13 +659,13 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                         🔧 Manual Installation Required
                       </p>
                       <p className="text-sm text-gray-400">
-                        {installationInfo?.install_method === 'manual' 
+                        {installationInfo?.install_method === 'manual'
                           ? `${tool.name} requires manual installation. This tool cannot be automatically installed by our app.`
                           : `No automatic installation commands are currently configured for ${tool.name}.`
                         }
                       </p>
                     </div>
-                    
+
                     <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 space-y-3">
                       <p className="text-sm text-blue-300 font-medium">
                         📖 How to Install:
@@ -751,12 +786,53 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
         {/* Footer Actions */}
         <div className="sticky bottom-0 bg-gray-900 border-t border-gray-700 px-6 py-4">
           <div className="flex flex-col gap-3">
+            {/* Installation Method Selector (if alternatives available) */}
+            {!tool.installed && canInstall && tool.alternative_install_methods && tool.alternative_install_methods.length > 0 && (
+              <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Installation Method
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {/* Primary method button */}
+                  <button
+                    onClick={() => setSelectedInstallMethod(tool.install_method || null)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${(selectedInstallMethod === tool.install_method || selectedInstallMethod === null)
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                  >
+                    {tool.install_method || 'default'}
+                    <span className="ml-1 text-xs opacity-75">(recommended)</span>
+                  </button>
+
+                  {/* Alternative method buttons */}
+                  {tool.alternative_install_methods.map((method) => (
+                    <button
+                      key={method}
+                      onClick={() => setSelectedInstallMethod(method)}
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${selectedInstallMethod === method
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        }`}
+                    >
+                      {method}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-gray-400">
+                  {selectedInstallMethod === 'pipx' && '🔐 pipx: Isolated environment, no sudo required'}
+                  {selectedInstallMethod === 'git-pip' && '📦 git-pip: Clone and install from source'}
+                  {(!selectedInstallMethod || selectedInstallMethod === tool.install_method) && '✨ Using recommended installation method'}
+                </p>
+              </div>
+            )}
+
             {/* Installation Actions Row */}
             {canInstall && (
               <div className="flex gap-2">
                 {!tool.installed ? (
                   <Button
-                    onClick={handleInstall}
+                    onClick={() => handleInstall()}
                     className="flex-1 bg-blue-600 hover:bg-blue-700"
                     disabled={isInstalling}
                   >
@@ -769,6 +845,9 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                       <>
                         <Download className="mr-2 h-4 w-4" />
                         Install {tool.name}
+                        {selectedInstallMethod && selectedInstallMethod !== tool.install_method && (
+                          <span className="ml-1 text-xs opacity-75">via {selectedInstallMethod}</span>
+                        )}
                       </>
                     )}
                   </Button>
@@ -814,7 +893,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                 )}
               </div>
             )}
-            
+
             {/* General Actions Row */}
             <div className="flex gap-3">
               <Button
@@ -842,7 +921,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
           </div>
         </div>
       </div>
-      
+
       {/* Toast Notifications */}
       <div className="fixed top-4 right-4 z-[60] space-y-2">
         {toasts.map((toast) => (

@@ -1,11 +1,13 @@
-use tokio::process::Command;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use serde::{Deserialize, Serialize};
-use std::process::Stdio;
 use std::path::{Path, PathBuf};
-use tauri::Manager;
+use std::process::Stdio;
+use tauri::{Emitter, Manager};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
 
-use crate::events::{EventEmitter, TOOL_INSTALLATION_STARTED, TOOL_INSTALLATION_OUTPUT, TOOL_INSTALLATION_COMPLETED};
+use crate::events::{
+    EventEmitter, TOOL_INSTALLATION_COMPLETED, TOOL_INSTALLATION_OUTPUT, TOOL_INSTALLATION_STARTED,
+};
 
 /// GitPipInstaller: Handles Python tool installations via git clone + pip install
 /// This method is more reliable than pipx for Python CLI tools
@@ -43,17 +45,13 @@ impl GitPipInstaller {
                 .join("tools")
                 .join("python-tools")
         };
-        
+
         Self { install_base_dir }
     }
 
     /// Check if git is installed
     pub async fn is_git_available(&self) -> bool {
-        match Command::new("git")
-            .arg("--version")
-            .output()
-            .await
-        {
+        match Command::new("git").arg("--version").output().await {
             Ok(output) => output.status.success(),
             Err(_) => false,
         }
@@ -63,11 +61,7 @@ impl GitPipInstaller {
     pub async fn is_python_available(&self) -> bool {
         // Try python3 first, then python
         for python_cmd in &["python3", "python"] {
-            if let Ok(output) = Command::new(python_cmd)
-                .arg("--version")
-                .output()
-                .await
-            {
+            if let Ok(output) = Command::new(python_cmd).arg("--version").output().await {
                 if output.status.success() {
                     return true;
                 }
@@ -76,14 +70,109 @@ impl GitPipInstaller {
         false
     }
 
+    /// Check if pipx is installed (preferred for Linux)
+    pub async fn is_pipx_available(&self) -> bool {
+        match Command::new("pipx").arg("--version").output().await {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
+        }
+    }
+
+    /// Install a Python tool via pipx (Linux-preferred method)
+    pub async fn install_with_pipx(
+        &self,
+        git_repo: &str,
+        tool_name: &str,
+        app_handle: Option<&tauri::AppHandle>,
+    ) -> Result<InstallationResult, String> {
+        // Check prerequisites
+        if !self.is_pipx_available().await {
+            return Err("pipx is not installed. Please install pipx first.".to_string());
+        }
+
+        // Emit installation started event
+        if let Some(handle) = app_handle {
+            let _ = handle.emit(
+                TOOL_INSTALLATION_STARTED,
+                serde_json::json!({
+                    "tool_name": tool_name,
+                    "method": "pipx"
+                }),
+            );
+        }
+
+        // Run pipx install
+        let install_arg = format!("git+{}", git_repo);
+        let mut child = Command::new("pipx")
+            .arg("install")
+            .arg(&install_arg)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn pipx: {}", e))?;
+
+        // Stream output
+        if let Some(stdout) = child.stdout.take() {
+            let reader = BufReader::new(stdout);
+            let mut lines = reader.lines();
+            
+            while let Ok(Some(line)) = lines.next_line().await {
+                if let Some(handle) = app_handle {
+                    let _ = handle.emit(
+                        TOOL_INSTALLATION_OUTPUT,
+                        serde_json::json!({
+                            "tool_name": tool_name,
+                            "output": line
+                        }),
+                    );
+                }
+            }
+        }
+
+        // Wait for completion
+        let status = child
+            .wait()
+            .await
+            .map_err(|e| format!("Failed to wait for pipx: {}", e))?;
+
+        let result = if status.success() {
+            InstallationResult {
+                success: true,
+                message: format!("Successfully installed {} via pipx", tool_name),
+                tool_name: tool_name.to_string(),
+                installed_path: Some(format!("~/.local/bin/{}", tool_name)),
+            }
+        } else {
+            InstallationResult {
+                success: false,
+                message: format!("Failed to install {} via pipx", tool_name),
+                tool_name: tool_name.to_string(),
+                installed_path: None,
+            }
+        };
+
+        // Emit completion event
+        if let Some(handle) = app_handle {
+            let _ = handle.emit(
+                TOOL_INSTALLATION_COMPLETED,
+                serde_json::json!({
+                    "tool_name": tool_name,
+                    "success": result.success,
+                    "message": &result.message
+                }),
+            );
+        }
+
+        if result.success {
+            Ok(result)
+        } else {
+            Err(result.message)
+        }
+    }
     /// Get the python command (python3 or python)
     async fn get_python_command(&self) -> Option<String> {
         for python_cmd in &["python3", "python"] {
-            if let Ok(output) = Command::new(python_cmd)
-                .arg("--version")
-                .output()
-                .await
-            {
+            if let Ok(output) = Command::new(python_cmd).arg("--version").output().await {
                 if output.status.success() {
                     return Some(python_cmd.to_string());
                 }
@@ -93,19 +182,19 @@ impl GitPipInstaller {
     }
 
     /// Install a Python tool via git clone + pip install
-    /// 
+    ///
     /// # Arguments
     /// * `git_repo` - Git repository URL (e.g., "https://github.com/mschwager/fierce.git")
     /// * `tool_name` - Tool name (e.g., "fierce")
     /// * `app_handle` - Optional Tauri AppHandle for emitting events
-    /// 
+    ///
     /// # Returns
     /// * `InstallationResult` with success status and message
     pub async fn install(
         &self,
         git_repo: &str,
         tool_name: &str,
-        app_handle: Option<&tauri::AppHandle>
+        app_handle: Option<&tauri::AppHandle>,
     ) -> Result<InstallationResult, String> {
         // Check prerequisites
         if !self.is_git_available().await {
@@ -133,9 +222,9 @@ impl GitPipInstaller {
 
         // Emit installation started event
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_STARTED,
-                EventEmitter::tool_installation_started(tool_name, "git-pip")
+                EventEmitter::tool_installation_started(tool_name, "git-pip"),
             );
         }
 
@@ -143,14 +232,14 @@ impl GitPipInstaller {
         if let Err(e) = std::fs::create_dir_all(&self.install_base_dir) {
             let error_msg = format!("Failed to create install directory: {}", e);
             eprintln!("❌ {}", error_msg);
-            
+
             if let Some(handle) = app_handle {
-                let _ = handle.emit_all(
+                let _ = handle.emit(
                     TOOL_INSTALLATION_COMPLETED,
-                    EventEmitter::tool_installation_completed(tool_name, false, &error_msg)
+                    EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                 );
             }
-            
+
             return Ok(InstallationResult {
                 success: false,
                 message: error_msg,
@@ -163,7 +252,10 @@ impl GitPipInstaller {
 
         // Remove existing directory if present
         if clone_path.exists() {
-            eprintln!("🗑️  Removing existing installation at {}", clone_path.display());
+            eprintln!(
+                "🗑️  Removing existing installation at {}",
+                clone_path.display()
+            );
             if let Err(e) = std::fs::remove_dir_all(&clone_path) {
                 eprintln!("⚠️  Failed to remove existing directory: {}", e);
             }
@@ -171,20 +263,22 @@ impl GitPipInstaller {
 
         // Step 1: Clone repository
         eprintln!("📥 Cloning repository...");
-        let clone_result = self.run_command_with_output(
-            "git",
-            &["clone", git_repo, clone_path.to_str().unwrap()],
-            tool_name,
-            "git clone",
-            app_handle
-        ).await?;
+        let clone_result = self
+            .run_command_with_output(
+                "git",
+                &["clone", git_repo, clone_path.to_str().unwrap()],
+                tool_name,
+                "git clone",
+                app_handle,
+            )
+            .await?;
 
         if !clone_result {
             let error_msg = format!("Failed to clone repository: {}", git_repo);
             if let Some(handle) = app_handle {
-                let _ = handle.emit_all(
+                let _ = handle.emit(
                     TOOL_INSTALLATION_COMPLETED,
-                    EventEmitter::tool_installation_completed(tool_name, false, &error_msg)
+                    EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                 );
             }
             return Ok(InstallationResult {
@@ -197,18 +291,26 @@ impl GitPipInstaller {
 
         // Step 2: Install with pip
         eprintln!("📦 Installing with pip...");
-        
+
         // Check if requirements.txt exists
         let requirements_path = clone_path.join("requirements.txt");
         if requirements_path.exists() {
             eprintln!("📋 Found requirements.txt, installing dependencies...");
-            let requirements_result = self.run_command_with_output(
-                &python_cmd,
-                &["-m", "pip", "install", "-r", requirements_path.to_str().unwrap()],
-                tool_name,
-                "pip install requirements",
-                app_handle
-            ).await?;
+            let requirements_result = self
+                .run_command_with_output(
+                    &python_cmd,
+                    &[
+                        "-m",
+                        "pip",
+                        "install",
+                        "-r",
+                        requirements_path.to_str().unwrap(),
+                    ],
+                    tool_name,
+                    "pip install requirements",
+                    app_handle,
+                )
+                .await?;
 
             if !requirements_result {
                 eprintln!("⚠️  Failed to install requirements, continuing with main install...");
@@ -216,33 +318,37 @@ impl GitPipInstaller {
         }
 
         // Install the package itself (editable mode for local development)
-        let install_result = self.run_command_with_output(
-            &python_cmd,
-            &["-m", "pip", "install", "-e", clone_path.to_str().unwrap()],
-            tool_name,
-            "pip install",
-            app_handle
-        ).await?;
+        let install_result = self
+            .run_command_with_output(
+                &python_cmd,
+                &["-m", "pip", "install", "-e", clone_path.to_str().unwrap()],
+                tool_name,
+                "pip install",
+                app_handle,
+            )
+            .await?;
 
         if !install_result {
             // Try alternative: install setup.py if present
             let setup_py = clone_path.join("setup.py");
             if setup_py.exists() {
                 eprintln!("📦 Trying setup.py install...");
-                let setup_result = self.run_command_with_output(
-                    &python_cmd,
-                    &[setup_py.to_str().unwrap(), "install"],
-                    tool_name,
-                    "setup.py install",
-                    app_handle
-                ).await?;
+                let setup_result = self
+                    .run_command_with_output(
+                        &python_cmd,
+                        &[setup_py.to_str().unwrap(), "install"],
+                        tool_name,
+                        "setup.py install",
+                        app_handle,
+                    )
+                    .await?;
 
                 if !setup_result {
                     let error_msg = format!("Failed to install {} with pip or setup.py", tool_name);
                     if let Some(handle) = app_handle {
-                        let _ = handle.emit_all(
+                        let _ = handle.emit(
                             TOOL_INSTALLATION_COMPLETED,
-                            EventEmitter::tool_installation_completed(tool_name, false, &error_msg)
+                            EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                         );
                     }
                     return Ok(InstallationResult {
@@ -255,9 +361,9 @@ impl GitPipInstaller {
             } else {
                 let error_msg = format!("Failed to install {}: no setup.py found", tool_name);
                 if let Some(handle) = app_handle {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_COMPLETED,
-                        EventEmitter::tool_installation_completed(tool_name, false, &error_msg)
+                        EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                     );
                 }
                 return Ok(InstallationResult {
@@ -274,9 +380,9 @@ impl GitPipInstaller {
         eprintln!("{}", success_msg);
 
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_COMPLETED,
-                EventEmitter::tool_installation_completed(tool_name, true, &success_msg)
+                EventEmitter::tool_installation_completed(tool_name, true, &success_msg),
             );
         }
 
@@ -295,7 +401,7 @@ impl GitPipInstaller {
         args: &[&str],
         tool_name: &str,
         step_name: &str,
-        app_handle: Option<&tauri::AppHandle>
+        app_handle: Option<&tauri::AppHandle>,
     ) -> Result<bool, String> {
         eprintln!("🔧 Running: {} {}", command, args.join(" "));
 
@@ -309,14 +415,14 @@ impl GitPipInstaller {
             Err(e) => {
                 let error_msg = format!("Failed to spawn command '{}': {}", command, e);
                 eprintln!("❌ {}", error_msg);
-                
+
                 if let Some(handle) = app_handle {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
-                        EventEmitter::tool_installation_output(tool_name, "stderr", &error_msg)
+                        EventEmitter::tool_installation_output(tool_name, "stderr", &error_msg),
                     );
                 }
-                
+
                 return Ok(false);
             }
         };
@@ -338,9 +444,9 @@ impl GitPipInstaller {
             while let Ok(Some(line)) = lines.next_line().await {
                 eprintln!("[{}] {}", step_name_clone, line);
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
-                        EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &line)
+                        EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &line),
                     );
                 }
             }
@@ -355,20 +461,16 @@ impl GitPipInstaller {
             while let Ok(Some(line)) = lines.next_line().await {
                 eprintln!("[{} stderr] {}", step_name_clone, line);
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
-                        EventEmitter::tool_installation_output(&tool_name_clone, "stderr", &line)
+                        EventEmitter::tool_installation_output(&tool_name_clone, "stderr", &line),
                     );
                 }
             }
         });
 
         // Wait for process and output tasks
-        let (status, _, _) = tokio::join!(
-            child.wait(),
-            stdout_task,
-            stderr_task
-        );
+        let (status, _, _) = tokio::join!(child.wait(), stdout_task, stderr_task);
 
         match status {
             Ok(exit_status) => Ok(exit_status.success()),
@@ -401,19 +503,25 @@ impl GitPipInstaller {
                     let clone_path = self.install_base_dir.join(tool_name);
                     if clone_path.exists() {
                         if let Err(e) = std::fs::remove_dir_all(&clone_path) {
-                            eprintln!("⚠️  Failed to remove directory {}: {}", clone_path.display(), e);
+                            eprintln!(
+                                "⚠️  Failed to remove directory {}: {}",
+                                clone_path.display(),
+                                e
+                            );
                         }
                     }
-                    
+
                     Ok(format!("Successfully uninstalled {}", tool_name))
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    Err(format!("Failed to uninstall {}: {}", tool_name, stderr.trim()))
+                    Err(format!(
+                        "Failed to uninstall {}: {}",
+                        tool_name,
+                        stderr.trim()
+                    ))
                 }
             }
-            Err(e) => {
-                Err(format!("Failed to execute pip uninstall: {}", e))
-            }
+            Err(e) => Err(format!("Failed to execute pip uninstall: {}", e)),
         }
     }
 }

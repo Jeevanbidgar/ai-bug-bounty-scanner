@@ -1,8 +1,8 @@
+use crate::workflow::types::{WorkflowOutput, WorkflowRetry, WorkflowStep, WorkflowTemplate};
+use anyhow::{anyhow, Result};
+use serde_yaml;
 use std::collections::HashMap;
 use std::path::Path;
-use serde_yaml;
-use anyhow::{Result, anyhow};
-use crate::workflow::types::{WorkflowTemplate, WorkflowStep, WorkflowOutput, WorkflowRetry};
 
 pub struct WorkflowLoader {
     workflows_dir: std::path::PathBuf,
@@ -17,14 +17,14 @@ impl WorkflowLoader {
 
     pub async fn load_workflow(&self, workflow_id: &str) -> Result<WorkflowTemplate> {
         let workflow_path = self.workflows_dir.join(format!("{}.yaml", workflow_id));
-        
+
         if !workflow_path.exists() {
             return Err(anyhow!("Workflow '{}' not found", workflow_id));
         }
 
         let content = tokio::fs::read_to_string(&workflow_path).await?;
         let workflow_value: serde_yaml::Value = serde_yaml::from_str(&content)?;
-        
+
         self.parse_workflow(workflow_id, workflow_value).await
     }
 
@@ -55,21 +55,29 @@ impl WorkflowLoader {
         Ok(workflows)
     }
 
-    async fn parse_workflow(&self, workflow_id: &str, workflow: serde_yaml::Value) -> Result<WorkflowTemplate> {
-        let workflow_map = workflow.as_mapping()
+    async fn parse_workflow(
+        &self,
+        workflow_id: &str,
+        workflow: serde_yaml::Value,
+    ) -> Result<WorkflowTemplate> {
+        let workflow_map = workflow
+            .as_mapping()
             .ok_or_else(|| anyhow!("Workflow must be a YAML object"))?;
 
-        let name = workflow_map.get("name")
+        let name = workflow_map
+            .get("name")
             .and_then(|v| v.as_str())
             .unwrap_or(workflow_id)
             .to_string();
 
-        let description = workflow_map.get("description")
+        let description = workflow_map
+            .get("description")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
-        let category = workflow_map.get("category")
+        let category = workflow_map
+            .get("category")
             .and_then(|v| v.as_str())
             .unwrap_or("general")
             .to_string();
@@ -90,7 +98,10 @@ impl WorkflowLoader {
         })
     }
 
-    fn parse_inputs(&self, inputs_value: Option<&serde_yaml::Value>) -> Result<HashMap<String, String>> {
+    fn parse_inputs(
+        &self,
+        inputs_value: Option<&serde_yaml::Value>,
+    ) -> Result<HashMap<String, String>> {
         let mut inputs = HashMap::new();
 
         if let Some(inputs_val) = inputs_value {
@@ -106,7 +117,10 @@ impl WorkflowLoader {
         Ok(inputs)
     }
 
-    async fn parse_steps(&self, steps_value: Option<&serde_yaml::Value>) -> Result<Vec<WorkflowStep>> {
+    async fn parse_steps(
+        &self,
+        steps_value: Option<&serde_yaml::Value>,
+    ) -> Result<Vec<WorkflowStep>> {
         let mut steps = Vec::new();
 
         if let Some(steps_val) = steps_value {
@@ -123,22 +137,30 @@ impl WorkflowLoader {
         Ok(steps)
     }
 
-    async fn parse_step(&self, step_map: &serde_yaml::Mapping, _index: usize) -> Result<WorkflowStep> {
-        let id = step_map.get("id")
+    async fn parse_step(
+        &self,
+        step_map: &serde_yaml::Mapping,
+        _index: usize,
+    ) -> Result<WorkflowStep> {
+        let id = step_map
+            .get("id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Step must have an 'id' field"))?
             .to_string();
 
-        let name = step_map.get("name")
+        let name = step_map
+            .get("name")
             .and_then(|v| v.as_str())
             .unwrap_or(&id)
             .to_string();
 
-        let description = step_map.get("description")
+        let description = step_map
+            .get("description")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let needs = step_map.get("needs")
+        let needs = step_map
+            .get("needs")
             .and_then(|v| v.as_sequence())
             .map(|seq| {
                 seq.iter()
@@ -148,7 +170,8 @@ impl WorkflowLoader {
             })
             .unwrap_or_default();
 
-        let run = step_map.get("run")
+        let run = step_map
+            .get("run")
             .and_then(|v| v.as_sequence())
             .ok_or_else(|| anyhow!("Step '{}' must have a 'run' field", id))?
             .iter()
@@ -156,20 +179,22 @@ impl WorkflowLoader {
             .map(|s| s.to_string())
             .collect();
 
-        let env = step_map.get("env")
+        let env = step_map
+            .get("env")
             .and_then(|v| v.as_mapping())
             .map(|env_map| {
-                env_map.iter()
+                env_map
+                    .iter()
                     .filter_map(|(k, v)| {
                         k.as_str().and_then(|k_str| {
-                            v.as_str().map(|v_str| (k_str.to_string(), v_str.to_string()))
+                            v.as_str()
+                                .map(|v_str| (k_str.to_string(), v_str.to_string()))
                         })
                     })
                     .collect()
             });
 
-        let timeout = step_map.get("timeout")
-            .and_then(|v| v.as_u64());
+        let timeout = step_map.get("timeout").and_then(|v| v.as_u64());
 
         let retry = self.parse_retry(step_map.get("retry"));
 
@@ -192,24 +217,28 @@ impl WorkflowLoader {
         if let Some(retry_val) = retry_value {
             if let Some(retry_map) = retry_val.as_mapping() {
                 // Parse max_attempts (backwards compatible with "count")
-                let max_attempts = retry_map.get("max_attempts")
-                    .or_else(|| retry_map.get("count"))  // Backwards compatibility
+                let max_attempts = retry_map
+                    .get("max_attempts")
+                    .or_else(|| retry_map.get("count")) // Backwards compatibility
                     .and_then(|v| v.as_u64())
                     .unwrap_or(3) as u32;
 
                 // Parse initial_delay_ms (backwards compatible with "delay")
-                let initial_delay_ms = retry_map.get("initial_delay_ms")
-                    .or_else(|| retry_map.get("delay"))  // Backwards compatibility
+                let initial_delay_ms = retry_map
+                    .get("initial_delay_ms")
+                    .or_else(|| retry_map.get("delay")) // Backwards compatibility
                     .and_then(|v| v.as_u64())
                     .unwrap_or(1000);
 
                 // Parse max_delay_ms (default 60 seconds)
-                let max_delay_ms = retry_map.get("max_delay_ms")
+                let max_delay_ms = retry_map
+                    .get("max_delay_ms")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(60000);
 
                 // Parse backoff_multiplier (default 2.0 for exponential backoff)
-                let backoff_multiplier = retry_map.get("backoff_multiplier")
+                let backoff_multiplier = retry_map
+                    .get("backoff_multiplier")
                     .and_then(|v| v.as_f64())
                     .unwrap_or(2.0);
 
@@ -224,24 +253,30 @@ impl WorkflowLoader {
         None
     }
 
-    fn parse_step_outputs(&self, outputs_value: Option<&serde_yaml::Value>) -> Result<Vec<WorkflowOutput>> {
+    fn parse_step_outputs(
+        &self,
+        outputs_value: Option<&serde_yaml::Value>,
+    ) -> Result<Vec<WorkflowOutput>> {
         let mut outputs = Vec::new();
 
         if let Some(outputs_val) = outputs_value {
             if let Some(outputs_seq) = outputs_val.as_sequence() {
                 for output_val in outputs_seq {
                     if let Some(output_map) = output_val.as_mapping() {
-                        let name = output_map.get("name")
+                        let name = output_map
+                            .get("name")
                             .and_then(|v| v.as_str())
                             .unwrap_or("output")
                             .to_string();
 
-                        let path = output_map.get("path")
+                        let path = output_map
+                            .get("path")
                             .and_then(|v| v.as_str())
                             .unwrap_or("output.txt")
                             .to_string();
 
-                        let artifact_type = output_map.get("type")
+                        let artifact_type = output_map
+                            .get("type")
                             .and_then(|v| v.as_str())
                             .unwrap_or("file")
                             .to_string();
@@ -272,7 +307,11 @@ impl WorkflowLoader {
         for step in steps {
             for need in &step.needs {
                 if !step_ids.contains(need) {
-                    return Err(anyhow!("Step '{}' depends on non-existent step '{}'", step.id, need));
+                    return Err(anyhow!(
+                        "Step '{}' depends on non-existent step '{}'",
+                        step.id,
+                        need
+                    ));
                 }
             }
         }

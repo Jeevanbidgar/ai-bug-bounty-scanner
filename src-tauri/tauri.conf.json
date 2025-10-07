@@ -1,111 +1,54 @@
 {
-    "build": {
+  "build": {
     "beforeDevCommand": "cd frontend && npm run dev",
     "beforeBuildCommand": "cd frontend && npm run build",
-    "devPath": "http://localhost:5173",
-    "distDir": "../frontend/dist",
-    "withGlobalTauri": false
+    "frontendDist": "../frontend/dist",
+    "devUrl": "http://localhost:5173"
   },
   "plugins": {},
-  "package": {
-    "productName": "AI Bug Bounty Scanner",
-    "version": "2.0.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": true,
-        "execute": true,
-        "sidecar": true,
-        "scope": [
-          { "name": "subfinder", "cmd": "subfinder", "args": true },
-          { "name": "naabu", "cmd": "naabu", "args": true },
-          { "name": "nuclei", "cmd": "nuclei", "args": true },
-          { "name": "nmap", "cmd": "nmap", "args": true },
-          { "name": "sqlmap", "cmd": "sqlmap", "args": true },
-          { "name": "gobuster", "cmd": "gobuster", "args": true },
-          { "name": "ffuf", "cmd": "ffuf", "args": true },
-          { "name": "dirb", "cmd": "dirb", "args": true },
-          { "name": "nikto", "cmd": "nikto", "args": true },
-          { "name": "wpscan", "cmd": "wpscan", "args": true },
-          { "name": "joomlavs", "cmd": "joomlavs", "args": true },
-          { "name": "amass", "cmd": "amass", "args": true },
-          { "name": "waybackurls", "cmd": "waybackurls", "args": true },
-          { "name": "gau", "cmd": "gau", "args": true },
-          { "name": "httpx", "cmd": "httpx", "args": true },
-          { "name": "katana", "cmd": "katana", "args": true },
-          { "name": "assetfinder", "cmd": "assetfinder", "args": true },
-          { "name": "arjun", "cmd": "arjun", "args": true }
-        ]
-      },
-      "http": {
-        "all": false,
-        "request": true,
-        "scope": ["https://*"]
-      },
-      "fs": {
-        "all": false,
-        "readFile": true,
-        "writeFile": true,
-        "readDir": true,
-        "copyFile": true,
-        "createDir": true,
-        "removeDir": true,
-        "removeFile": true,
-        "renameFile": true,
-        "exists": true,
-        "scope": ["$APPDATA", "$DESKTOP", "$DOCUMENT", "$DOWNLOAD", "$HOME", "$RESOURCE", "$DESKTOP", "$APPDATA/ai-bug-bounty-scanner"]
-      },
-      "os": {
-        "all": true
-      },
-      "process": {
-        "all": false,
-        "relaunch": true,
-        "exit": true
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "wix": {
+        "language": "en-US"
       }
     },
-    "bundle": {
-      "active": true,
-      "targets": "all",
-      "identifier": "com.aibugbountyscanner.app",
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "resources": [],
-      "externalBin": [],
-      "category": "DeveloperTool",
-      "copyright": "",
-      "longDescription": "AI-powered security tool orchestration platform",
-      "shortDescription": "Security tool orchestrator",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [],
+    "externalBin": [],
+    "category": "DeveloperTool",
+    "copyright": "",
+    "longDescription": "AI-powered security tool orchestration platform",
+    "shortDescription": "Security tool orchestrator",
+    "macOS": {
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": null,
+      "signingIdentity": null
+    },
+    "linux": {
       "deb": {
         "depends": []
-      },
-      "macOS": {
-        "entitlements": null,
-        "exceptionDomain": "",
-        "frameworks": [],
-        "providerShortName": null,
-        "signingIdentity": null
-      },
-      "windows": {
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": "",
-        "wix": {
-          "language": "en-US"
-        }
       }
-    },
-    "security": {
-      "csp": null
-    },
+    }
+  },
+  "productName": "AI Bug Bounty Scanner",
+  "mainBinaryName": "AI Bug Bounty Scanner",
+  "version": "2.0.0",
+  "identifier": "com.aibugbountyscanner.app",
+  "app": {
+    "withGlobalTauri": false,
     "windows": [
       {
         "fullscreen": false,
@@ -119,8 +62,12 @@
         "decorations": true,
         "transparent": false,
         "alwaysOnTop": false,
-        "skipTaskbar": false
+        "skipTaskbar": false,
+        "useHttpsScheme": true
       }
-    ]
+    ],
+    "security": {
+      "csp": null
+    }
   }
 }

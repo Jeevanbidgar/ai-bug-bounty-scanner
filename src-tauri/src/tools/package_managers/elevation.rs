@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
-use tokio::process::Command;
 use tokio::io::AsyncReadExt;
+use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +41,7 @@ pub async fn execute_with_smart_elevation(
 ) -> Result<ElevationResult, String> {
     eprintln!("🔐 Attempting command: {} {:?}", command, args);
     eprintln!("   Reason: {}", reason);
-    
+
     // Step 1: Try without elevation first
     eprintln!("   → Trying user-scope first...");
     match execute_command_internal(command, args, timeout_secs).await {
@@ -53,10 +53,10 @@ pub async fn execute_with_smart_elevation(
                 elevated: false,
                 error: None,
             });
-        },
+        }
         Err(e) => {
             eprintln!("   ✗ User-scope failed: {}", e);
-            
+
             // Check if error indicates elevation is needed
             if needs_elevation(&e) {
                 eprintln!("   → Elevation required, will prompt user");
@@ -83,17 +83,17 @@ pub async fn execute_elevated(
     timeout_secs: u64,
 ) -> Result<ElevationResult, String> {
     eprintln!("🔐 Executing with elevation: {} {:?}", command, args);
-    
+
     #[cfg(target_os = "windows")]
     {
         execute_elevated_windows(command, args, timeout_secs).await
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         execute_elevated_linux(command, args, timeout_secs).await
     }
-    
+
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         Err("Elevation not supported on this platform".to_string())
@@ -108,12 +108,13 @@ async fn execute_elevated_windows(
     timeout_secs: u64,
 ) -> Result<ElevationResult, String> {
     eprintln!("   → Using Windows UAC");
-    
+
     // Use PowerShell Start-Process with -Verb RunAs to trigger UAC
     // We capture output by redirecting to a temp file
-    let temp_file = std::env::temp_dir().join(format!("elevation_output_{}.txt", std::process::id()));
+    let temp_file =
+        std::env::temp_dir().join(format!("elevation_output_{}.txt", std::process::id()));
     let temp_file_str = temp_file.to_string_lossy().to_string();
-    
+
     // Build PowerShell command that redirects output
     let ps_script = format!(
         "Start-Process -FilePath '{}' -ArgumentList '{}' -Verb RunAs -Wait -RedirectStandardOutput '{}' -RedirectStandardError '{}' -NoNewWindow",
@@ -122,28 +123,27 @@ async fn execute_elevated_windows(
         temp_file_str,
         temp_file_str
     );
-    
+
     eprintln!("   → PowerShell script: {}", ps_script);
-    
+
     let result = Command::new("powershell")
         .args(&["-Command", &ps_script])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
-    
+
     match result {
         Ok(mut child) => {
-            let wait_result = timeout(
-                Duration::from_secs(timeout_secs),
-                child.wait()
-            ).await;
-            
+            let wait_result = timeout(Duration::from_secs(timeout_secs), child.wait()).await;
+
             match wait_result {
                 Ok(Ok(status)) => {
                     // Read output from temp file
-                    let output = tokio::fs::read_to_string(&temp_file).await.unwrap_or_default();
+                    let output = tokio::fs::read_to_string(&temp_file)
+                        .await
+                        .unwrap_or_default();
                     let _ = tokio::fs::remove_file(&temp_file).await; // Clean up
-                    
+
                     if status.success() {
                         eprintln!("   ✓ Elevated command succeeded");
                         Ok(ElevationResult {
@@ -153,26 +153,35 @@ async fn execute_elevated_windows(
                             error: None,
                         })
                     } else {
-                        eprintln!("   ✗ Elevated command failed: exit code {:?}", status.code());
+                        eprintln!(
+                            "   ✗ Elevated command failed: exit code {:?}",
+                            status.code()
+                        );
                         Ok(ElevationResult {
                             success: false,
                             output,
                             elevated: true,
-                            error: Some(format!("Command failed with exit code {:?}", status.code())),
+                            error: Some(format!(
+                                "Command failed with exit code {:?}",
+                                status.code()
+                            )),
                         })
                     }
-                },
+                }
                 Ok(Err(e)) => {
                     let _ = tokio::fs::remove_file(&temp_file).await;
                     Err(format!("Failed to wait for elevated process: {}", e))
-                },
+                }
                 Err(_) => {
                     let _ = child.kill().await;
                     let _ = tokio::fs::remove_file(&temp_file).await;
-                    Err(format!("Elevated command timed out after {} seconds", timeout_secs))
+                    Err(format!(
+                        "Elevated command timed out after {} seconds",
+                        timeout_secs
+                    ))
                 }
             }
-        },
+        }
         Err(e) => {
             eprintln!("   ✗ Failed to spawn elevated process: {}", e);
             Err(format!("Failed to trigger UAC: {}", e))
@@ -189,18 +198,18 @@ async fn execute_elevated_linux(
 ) -> Result<ElevationResult, String> {
     // Try polkit (pkexec) first, fallback to sudo with askpass
     eprintln!("   → Trying polkit (pkexec)...");
-    
+
     match execute_with_pkexec(command, args, timeout_secs).await {
         Ok(result) => {
             eprintln!("   ✓ polkit succeeded");
             return Ok(result);
-        },
+        }
         Err(e) => {
             eprintln!("   ✗ polkit failed: {}", e);
             eprintln!("   → Falling back to sudo with askpass...");
         }
     }
-    
+
     // Fallback to sudo with askpass
     execute_with_sudo_askpass(command, args, timeout_secs).await
 }
@@ -216,31 +225,35 @@ async fn execute_with_pkexec(
     cmd.args(args);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
-    
+
     let result = cmd.spawn();
-    
+
     match result {
         Ok(mut child) => {
             let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
             let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
-            
+
             let mut stdout_buf = String::new();
             let mut stderr_buf = String::new();
-            
+
             let read_task = async {
                 let mut stdout_reader = tokio::io::BufReader::new(stdout);
                 let mut stderr_reader = tokio::io::BufReader::new(stderr);
-                
+
                 let _ = stdout_reader.read_to_string(&mut stdout_buf).await;
                 let _ = stderr_reader.read_to_string(&mut stderr_buf).await;
-                
+
                 child.wait().await
             };
-            
+
             match timeout(Duration::from_secs(timeout_secs), read_task).await {
                 Ok(Ok(status)) => {
-                    let output = if !stdout_buf.is_empty() { stdout_buf } else { stderr_buf };
-                    
+                    let output = if !stdout_buf.is_empty() {
+                        stdout_buf
+                    } else {
+                        stderr_buf
+                    };
+
                     if status.success() {
                         Ok(ElevationResult {
                             success: true,
@@ -253,18 +266,21 @@ async fn execute_with_pkexec(
                             success: false,
                             output,
                             elevated: true,
-                            error: Some(format!("pkexec failed with exit code {:?}", status.code())),
+                            error: Some(format!(
+                                "pkexec failed with exit code {:?}",
+                                status.code()
+                            )),
                         })
                     }
-                },
+                }
                 Ok(Err(e)) => Err(format!("Failed to wait for pkexec: {}", e)),
                 Err(_) => {
                     let _ = child.kill().await;
                     Err(format!("pkexec timed out after {} seconds", timeout_secs))
                 }
             }
-        },
-        Err(e) => Err(format!("Failed to spawn pkexec: {}", e))
+        }
+        Err(e) => Err(format!("Failed to spawn pkexec: {}", e)),
     }
 }
 
@@ -278,17 +294,18 @@ async fn execute_with_sudo_askpass(
     // Common askpass helpers: zenity, kdialog, ssh-askpass
     let askpass_helpers = vec![
         "/usr/bin/zenity",
-        "/usr/bin/kdialog", 
+        "/usr/bin/kdialog",
         "/usr/bin/ssh-askpass",
         "/usr/bin/lxqt-openssh-askpass",
     ];
-    
-    let askpass = askpass_helpers.iter()
+
+    let askpass = askpass_helpers
+        .iter()
         .find(|p| std::path::Path::new(p).exists())
         .ok_or("No GUI askpass helper found. Install zenity or kdialog.")?;
-    
+
     eprintln!("   → Using askpass helper: {}", askpass);
-    
+
     let mut cmd = Command::new("sudo");
     cmd.arg("-A"); // Use askpass
     cmd.arg(command);
@@ -296,31 +313,35 @@ async fn execute_with_sudo_askpass(
     cmd.env("SUDO_ASKPASS", askpass);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
-    
+
     let result = cmd.spawn();
-    
+
     match result {
         Ok(mut child) => {
             let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
             let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
-            
+
             let mut stdout_buf = String::new();
             let mut stderr_buf = String::new();
-            
+
             let read_task = async {
                 let mut stdout_reader = tokio::io::BufReader::new(stdout);
                 let mut stderr_reader = tokio::io::BufReader::new(stderr);
-                
+
                 let _ = stdout_reader.read_to_string(&mut stdout_buf).await;
                 let _ = stderr_reader.read_to_string(&mut stderr_buf).await;
-                
+
                 child.wait().await
             };
-            
+
             match timeout(Duration::from_secs(timeout_secs), read_task).await {
                 Ok(Ok(status)) => {
-                    let output = if !stdout_buf.is_empty() { stdout_buf } else { stderr_buf };
-                    
+                    let output = if !stdout_buf.is_empty() {
+                        stdout_buf
+                    } else {
+                        stderr_buf
+                    };
+
                     if status.success() {
                         eprintln!("   ✓ sudo with askpass succeeded");
                         Ok(ElevationResult {
@@ -337,31 +358,32 @@ async fn execute_with_sudo_askpass(
                             error: Some(format!("sudo failed with exit code {:?}", status.code())),
                         })
                     }
-                },
+                }
                 Ok(Err(e)) => Err(format!("Failed to wait for sudo: {}", e)),
                 Err(_) => {
                     let _ = child.kill().await;
                     Err(format!("sudo timed out after {} seconds", timeout_secs))
                 }
             }
-        },
-        Err(e) => Err(format!("Failed to spawn sudo: {}", e))
+        }
+        Err(e) => Err(format!("Failed to spawn sudo: {}", e)),
     }
 }
 
 /// Check if error message indicates elevation is required
 fn needs_elevation(error: &str) -> bool {
     let error_lower = error.to_lowercase();
-    
+
     // Windows elevation indicators
-    if error_lower.contains("access is denied") 
+    if error_lower.contains("access is denied")
         || error_lower.contains("requires elevation")
         || error_lower.contains("administrator privileges")
-        || error_lower.contains("0x5") // Access denied error code
+        || error_lower.contains("0x5")
+    // Access denied error code
     {
         return true;
     }
-    
+
     // Linux elevation indicators
     if error_lower.contains("permission denied")
         || error_lower.contains("operation not permitted")
@@ -370,7 +392,7 @@ fn needs_elevation(error: &str) -> bool {
     {
         return true;
     }
-    
+
     false
 }
 
@@ -385,29 +407,33 @@ async fn execute_command_internal(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
-    
+
     match result {
         Ok(mut child) => {
             let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
             let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
-            
+
             let mut stdout_buf = String::new();
             let mut stderr_buf = String::new();
-            
+
             let read_task = async {
                 let mut stdout_reader = tokio::io::BufReader::new(stdout);
                 let mut stderr_reader = tokio::io::BufReader::new(stderr);
-                
+
                 let _ = stdout_reader.read_to_string(&mut stdout_buf).await;
                 let _ = stderr_reader.read_to_string(&mut stderr_buf).await;
-                
+
                 child.wait().await
             };
-            
+
             match timeout(Duration::from_secs(timeout_secs), read_task).await {
                 Ok(Ok(status)) => {
                     if status.success() {
-                        Ok(if !stdout_buf.is_empty() { stdout_buf } else { stderr_buf })
+                        Ok(if !stdout_buf.is_empty() {
+                            stdout_buf
+                        } else {
+                            stderr_buf
+                        })
                     } else {
                         Err(format!(
                             "Command failed with exit code {:?}\nStdout: {}\nStderr: {}",
@@ -416,15 +442,15 @@ async fn execute_command_internal(
                             stderr_buf
                         ))
                     }
-                },
+                }
                 Ok(Err(e)) => Err(format!("Failed to wait for command: {}", e)),
                 Err(_) => {
                     let _ = child.kill().await;
                     Err(format!("Command timed out after {} seconds", timeout_secs))
                 }
             }
-        },
-        Err(e) => Err(format!("Failed to execute {}: {}", command, e))
+        }
+        Err(e) => Err(format!("Failed to execute {}: {}", command, e)),
     }
 }
 
@@ -435,38 +461,45 @@ pub async fn check_elevation_support() -> ElevationMethod {
         // Windows always supports UAC
         ElevationMethod::WindowsUAC
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         // Check for polkit
-        if Command::new("which").arg("pkexec").output().await
+        if Command::new("which")
+            .arg("pkexec")
+            .output()
+            .await
             .map(|o| o.status.success())
             .unwrap_or(false)
         {
             return ElevationMethod::LinuxPolkit;
         }
-        
+
         // Check for sudo + askpass helper
-        let has_sudo = Command::new("which").arg("sudo").output().await
+        let has_sudo = Command::new("which")
+            .arg("sudo")
+            .output()
+            .await
             .map(|o| o.status.success())
             .unwrap_or(false);
-        
+
         let askpass_helpers = vec![
             "/usr/bin/zenity",
             "/usr/bin/kdialog",
             "/usr/bin/ssh-askpass",
         ];
-        
-        let has_askpass = askpass_helpers.iter()
+
+        let has_askpass = askpass_helpers
+            .iter()
             .any(|p| std::path::Path::new(p).exists());
-        
+
         if has_sudo && has_askpass {
             return ElevationMethod::LinuxSudoAskpass;
         }
-        
+
         ElevationMethod::None
     }
-    
+
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         ElevationMethod::None

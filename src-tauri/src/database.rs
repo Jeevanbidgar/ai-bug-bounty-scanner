@@ -1,11 +1,11 @@
-use std::path::PathBuf;
-use sqlx::SqlitePool;
+use anyhow::{anyhow, Result};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::FromRow;
+use sqlx::SqlitePool;
+use std::path::PathBuf;
 use tokio::fs;
-use anyhow::{Result, anyhow};
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Scan {
@@ -126,7 +126,7 @@ impl Database {
         // Ensure data directory exists
         println!("Creating app data directory: {}", app_data_dir.display());
         fs::create_dir_all(&app_data_dir).await?;
-        
+
         // Verify directory was created
         if !app_data_dir.exists() {
             return Err(anyhow!("Failed to create app data directory"));
@@ -134,7 +134,7 @@ impl Database {
 
         // Create database path
         let db_path = app_data_dir.join("scanner.db");
-        
+
         // Debug: print the database path
         println!("Database path: {}", db_path.display());
         println!("Database path exists: {}", db_path.exists());
@@ -182,9 +182,7 @@ impl Database {
         ];
 
         for migration in migrations {
-            sqlx::query(migration)
-                .execute(&self.pool)
-                .await?;
+            sqlx::query(migration).execute(&self.pool).await?;
         }
 
         Ok(())
@@ -235,28 +233,24 @@ impl Database {
         .bind(&scan.updated_at)
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 
     pub async fn get_scan(&self, scan_id: &str) -> Result<Option<Scan>> {
-        let scan = sqlx::query_as::<_, Scan>(
-            "SELECT * FROM scans WHERE id = ?"
-        )
-        .bind(scan_id)
-        .fetch_optional(&self.pool)
-        .await?;
-        
+        let scan = sqlx::query_as::<_, Scan>("SELECT * FROM scans WHERE id = ?")
+            .bind(scan_id)
+            .fetch_optional(&self.pool)
+            .await?;
+
         Ok(scan)
     }
 
     pub async fn list_scans(&self) -> Result<Vec<Scan>> {
-        let scans = sqlx::query_as::<_, Scan>(
-            "SELECT * FROM scans ORDER BY started DESC"
-        )
-        .fetch_all(&self.pool)
-        .await?;
-        
+        let scans = sqlx::query_as::<_, Scan>("SELECT * FROM scans ORDER BY started DESC")
+            .fetch_all(&self.pool)
+            .await?;
+
         Ok(scans)
     }
 
@@ -270,7 +264,7 @@ impl Database {
                 agents = ?, command_log = ?, target_validated = ?, vulnerabilities = ?,
                 critical = ?, high = ?, medium = ?, low = ?, updated_at = ?
             WHERE id = ?
-            "#
+            "#,
         )
         .bind(&scan.name)
         .bind(&scan.target)
@@ -299,7 +293,7 @@ impl Database {
         .bind(&scan.id)
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 
@@ -308,7 +302,7 @@ impl Database {
             .bind(scan_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(())
     }
 
@@ -319,7 +313,7 @@ impl Database {
                 id, scan_id, workflow_id, status, started, completed, current_step,
                 progress, inputs, working_directory, logs, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#
+            "#,
         )
         .bind(&execution.id)
         .bind(&execution.scan_id)
@@ -336,18 +330,21 @@ impl Database {
         .bind(&execution.updated_at)
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 
-    pub async fn get_workflow_execution(&self, execution_id: &str) -> Result<Option<WorkflowExecution>> {
+    pub async fn get_workflow_execution(
+        &self,
+        execution_id: &str,
+    ) -> Result<Option<WorkflowExecution>> {
         let execution = sqlx::query_as::<_, WorkflowExecution>(
-            "SELECT * FROM workflow_executions WHERE id = ?"
+            "SELECT * FROM workflow_executions WHERE id = ?",
         )
         .bind(execution_id)
         .fetch_optional(&self.pool)
         .await?;
-        
+
         Ok(execution)
     }
 
@@ -358,7 +355,7 @@ impl Database {
                 status = ?, completed = ?, current_step = ?, progress = ?,
                 logs = ?, updated_at = ?
             WHERE id = ?
-            "#
+            "#,
         )
         .bind(&execution.status)
         .bind(&execution.completed)
@@ -369,7 +366,7 @@ impl Database {
         .bind(&execution.id)
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 
@@ -380,7 +377,7 @@ impl Database {
                 id, execution_id, step_id, name, artifact_type, file_path,
                 content, metadata_, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#
+            "#,
         )
         .bind(&artifact.id)
         .bind(&artifact.execution_id)
@@ -393,18 +390,21 @@ impl Database {
         .bind(&artifact.created_at)
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 
-    pub async fn get_workflow_artifacts(&self, execution_id: &str) -> Result<Vec<WorkflowArtifact>> {
+    pub async fn get_workflow_artifacts(
+        &self,
+        execution_id: &str,
+    ) -> Result<Vec<WorkflowArtifact>> {
         let artifacts = sqlx::query_as::<_, WorkflowArtifact>(
-            "SELECT * FROM workflow_artifacts WHERE execution_id = ? ORDER BY created_at"
+            "SELECT * FROM workflow_artifacts WHERE execution_id = ? ORDER BY created_at",
         )
         .bind(execution_id)
         .fetch_all(&self.pool)
         .await?;
-        
+
         Ok(artifacts)
     }
 
@@ -416,7 +416,7 @@ impl Database {
                 url, parameter, payload, remediation, discovered_by, evidence,
                 false_positive, confirmed, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#
+            "#,
         )
         .bind(&finding.id)
         .bind(&finding.execution_id)
@@ -436,18 +436,18 @@ impl Database {
         .bind(&finding.created_at)
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 
     pub async fn get_workflow_findings(&self, execution_id: &str) -> Result<Vec<WorkflowFinding>> {
         let findings = sqlx::query_as::<_, WorkflowFinding>(
-            "SELECT * FROM workflow_findings WHERE execution_id = ? ORDER BY created_at"
+            "SELECT * FROM workflow_findings WHERE execution_id = ? ORDER BY created_at",
         )
         .bind(execution_id)
         .fetch_all(&self.pool)
         .await?;
-        
+
         Ok(findings)
     }
 
@@ -459,7 +459,7 @@ impl Database {
                 id, scan_id, title, severity, cvss, description, url, parameter,
                 payload, remediation, discovered_by, timestamp, false_positive, confirmed, evidence
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#
+            "#,
         )
         .bind(&vuln.id)
         .bind(&vuln.scan_id)
@@ -478,28 +478,28 @@ impl Database {
         .bind(&vuln.evidence)
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 
     pub async fn get_vulnerabilities_by_scan(&self, scan_id: &str) -> Result<Vec<Vulnerability>> {
         let vulns = sqlx::query_as::<_, Vulnerability>(
-            "SELECT * FROM vulnerabilities WHERE scan_id = ? ORDER BY timestamp DESC"
+            "SELECT * FROM vulnerabilities WHERE scan_id = ? ORDER BY timestamp DESC",
         )
         .bind(scan_id)
         .fetch_all(&self.pool)
         .await?;
-        
+
         Ok(vulns)
     }
 
     pub async fn list_vulnerabilities(&self) -> Result<Vec<Vulnerability>> {
         let vulns = sqlx::query_as::<_, Vulnerability>(
-            "SELECT * FROM vulnerabilities ORDER BY timestamp DESC"
+            "SELECT * FROM vulnerabilities ORDER BY timestamp DESC",
         )
         .fetch_all(&self.pool)
         .await?;
-        
+
         Ok(vulns)
     }
 
@@ -508,7 +508,7 @@ impl Database {
             .bind(vuln_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(())
     }
 
@@ -518,7 +518,7 @@ impl Database {
             r#"
             INSERT INTO reports (id, scan_id, title, content, format, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
-            "#
+            "#,
         )
         .bind(&report.id)
         .bind(&report.scan_id)
@@ -528,28 +528,24 @@ impl Database {
         .bind(&report.created_at)
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 
     pub async fn list_reports(&self) -> Result<Vec<Report>> {
-        let reports = sqlx::query_as::<_, Report>(
-            "SELECT * FROM reports ORDER BY created_at DESC"
-        )
-        .fetch_all(&self.pool)
-        .await?;
-        
+        let reports = sqlx::query_as::<_, Report>("SELECT * FROM reports ORDER BY created_at DESC")
+            .fetch_all(&self.pool)
+            .await?;
+
         Ok(reports)
     }
 
     pub async fn get_report(&self, report_id: &str) -> Result<Option<Report>> {
-        let report = sqlx::query_as::<_, Report>(
-            "SELECT * FROM reports WHERE id = ?"
-        )
-        .bind(report_id)
-        .fetch_optional(&self.pool)
-        .await?;
-        
+        let report = sqlx::query_as::<_, Report>("SELECT * FROM reports WHERE id = ?")
+            .bind(report_id)
+            .fetch_optional(&self.pool)
+            .await?;
+
         Ok(report)
     }
 
@@ -558,7 +554,7 @@ impl Database {
             .bind(report_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(())
     }
 }

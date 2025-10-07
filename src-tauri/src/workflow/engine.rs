@@ -1,22 +1,24 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::path::PathBuf;
-use tokio::sync::RwLock;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use chrono::Utc;
-use tauri::{AppHandle, Manager};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager};
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::workflow::types::{
-    WorkflowTemplate, WorkflowExecution, ExecutionStatus, StepStatus,
-    ExecutionLog, LogLevel, StepExecution, WorkflowArtifact
+use crate::events::{
+    EventEmitter, WORKFLOW_EXECUTION_COMPLETED, WORKFLOW_EXECUTION_FAILED,
+    WORKFLOW_EXECUTION_STARTED, WORKFLOW_STATUS_UPDATE, WORKFLOW_STEP_COMPLETED,
+    WORKFLOW_STEP_FAILED, WORKFLOW_STEP_STARTED,
 };
 use crate::runtime::executor::ProcessExecutor;
 use crate::tools::discovery::ToolDiscoveryService;
 use crate::workflow::artifacts::ArtifactManager;
-use crate::events::{EventEmitter, WORKFLOW_EXECUTION_STARTED, WORKFLOW_EXECUTION_COMPLETED, 
-    WORKFLOW_EXECUTION_FAILED, WORKFLOW_STATUS_UPDATE, WORKFLOW_STEP_STARTED, 
-    WORKFLOW_STEP_COMPLETED, WORKFLOW_STEP_FAILED};
+use crate::workflow::types::{
+    ExecutionLog, ExecutionStatus, LogLevel, StepExecution, StepStatus, WorkflowArtifact,
+    WorkflowExecution, WorkflowTemplate,
+};
 
 #[derive(Clone)]
 pub struct WorkflowEngine {
@@ -34,8 +36,8 @@ impl WorkflowEngine {
     ) -> Self {
         let artifact_manager = Arc::new(
             ArtifactManager::new(artifacts_dir)
-                .with_max_age(30)          // Keep artifacts for 30 days
-                .with_max_size(100_000_000) // 100 MB per artifact
+                .with_max_age(30) // Keep artifacts for 30 days
+                .with_max_size(100_000_000), // 100 MB per artifact
         );
 
         Self {
@@ -84,15 +86,18 @@ impl WorkflowEngine {
             &execution_id,
             &workflow.name,
             execution.inputs.clone(),
-            &working_directory
+            &working_directory,
         );
-        let _ = self.app_handle.emit_all(WORKFLOW_EXECUTION_STARTED, event);
+        let _ = self.app_handle.emit(WORKFLOW_EXECUTION_STARTED, event);
 
         // Execute workflow in background
         let engine_clone = self.clone();
         let execution_id_clone = execution_id.clone();
         tokio::spawn(async move {
-            if let Err(e) = engine_clone.execute_workflow_async(execution_id_clone, workflow, working_directory).await {
+            if let Err(e) = engine_clone
+                .execute_workflow_async(execution_id_clone, workflow, working_directory)
+                .await
+            {
                 eprintln!("Workflow execution failed: {}", e);
             }
         });
@@ -107,34 +112,51 @@ impl WorkflowEngine {
         working_directory: String,
     ) -> Result<()> {
         // Update execution status to running
-        self.update_execution_status(&execution_id, ExecutionStatus::Running, Some("Initializing"), 0).await?;
+        self.update_execution_status(
+            &execution_id,
+            ExecutionStatus::Running,
+            Some("Initializing"),
+            0,
+        )
+        .await?;
 
         // Execute DAG
-        let result = self.execute_dag(execution_id.clone(), workflow, working_directory).await;
+        let result = self
+            .execute_dag(execution_id.clone(), workflow, working_directory)
+            .await;
 
         match result {
             Ok(_) => {
                 // Update execution status to completed
-                self.update_execution_status(&execution_id, ExecutionStatus::Completed, None, 100).await?;
-                
+                self.update_execution_status(&execution_id, ExecutionStatus::Completed, None, 100)
+                    .await?;
+
                 // Emit completion event
                 let event = crate::events::WorkflowEvent {
                     execution_id: execution_id.clone(),
                     timestamp: Utc::now().to_rfc3339(),
                 };
-                let _ = self.app_handle.emit_all(WORKFLOW_EXECUTION_COMPLETED, event);
+                let _ = self
+                    .app_handle
+                    .emit(WORKFLOW_EXECUTION_COMPLETED, event);
             }
             Err(e) => {
                 // Update execution status to failed
-                self.update_execution_status(&execution_id, ExecutionStatus::Failed, Some(&e.to_string()), 0).await?;
-                
+                self.update_execution_status(
+                    &execution_id,
+                    ExecutionStatus::Failed,
+                    Some(&e.to_string()),
+                    0,
+                )
+                .await?;
+
                 // Emit failure event
                 let event = crate::events::WorkflowEvent {
                     execution_id: execution_id.clone(),
                     timestamp: Utc::now().to_rfc3339(),
                 };
-                let _ = self.app_handle.emit_all(WORKFLOW_EXECUTION_FAILED, event);
-                
+                let _ = self.app_handle.emit(WORKFLOW_EXECUTION_FAILED, event);
+
                 return Err(e);
             }
         }
@@ -155,7 +177,7 @@ impl WorkflowEngine {
         loop {
             // Find ready steps
             let ready_steps = self.get_ready_steps(&workflow.steps, &completed_steps)?;
-            
+
             if ready_steps.is_empty() {
                 break; // All steps completed
             }
@@ -171,12 +193,14 @@ impl WorkflowEngine {
                     let inputs_clone = workflow.inputs.clone();
 
                     let handle = tokio::spawn(async move {
-                        engine_clone.execute_step(
-                            &step_clone,
-                            &execution_id_clone,
-                            &working_directory_clone,
-                            &inputs_clone,
-                        ).await
+                        engine_clone
+                            .execute_step(
+                                &step_clone,
+                                &execution_id_clone,
+                                &working_directory_clone,
+                                &inputs_clone,
+                            )
+                            .await
                     });
 
                     handles.push((step_id, handle));
@@ -186,22 +210,21 @@ impl WorkflowEngine {
             // Wait for all steps to complete
             for (step_id, handle) in handles {
                 // Emit step started event
-                let step_name = workflow.steps.iter()
+                let step_name = workflow
+                    .steps
+                    .iter()
                     .find(|s| s.id == step_id)
                     .map(|s| s.name.clone())
                     .unwrap_or_else(|| step_id.clone());
-                    
-                let event = EventEmitter::workflow_step_started(
-                    &execution_id,
-                    &step_id,
-                    &step_name
-                );
-                let _ = self.app_handle.emit_all(WORKFLOW_STEP_STARTED, event);
+
+                let event =
+                    EventEmitter::workflow_step_started(&execution_id, &step_id, &step_name);
+                let _ = self.app_handle.emit(WORKFLOW_STEP_STARTED, event);
 
                 match handle.await {
                     Ok(Ok(artifacts)) => {
                         completed_steps.insert(step_id.clone());
-                        
+
                         // Update step execution record
                         let step_execution = StepExecution {
                             step_id: step_id.clone(),
@@ -220,17 +243,18 @@ impl WorkflowEngine {
                             &execution_id,
                             &step_id,
                             0,
-                            artifacts.len()
+                            artifacts.len(),
                         );
-                        let _ = self.app_handle.emit_all(WORKFLOW_STEP_COMPLETED, event);
+                        let _ = self.app_handle.emit(WORKFLOW_STEP_COMPLETED, event);
 
                         // Update progress
                         let progress = (completed_steps.len() as u32 * 100) / total_steps;
-                        self.update_execution_progress(&execution_id, progress).await?;
+                        self.update_execution_progress(&execution_id, progress)
+                            .await?;
                     }
                     Ok(Err(e)) => {
                         eprintln!("Step '{}' failed: {}", step_id, e);
-                        
+
                         // Mark step as failed
                         let step_execution = StepExecution {
                             step_id: step_id.clone(),
@@ -248,12 +272,18 @@ impl WorkflowEngine {
                         let event = EventEmitter::workflow_step_started(
                             &execution_id,
                             &step_id,
-                            &step_name
+                            &step_name,
                         );
-                        let _ = self.app_handle.emit_all(WORKFLOW_STEP_FAILED, event);
+                        let _ = self.app_handle.emit(WORKFLOW_STEP_FAILED, event);
 
                         // Update execution status to failed
-                        self.update_execution_status(&execution_id, ExecutionStatus::Failed, Some(&format!("Step '{}' failed", step_id)), 0).await?;
+                        self.update_execution_status(
+                            &execution_id,
+                            ExecutionStatus::Failed,
+                            Some(&format!("Step '{}' failed", step_id)),
+                            0,
+                        )
+                        .await?;
                         return Err(e);
                     }
                     Err(e) => {
@@ -276,7 +306,11 @@ impl WorkflowEngine {
         Ok(())
     }
 
-    fn get_ready_steps(&self, steps: &[crate::workflow::types::WorkflowStep], completed: &std::collections::HashSet<String>) -> Result<Vec<String>> {
+    fn get_ready_steps(
+        &self,
+        steps: &[crate::workflow::types::WorkflowStep],
+        completed: &std::collections::HashSet<String>,
+    ) -> Result<Vec<String>> {
         let mut ready_steps = Vec::new();
 
         for step in steps {
@@ -286,7 +320,7 @@ impl WorkflowEngine {
 
             // Check if all dependencies are completed
             let all_deps_completed = step.needs.iter().all(|dep| completed.contains(dep));
-            
+
             if all_deps_completed {
                 ready_steps.push(step.id.clone());
             }
@@ -302,7 +336,9 @@ impl WorkflowEngine {
         working_directory: &str,
         inputs: &HashMap<String, String>,
     ) -> Result<Vec<WorkflowArtifact>> {
-        self.executor.execute_step(step, execution_id, working_directory, inputs).await
+        self.executor
+            .execute_step(step, execution_id, working_directory, inputs)
+            .await
     }
 
     async fn update_execution_status(
@@ -334,9 +370,9 @@ impl WorkflowEngine {
             execution_id,
             &format!("{:?}", status),
             progress,
-            current_step.map(|s| s.to_string())
+            current_step.map(|s| s.to_string()),
         );
-        let _ = self.app_handle.emit_all(WORKFLOW_STATUS_UPDATE, event);
+        let _ = self.app_handle.emit(WORKFLOW_STATUS_UPDATE, event);
 
         Ok(())
     }
@@ -349,16 +385,22 @@ impl WorkflowEngine {
         }
 
         // Emit progress update event
-        let _ = self.app_handle.emit_all("workflow:progress_update", serde_json::json!({
-            "execution_id": execution_id,
-            "progress": progress,
-            "timestamp": Utc::now().to_rfc3339()
-        }));
+        let _ = self.app_handle.emit(
+            "workflow:progress_update",
+            serde_json::json!({
+                "execution_id": execution_id,
+                "progress": progress,
+                "timestamp": Utc::now().to_rfc3339()
+            }),
+        );
 
         Ok(())
     }
 
-    pub async fn get_execution_status(&self, execution_id: &str) -> Result<Option<WorkflowExecution>> {
+    pub async fn get_execution_status(
+        &self,
+        execution_id: &str,
+    ) -> Result<Option<WorkflowExecution>> {
         let active_executions = self.active_executions.read().await;
         Ok(active_executions.get(execution_id).cloned())
     }
@@ -385,10 +427,13 @@ impl WorkflowEngine {
         }
 
         // Emit cancellation event
-        let _ = self.app_handle.emit_all("workflow:execution_cancelled", serde_json::json!({
-            "execution_id": execution_id,
-            "timestamp": Utc::now().to_rfc3339()
-        }));
+        let _ = self.app_handle.emit(
+            "workflow:execution_cancelled",
+            serde_json::json!({
+                "execution_id": execution_id,
+                "timestamp": Utc::now().to_rfc3339()
+            }),
+        );
 
         Ok(())
     }

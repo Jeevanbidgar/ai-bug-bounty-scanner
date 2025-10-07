@@ -1,10 +1,12 @@
-use tokio::process::Command;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
 
-use crate::events::{EventEmitter, TOOL_INSTALLATION_STARTED, TOOL_INSTALLATION_OUTPUT, TOOL_INSTALLATION_COMPLETED};
+use crate::events::{
+    EventEmitter, TOOL_INSTALLATION_COMPLETED, TOOL_INSTALLATION_OUTPUT, TOOL_INSTALLATION_STARTED,
+};
 use uuid::Uuid;
 
 // PipxManager: Handles pipx installations with retry logic for log file locking
@@ -26,58 +28,59 @@ impl PipxManager {
 
     /// Check if pipx is installed and available
     pub async fn is_pipx_available(&self) -> bool {
-        match Command::new("pipx")
-            .arg("--version")
-            .output()
-            .await
-        {
+        match Command::new("pipx").arg("--version").output().await {
             Ok(output) => output.status.success(),
             Err(_) => false,
         }
     }
 
     /// Install a tool via pipx install with live output streaming
-    /// 
+    ///
     /// # Arguments
     /// * `package_name` - The Python package name (e.g., "sqlmap", "wpscan")
     /// * `tool_name` - The tool name (e.g., "sqlmap")
     /// * `app_handle` - Optional Tauri AppHandle for emitting events
-    /// 
+    ///
     /// # Returns
     /// * `InstallationResult` with success status and message
     pub async fn install(
-        &self, 
-        package_name: &str, 
+        &self,
+        package_name: &str,
         tool_name: &str,
-        app_handle: Option<&tauri::AppHandle>
+        app_handle: Option<&tauri::AppHandle>,
     ) -> Result<InstallationResult, String> {
-        self.install_attempt(package_name, tool_name, app_handle).await
+        self.install_attempt(package_name, tool_name, app_handle)
+            .await
     }
 
     /// Single installation attempt (internal method)
     async fn install_attempt(
-        &self, 
-        package_name: &str, 
+        &self,
+        package_name: &str,
         tool_name: &str,
-        app_handle: Option<&tauri::AppHandle>
+        app_handle: Option<&tauri::AppHandle>,
     ) -> Result<InstallationResult, String> {
         // Check if pipx is available
         if !self.is_pipx_available().await {
             return Ok(InstallationResult {
                 success: false,
-                message: "pipx is not installed or not in PATH. Please install pipx first.".to_string(),
+                message: "pipx is not installed or not in PATH. Please install pipx first."
+                    .to_string(),
                 tool_name: tool_name.to_string(),
                 installed_path: None,
             });
         }
 
-        eprintln!("📦 Installing {} via pipx install {}", tool_name, package_name);
+        eprintln!(
+            "📦 Installing {} via pipx install {}",
+            tool_name, package_name
+        );
 
         // Emit installation started event
         if let Some(handle) = app_handle {
-            let _ = handle.emit_all(
+            let _ = handle.emit(
                 TOOL_INSTALLATION_STARTED,
-                EventEmitter::tool_installation_started(tool_name, "pipx")
+                EventEmitter::tool_installation_started(tool_name, "pipx"),
             );
         }
 
@@ -85,7 +88,11 @@ impl PipxManager {
         // Setting PIPX_HOME ensures pipx uses a fresh environment with no shared state
         let pipx_home = std::env::temp_dir().join(format!("pipx-home-{}", Uuid::new_v4()));
         if let Err(e) = std::fs::create_dir_all(&pipx_home) {
-            eprintln!("⚠️  Failed to create isolated pipx home {}: {}", pipx_home.display(), e);
+            eprintln!(
+                "⚠️  Failed to create isolated pipx home {}: {}",
+                pipx_home.display(),
+                e
+            );
         }
 
         // Spawn process with piped stdout/stderr for live streaming
@@ -103,14 +110,14 @@ impl PipxManager {
             Err(e) => {
                 let error_msg = format!("Failed to spawn pipx command: {}", e);
                 eprintln!("❌ {}", error_msg);
-                
+
                 if let Some(handle) = app_handle {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_COMPLETED,
-                        EventEmitter::tool_installation_completed(tool_name, false, &error_msg)
+                        EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                     );
                 }
-                
+
                 return Ok(InstallationResult {
                     success: false,
                     message: error_msg,
@@ -136,9 +143,9 @@ impl PipxManager {
             while let Ok(Some(line)) = lines.next_line().await {
                 eprintln!("[pipx stdout] {}", line);
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
-                        EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &line)
+                        EventEmitter::tool_installation_output(&tool_name_clone, "stdout", &line),
                     );
                 }
             }
@@ -154,9 +161,9 @@ impl PipxManager {
                 eprintln!("[pipx stderr] {}", line);
                 error_output.push(line.clone());
                 if let Some(handle) = &handle_clone {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_OUTPUT,
-                        EventEmitter::tool_installation_output(&tool_name_clone, "stderr", &line)
+                        EventEmitter::tool_installation_output(&tool_name_clone, "stderr", &line),
                     );
                 }
             }
@@ -165,12 +172,8 @@ impl PipxManager {
 
         // CRITICAL: Use tokio::join! to wait for process AND output tasks concurrently
         // This prevents deadlock when pipe buffers fill up
-        let (status, _, stderr_result) = tokio::join!(
-            child.wait(),
-            stdout_task,
-            stderr_task
-        );
-        
+        let (status, _, stderr_result) = tokio::join!(child.wait(), stdout_task, stderr_task);
+
         let stderr_output = stderr_result.unwrap_or_default();
 
         // Check result
@@ -178,20 +181,20 @@ impl PipxManager {
             Ok(exit_status) => {
                 let exit_success = exit_status.success();
                 let error_msg = stderr_output.join("\n");
-                
+
                 // WORKAROUND: pipx returns exit code 1 when PATH is not configured
                 // even though installation succeeds. Check if it's just a PATH warning.
-                let is_path_warning_only = !exit_success && 
-                    error_msg.contains("is not on your PATH") &&
-                    !error_msg.contains("failed") &&
-                    !error_msg.contains("error") &&
-                    !error_msg.to_lowercase().contains("exception");
-                
+                let is_path_warning_only = !exit_success
+                    && error_msg.contains("is not on your PATH")
+                    && !error_msg.contains("failed")
+                    && !error_msg.contains("error")
+                    && !error_msg.to_lowercase().contains("exception");
+
                 // If exit failed but it's just PATH warning, check if tool actually installed
                 let actual_success = if is_path_warning_only {
                     eprintln!("⚠️  pipx returned non-zero exit but only PATH warning detected");
                     eprintln!("   Verifying if {} was actually installed...", tool_name);
-                    
+
                     // Verify installation by checking pipx list
                     match Command::new("pipx")
                         .arg("list")
@@ -201,9 +204,9 @@ impl PipxManager {
                     {
                         Ok(list_output) => {
                             let installed_tools = String::from_utf8_lossy(&list_output.stdout);
-                            let is_installed = installed_tools.lines()
-                                .any(|line| line.trim() == tool_name);
-                            
+                            let is_installed =
+                                installed_tools.lines().any(|line| line.trim() == tool_name);
+
                             if is_installed {
                                 eprintln!("✅ Confirmed: {} is installed via pipx", tool_name);
                                 true
@@ -220,7 +223,7 @@ impl PipxManager {
                 } else {
                     exit_success
                 };
-                
+
                 let message = if actual_success {
                     let mut msg = format!("✅ Successfully installed {} via pipx", tool_name);
                     if is_path_warning_only {
@@ -235,9 +238,13 @@ impl PipxManager {
 
                 // Emit completion event
                 if let Some(handle) = app_handle {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_COMPLETED,
-                        EventEmitter::tool_installation_completed(tool_name, actual_success, &message)
+                        EventEmitter::tool_installation_completed(
+                            tool_name,
+                            actual_success,
+                            &message,
+                        ),
                     );
                 }
 
@@ -253,9 +260,9 @@ impl PipxManager {
                 eprintln!("❌ {}", error_msg);
 
                 if let Some(handle) = app_handle {
-                    let _ = handle.emit_all(
+                    let _ = handle.emit(
                         TOOL_INSTALLATION_COMPLETED,
-                        EventEmitter::tool_installation_completed(tool_name, false, &error_msg)
+                        EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
                     );
                 }
 
@@ -270,7 +277,11 @@ impl PipxManager {
     }
 
     /// Update a tool via pipx upgrade
-    pub async fn update(&self, package_name: &str, tool_name: &str) -> Result<InstallationResult, String> {
+    pub async fn update(
+        &self,
+        package_name: &str,
+        tool_name: &str,
+    ) -> Result<InstallationResult, String> {
         if !self.is_pipx_available().await {
             return Ok(InstallationResult {
                 success: false,
@@ -280,7 +291,10 @@ impl PipxManager {
             });
         }
 
-        eprintln!("🔄 Updating {} via pipx upgrade {}", tool_name, package_name);
+        eprintln!(
+            "🔄 Updating {} via pipx upgrade {}",
+            tool_name, package_name
+        );
 
         match Command::new("pipx")
             .arg("upgrade")
@@ -290,7 +304,7 @@ impl PipxManager {
         {
             Ok(output) => {
                 let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                
+
                 if output.status.success() {
                     Ok(InstallationResult {
                         success: true,
@@ -307,14 +321,12 @@ impl PipxManager {
                     })
                 }
             }
-            Err(e) => {
-                Ok(InstallationResult {
-                    success: false,
-                    message: format!("Failed to execute pipx upgrade: {}", e),
-                    tool_name: tool_name.to_string(),
-                    installed_path: None,
-                })
-            }
+            Err(e) => Ok(InstallationResult {
+                success: false,
+                message: format!("Failed to execute pipx upgrade: {}", e),
+                tool_name: tool_name.to_string(),
+                installed_path: None,
+            }),
         }
     }
 
@@ -324,7 +336,10 @@ impl PipxManager {
             return Err("pipx is not installed or not in PATH.".to_string());
         }
 
-        eprintln!("🗑️  Uninstalling {} via pipx uninstall {}", tool_name, package_name);
+        eprintln!(
+            "🗑️  Uninstalling {} via pipx uninstall {}",
+            tool_name, package_name
+        );
 
         match Command::new("pipx")
             .arg("uninstall")
@@ -334,16 +349,18 @@ impl PipxManager {
         {
             Ok(output) => {
                 let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                
+
                 if output.status.success() {
                     Ok(format!("Successfully uninstalled {}", tool_name))
                 } else {
-                    Err(format!("Failed to uninstall {}: {}", tool_name, stderr.trim()))
+                    Err(format!(
+                        "Failed to uninstall {}: {}",
+                        tool_name,
+                        stderr.trim()
+                    ))
                 }
             }
-            Err(e) => {
-                Err(format!("Failed to execute pipx uninstall: {}", e))
-            }
+            Err(e) => Err(format!("Failed to execute pipx uninstall: {}", e)),
         }
     }
 }

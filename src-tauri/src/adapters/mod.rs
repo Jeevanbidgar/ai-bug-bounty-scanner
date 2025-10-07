@@ -1,8 +1,8 @@
 // Tool adapters module - command builders for security tools
 
 // Subdomain discovery
-pub mod subfinder;
 pub mod amass;
+pub mod subfinder;
 
 // Port scanning
 pub mod naabu;
@@ -22,5 +22,4 @@ pub mod generic;
 pub mod registry;
 
 // Re-export commonly used types for convenience
-pub use registry::{AdapterRegistry, AdapterType, AdapterInfo};
-pub use generic::{GenericAdapter, GenericAdapterManager, GenericAdapterInfo};
+pub use registry::{AdapterInfo, AdapterRegistry, AdapterType};
