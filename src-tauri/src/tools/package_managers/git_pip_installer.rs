@@ -111,23 +111,57 @@ impl GitPipInstaller {
             .spawn()
             .map_err(|e| format!("Failed to spawn pipx: {}", e))?;
 
-        // Stream output
-        if let Some(stdout) = child.stdout.take() {
-            let reader = BufReader::new(stdout);
-            let mut lines = reader.lines();
-            
-            while let Ok(Some(line)) = lines.next_line().await {
-                if let Some(handle) = app_handle {
-                    let _ = handle.emit(
-                        TOOL_INSTALLATION_OUTPUT,
-                        serde_json::json!({
-                            "tool_name": tool_name,
-                            "output": line
-                        }),
-                    );
+        // Stream stdout
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        
+        let tool_name_clone = tool_name.to_string();
+        let app_handle_clone = app_handle.map(|h| h.clone());
+        
+        let stdout_task = tokio::spawn(async move {
+            if let Some(stdout) = stdout {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+                
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if let Some(handle) = &app_handle_clone {
+                        let _ = handle.emit(
+                            TOOL_INSTALLATION_OUTPUT,
+                            serde_json::json!({
+                                "tool_name": tool_name_clone,
+                                "output": line
+                            }),
+                        );
+                    }
                 }
             }
-        }
+        });
+
+        // Stream stderr
+        let tool_name_clone2 = tool_name.to_string();
+        let app_handle_clone2 = app_handle.map(|h| h.clone());
+        
+        let stderr_task = tokio::spawn(async move {
+            if let Some(stderr) = stderr {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if let Some(handle) = &app_handle_clone2 {
+                        let _ = handle.emit(
+                            TOOL_INSTALLATION_OUTPUT,
+                            serde_json::json!({
+                                "tool_name": tool_name_clone2,
+                                "output": format!("ERROR: {}", line)
+                            }),
+                        );
+                    }
+                }
+            }
+        });
+
+        // Wait for both streams to finish
+        let _ = tokio::join!(stdout_task, stderr_task);
 
         // Wait for completion
         let status = child
@@ -136,11 +170,18 @@ impl GitPipInstaller {
             .map_err(|e| format!("Failed to wait for pipx: {}", e))?;
 
         let result = if status.success() {
+            // Determine installed path based on platform
+            let installed_path = if cfg!(target_os = "windows") {
+                Some(format!("%USERPROFILE%\\AppData\\Roaming\\Python\\Scripts\\{}.exe", tool_name))
+            } else {
+                Some(format!("~/.local/bin/{}", tool_name))
+            };
+
             InstallationResult {
                 success: true,
                 message: format!("Successfully installed {} via pipx", tool_name),
                 tool_name: tool_name.to_string(),
-                installed_path: Some(format!("~/.local/bin/{}", tool_name)),
+                installed_path,
             }
         } else {
             InstallationResult {
@@ -289,23 +330,70 @@ impl GitPipInstaller {
             });
         }
 
-        // Step 2: Install with pip
+        // Step 2: Install with pip (using venv on Linux to avoid PEP 668)
         eprintln!("📦 Installing with pip...");
+
+        // On Linux, create a virtual environment to avoid PEP 668 errors
+        let is_linux = cfg!(target_os = "linux");
+        let venv_path = clone_path.join("venv");
+        let pip_cmd: String;
+        let python_executable: String;
+
+        if is_linux {
+            eprintln!("� Linux detected - creating virtual environment to avoid PEP 668...");
+            
+            // Create venv
+            let venv_result = self
+                .run_command_with_output(
+                    &python_cmd,
+                    &["-m", "venv", venv_path.to_str().unwrap()],
+                    tool_name,
+                    "create venv",
+                    app_handle,
+                )
+                .await?;
+
+            if !venv_result {
+                let error_msg = format!("Failed to create virtual environment for {}", tool_name);
+                if let Some(handle) = app_handle {
+                    let _ = handle.emit(
+                        TOOL_INSTALLATION_COMPLETED,
+                        EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
+                    );
+                }
+                return Ok(InstallationResult {
+                    success: false,
+                    message: error_msg,
+                    tool_name: tool_name.to_string(),
+                    installed_path: None,
+                });
+            }
+
+            // Use venv's pip and python
+            pip_cmd = venv_path.join("bin").join("pip").to_string_lossy().to_string();
+            python_executable = venv_path.join("bin").join("python").to_string_lossy().to_string();
+            eprintln!("✅ Virtual environment created at: {}", venv_path.display());
+        } else {
+            // Windows: use system pip
+            pip_cmd = format!("{} -m pip", python_cmd);
+            python_executable = python_cmd.clone();
+        }
 
         // Check if requirements.txt exists
         let requirements_path = clone_path.join("requirements.txt");
         if requirements_path.exists() {
             eprintln!("📋 Found requirements.txt, installing dependencies...");
+            
+            let pip_args = if is_linux {
+                vec!["install", "-r", requirements_path.to_str().unwrap()]
+            } else {
+                vec!["-m", "pip", "install", "-r", requirements_path.to_str().unwrap()]
+            };
+
             let requirements_result = self
                 .run_command_with_output(
-                    &python_cmd,
-                    &[
-                        "-m",
-                        "pip",
-                        "install",
-                        "-r",
-                        requirements_path.to_str().unwrap(),
-                    ],
+                    if is_linux { &pip_cmd } else { &python_cmd },
+                    &pip_args,
                     tool_name,
                     "pip install requirements",
                     app_handle,
@@ -318,10 +406,16 @@ impl GitPipInstaller {
         }
 
         // Install the package itself (editable mode for local development)
+        let pip_install_args = if is_linux {
+            vec!["install", "-e", clone_path.to_str().unwrap()]
+        } else {
+            vec!["-m", "pip", "install", "-e", clone_path.to_str().unwrap()]
+        };
+
         let install_result = self
             .run_command_with_output(
-                &python_cmd,
-                &["-m", "pip", "install", "-e", clone_path.to_str().unwrap()],
+                if is_linux { &pip_cmd } else { &python_cmd },
+                &pip_install_args,
                 tool_name,
                 "pip install",
                 app_handle,
@@ -335,7 +429,7 @@ impl GitPipInstaller {
                 eprintln!("📦 Trying setup.py install...");
                 let setup_result = self
                     .run_command_with_output(
-                        &python_cmd,
+                        if is_linux { &python_executable } else { &python_cmd },
                         &[setup_py.to_str().unwrap(), "install"],
                         tool_name,
                         "setup.py install",
@@ -359,19 +453,10 @@ impl GitPipInstaller {
                     });
                 }
             } else {
-                let error_msg = format!("Failed to install {}: no setup.py found", tool_name);
-                if let Some(handle) = app_handle {
-                    let _ = handle.emit(
-                        TOOL_INSTALLATION_COMPLETED,
-                        EventEmitter::tool_installation_completed(tool_name, false, &error_msg),
-                    );
-                }
-                return Ok(InstallationResult {
-                    success: false,
-                    message: error_msg,
-                    tool_name: tool_name.to_string(),
-                    installed_path: Some(clone_path.to_string_lossy().to_string()),
-                });
+                // For tools without setup.py (like EyeWitness), installation might still work
+                // if requirements.txt was installed successfully
+                eprintln!("⚠️  No setup.py found, but requirements may have been installed");
+                eprintln!("📂 Tool cloned to: {}", clone_path.display());
             }
         }
 

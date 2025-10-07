@@ -1192,7 +1192,7 @@ pub async fn install_tool(
     #[allow(non_snake_case)] tool_name: String,
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
-) ->scm-history-item:/home/kalijeevan/Music/ai-bug-bounty-scanner?%7B%22repositoryId%22%3A%22scm0%22%2C%22historyItemId%22%3A%22cf4f3f6bf2b3961f85d420d55a66149ca62a3405%22%2C%22historyItemParentId%22%3A%224af7e9d23c413965e5ef27861f0eab83a61bd6a3%22%2C%22historyItemDisplayId%22%3A%22cf4f3f6%22%7D Result<InstallationResult, String> {
+) -> Result<InstallationResult, String> {
     eprintln!("📦 Installing tool: {}", tool_name);
 
     // Look up tool in catalog

@@ -1,6 +1,7 @@
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
 use crate::tools::catalog::ToolDefinition;
 use crate::tools::package_managers::{detection::detect_manager, PackageManagerType};
+use crate::tools::package_managers::elevation_helper::ElevationHelper;
 use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
 use tauri::{Emitter, Manager};
@@ -128,11 +129,15 @@ impl GemInstaller {
 
         #[cfg(target_os = "linux")]
         {
-            // Try apt first (Debian/Ubuntu/Kali)
+            let elevation = ElevationHelper::new();
+            let elevation_msg = elevation.get_elevation_message().await;
+            self.emit_output(tool_name, elevation_msg);
             self.emit_output(tool_name, "Installing Ruby via apt...\n");
 
-            let mut child = Command::new("sudo")
-                .args(&["apt", "install", "-y", "ruby", "ruby-dev"])
+            let (elevation_cmd, elevation_args) = elevation.elevate_command(&["apt", "install", "-y", "ruby", "ruby-dev"]).await;
+
+            let mut child = Command::new(elevation_cmd)
+                .args(&elevation_args)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()

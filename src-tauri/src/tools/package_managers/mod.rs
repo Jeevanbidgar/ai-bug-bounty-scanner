@@ -7,6 +7,7 @@ pub mod apt_manager;
 pub mod cargo_installer;
 pub mod detection;
 pub mod elevation;
+pub mod elevation_helper;
 pub mod gem_installer;
 pub mod git_pip_installer;
 pub mod go_install;

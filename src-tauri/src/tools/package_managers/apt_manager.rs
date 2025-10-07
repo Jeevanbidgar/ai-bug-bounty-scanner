@@ -33,7 +33,8 @@ impl AptManager {
 
     /// Check if pkexec is available (for GUI password prompt)
     async fn is_pkexec_available(&self) -> bool {
-        match Command::new("which").arg("pkexec").output().await {
+        // Try to run pkexec --version directly instead of using which
+        match Command::new("pkexec").arg("--version").output().await {
             Ok(output) => output.status.success(),
             Err(_) => false,
         }
@@ -162,8 +163,29 @@ impl AptManager {
             return Err(anyhow!("apt is not available."));
         }
 
-        let mut child = Command::new("sudo")
-            .args(&["apt", "install", "--only-upgrade", "-y", package_name])
+        // Use pkexec for GUI password prompt if available, otherwise fall back to sudo
+        let (elevation_cmd, elevation_args) = if self.is_pkexec_available().await {
+            self.emit_output(
+                tool_name,
+                "🔐 Using pkexec (GUI password dialog will appear)...\n",
+            );
+            (
+                "pkexec",
+                vec!["apt", "install", "--only-upgrade", "-y", package_name],
+            )
+        } else {
+            self.emit_output(
+                tool_name,
+                "⚠️  Using sudo (password prompt in terminal)...\n",
+            );
+            (
+                "sudo",
+                vec!["apt", "install", "--only-upgrade", "-y", package_name],
+            )
+        };
+
+        let mut child = Command::new(elevation_cmd)
+            .args(&elevation_args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -226,8 +248,34 @@ impl AptManager {
             return Err(anyhow!("apt is not available."));
         }
 
-        let output = Command::new("sudo")
-            .args(&["apt", "remove", "-y", package_name])
+        self.emit_output(
+            tool_name,
+            &format!("Uninstalling {}...\n", tool_name),
+        );
+
+        // Use pkexec for GUI password prompt if available, otherwise fall back to sudo
+        let (elevation_cmd, elevation_args) = if self.is_pkexec_available().await {
+            self.emit_output(
+                tool_name,
+                "🔐 Using pkexec (GUI password dialog will appear)...\n",
+            );
+            (
+                "pkexec",
+                vec!["apt", "remove", "-y", package_name],
+            )
+        } else {
+            self.emit_output(
+                tool_name,
+                "⚠️  Using sudo (password prompt in terminal)...\n",
+            );
+            (
+                "sudo",
+                vec!["apt", "remove", "-y", package_name],
+            )
+        };
+
+        let output = Command::new(elevation_cmd)
+            .args(&elevation_args)
             .output()
             .await
             .context("Failed to execute apt remove")?;

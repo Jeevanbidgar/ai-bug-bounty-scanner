@@ -42,6 +42,7 @@ pub struct ToolRecord {
     pub last_seen: Option<String>,
     pub last_error: Option<String>,
     pub install_method: Option<String>, // Installation method: "go", "pipx", "git-pip", etc.
+    pub alternative_install_methods: Option<Vec<String>>, // Alternative installation methods (e.g., ["pipx"] for git-pip tools)
 }
 
 impl ToolRecord {
@@ -63,6 +64,11 @@ impl ToolRecord {
             last_seen: None,
             last_error: None,
             install_method: Some(def.install_method.clone()),
+            alternative_install_methods: if def.alternative_install_methods.is_empty() {
+                None
+            } else {
+                Some(def.alternative_install_methods.clone())
+            },
         }
     }
 }
@@ -681,6 +687,7 @@ impl ToolDiscoveryService {
             last_seen: Some(Utc::now().to_rfc3339()),
             last_error: None,
             install_method: Some("manual".to_string()),
+            alternative_install_methods: None, // Manual tools don't have alternatives
         };
 
         cache.tools.insert(name.to_string(), record.clone());

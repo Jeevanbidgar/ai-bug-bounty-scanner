@@ -84,6 +84,14 @@ impl ToolDefinition {
         self
     }
 
+    // For tools that don't support pipx (no setup.py/pyproject.toml)
+    pub fn with_git_repo_no_pipx(mut self, repo: &str) -> Self {
+        self.git_repo = Some(repo.to_string());
+        self.install_method = "git-pip".to_string();
+        // Don't add pipx as alternative
+        self
+    }
+
     pub fn with_apt_package(mut self, package: &str) -> Self {
         self.apt_package = Some(package.to_string());
         self.install_method = "apt".to_string();
@@ -548,7 +556,7 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["eyewitness"],
         )
-        .with_git_repo("https://github.com/FortyNorthSecurity/EyeWitness.git"),
+        .with_git_repo_no_pipx("https://github.com/FortyNorthSecurity/EyeWitness.git"),
     );
 
     // === JavaScript Analysis ===
