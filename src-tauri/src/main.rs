@@ -86,7 +86,6 @@ fn main() {
             crate::commands::list_tools,
             crate::commands::get_tool,
             crate::commands::recheck_tool,
-            crate::commands::recheck_tool_enhanced,
             crate::commands::refresh_tools,
             crate::commands::get_tool_categories,
             crate::commands::get_tools_by_category,
