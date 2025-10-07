@@ -125,3 +125,8 @@ yarn.lock
 *_RESULTS*.md
 *_INSTALLATION*.md
 ACTUAL_*.md
+
+# Test and utility scripts
+test_*.sh
+test_*.py
+fix-*.sh
