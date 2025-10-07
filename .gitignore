@@ -49,6 +49,13 @@ data/*.db
 data/tool_discovery_cache.json
 src-tauri/data/
 
+# Local documentation (session-specific)
+*_FIX_COMPLETE.md
+*_FIX.md
+*_AUDIT*.md
+*_SUMMARY.md
+QUICK_REFERENCE.md
+
 # Logs
 logs/
 *.log
@@ -58,6 +65,7 @@ logs/
 .env.*.local
 
 # Frontend
+node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
