@@ -15,6 +15,7 @@ npm run tauri dev
 ```
 
 The application will:
+
 1. Build the Rust backend
 2. Start the frontend development server
 3. Launch the native desktop application
@@ -32,12 +33,15 @@ Creates platform-specific installers in `src-tauri/target/release/bundle/`
 ## 📋 Requirements
 
 ### **Development**
+
 - **Node.js 18+** - Frontend build system
 - **Rust 1.70+** - Backend compilation
 - **Windows 10/11, Linux, or macOS** - Cross-platform support
 
 ### **Runtime (Auto-installed)**
+
 The application can automatically install these through package managers:
+
 - **Go** - For go install tools (subfinder, nuclei, etc.)
 - **Python/pip** - For pipx tools (httpx, sqlmap, etc.)
 - **Node.js/npm** - For npm tools (wappalyzer, etc.)
@@ -49,6 +53,7 @@ The application can automatically install these through package managers:
 ## 🎯 Features
 
 ### **Core Capabilities**
+
 - ✅ **Native Desktop App** - Built with Tauri (Rust) + React
 - ✅ **Automatic Tool Installation** - One-click install with package manager auto-detection
 - ✅ **8 Package Managers Integrated** - Go, Pipx, npm, gem, Cargo, APT, WinGet, Homebrew
@@ -59,6 +64,7 @@ The application can automatically install these through package managers:
 - ✅ **Error Recovery** - Intelligent fallback strategies and helpful error messages
 
 ### **Package Manager Features**
+
 - **Auto-Detection**: Scans system for installed package managers
 - **Auto-Installation**: Installs missing package managers (WinGet, apt, brew)
 - **Dynamic Path Resolution**: Finds executables even outside PATH
@@ -66,6 +72,7 @@ The application can automatically install these through package managers:
 - **Cross-Platform Installation**: Platform-specific installation strategies
 
 ### **Tool Management**
+
 - **Catalog System**: 30+ pre-configured security tools
 - **Installation Status**: Real-time detection of installed tools
 - **Version Checking**: Automatic version detection and display
@@ -132,51 +139,58 @@ The application can automatically install these through package managers:
 
 ### **Package Managers** (8 Integrated)
 
-| Manager | Platform | Status | Use Case |
-|---------|----------|--------|----------|
-| **Go install** | All | ✅ Full | Go-based security tools (subfinder, nuclei, etc.) |
-| **Pipx** | All | ✅ Full | Python CLI tools (httpx, sqlmap, etc.) |
-| **npm** | All | ✅ Full | Node.js tools (wappalyzer, etc.) |
-| **gem** | All | ✅ Full | Ruby tools (WPScan, etc.) |
-| **Cargo** | All | ✅ Full | Rust tools (rustscan, etc.) |
-| **APT** | Linux | ✅ Full | System packages (nmap, masscan, etc.) |
-| **WinGet** | Windows | ✅ Full | System packages and language runtimes |
-| **Homebrew** | macOS | ✅ Full | macOS packages (20+ security tools) |
+| Manager        | Platform | Status  | Use Case                                          |
+| -------------- | -------- | ------- | ------------------------------------------------- |
+| **Go install** | All      | ✅ Full | Go-based security tools (subfinder, nuclei, etc.) |
+| **Pipx**       | All      | ✅ Full | Python CLI tools (httpx, sqlmap, etc.)            |
+| **npm**        | All      | ✅ Full | Node.js tools (wappalyzer, etc.)                  |
+| **gem**        | All      | ✅ Full | Ruby tools (WPScan, etc.)                         |
+| **Cargo**      | All      | ✅ Full | Rust tools (rustscan, etc.)                       |
+| **APT**        | Linux    | ✅ Full | System packages (nmap, masscan, etc.)             |
+| **WinGet**     | Windows  | ✅ Full | System packages and language runtimes             |
+| **Homebrew**   | macOS    | ✅ Full | macOS packages (20+ security tools)               |
 
 ### **Security Tools** (30+ Supported)
 
 #### **Subdomain Discovery**
+
 - **subfinder** (Go) - Fast subdomain enumeration
 - **amass** (Go) - In-depth DNS enumeration and network mapping
 - **assetfinder** (Go) - Subdomain finder
 
 #### **URL Discovery**
+
 - **waybackurls** (Go) - Fetch all URLs from Wayback Machine
 - **gau** (Go) - Get All URLs from multiple sources
 - **hakrawler** (Go) - Web crawler for gathering URLs
 
 #### **Port Scanning**
+
 - **naabu** (Go) - Fast port scanner
 - **nmap** (APT/WinGet) - Network exploration and security auditing
 - **masscan** (APT) - Fast TCP port scanner
 - **rustscan** (Cargo) - Modern port scanner
 
 #### **Vulnerability Scanning**
+
 - **nuclei** (Go) - Template-based vulnerability scanner
 - **httpx** (Pipx) - Fast HTTP toolkit
 - **ffuf** (Go) - Fast web fuzzer
 
 #### **Web Application Security**
+
 - **sqlmap** (Pipx) - SQL injection detection
 - **wpscan** (gem) - WordPress security scanner
 - **nikto** (APT) - Web server scanner
 
 #### **DNS & Network**
+
 - **dnsx** (Go) - Fast DNS toolkit
 - **shuffledns** (Go) - DNS resolver wrapper
 - **massdns** (APT) - High-performance DNS stub resolver
 
 #### **Content Discovery**
+
 - **gobuster** (Go) - Directory/file brute-forcing
 - **feroxbuster** (Cargo) - Recursive content discovery
 - **dirsearch** (Pipx) - Web path scanner
@@ -213,12 +227,14 @@ npm run tauri dev
 ### **Main Interface**
 
 #### **Dashboard**
+
 - System health monitoring
 - Package manager status (npm, gem, cargo, go, pipx, apt, winget)
 - Quick statistics and metrics
 - Recent activity feed
 
 #### **Tools Page**
+
 - Browse 30+ security tools
 - View installation status
 - One-click installation via package managers
@@ -226,12 +242,14 @@ npm run tauri dev
 - Version information
 
 #### **Package Managers Panel**
+
 - View all 8 package managers
 - Check installation status
 - Auto-install missing managers
 - Version and path information
 
 #### **Adapters Page**
+
 - Explore tool-specific adapters
 - View adapter capabilities
 - Monitor adapter registry
@@ -246,6 +264,7 @@ npm run tauri dev
 5. Tool becomes available immediately
 
 **Supported Installation Methods**:
+
 - ✅ One-click install via UI
 - ✅ Auto-selects best package manager
 - ✅ Falls back to alternatives if needed
@@ -257,16 +276,19 @@ npm run tauri dev
 If a package manager is missing, the app can install it:
 
 **Windows**:
+
 - npm/Node.js → via WinGet
 - gem/Ruby → via WinGet
 - Go → via WinGet or manual download
 
 **Linux**:
+
 - npm/Node.js → via APT
 - gem/Ruby → via APT
 - Go → via APT or official installer
 
 **macOS**:
+
 - npm/Node.js → via Homebrew
 - gem/Ruby → via Homebrew
 - Go → via Homebrew
@@ -278,6 +300,7 @@ If a package manager is missing, the app can install it:
 ### **Prerequisites**
 
 1. **Homebrew Installation** (Required for macOS package manager support)
+
    ```bash
    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
    ```
@@ -293,6 +316,7 @@ If a package manager is missing, the app can install it:
 The application supports 20+ security tools installation via Homebrew:
 
 **CLI Tools**:
+
 - `nuclei` - Template-based vulnerability scanner
 - `subfinder` - Subdomain discovery
 - `nmap` - Network scanning
@@ -311,17 +335,20 @@ The application supports 20+ security tools installation via Homebrew:
 - And more...
 
 **GUI Tools**:
+
 - `burp-suite` - Web proxy (via Homebrew Cask)
 - `wireshark` - Network analyzer (via Homebrew Cask)
 
 ### **Using on macOS**
 
 1. **Launch the application**:
+
    ```bash
    npm run tauri dev
    ```
 
 2. **Navigate to the Tools page**
+
    - Homebrew will be automatically detected and shown in the Package Managers panel
    - All compatible tools will display Homebrew as an installation option
 
@@ -340,6 +367,7 @@ The application supports 20+ security tools installation via Homebrew:
 ### **Troubleshooting on macOS**
 
 **Homebrew not detected?**
+
 ```bash
 # Check if Homebrew is in PATH
 which brew
@@ -350,6 +378,7 @@ source ~/.zshrc
 ```
 
 **Permission Issues?**
+
 ```bash
 # Most Homebrew operations don't require sudo
 # If you see permission errors, check your Homebrew installation:
@@ -357,6 +386,7 @@ brew doctor
 ```
 
 **Formula not found?**
+
 - Ensure you have the latest Homebrew package index
 - Run `brew update` in terminal
 - Some tools may require additional taps - the app will handle this
@@ -470,6 +500,7 @@ ai-bug-bounty-scanner/
 ## 📊 Tech Stack
 
 ### **Frontend**
+
 - **React 18** - Modern UI framework
 - **TypeScript** - Type-safe development
 - **Vite** - Lightning-fast build tool
@@ -477,6 +508,7 @@ ai-bug-bounty-scanner/
 - **Lucide React** - Beautiful icons
 
 ### **Backend (Rust)**
+
 - **Tauri 1.x** - Native desktop framework
 - **tokio** - Async runtime
 - **serde** - Serialization/deserialization
@@ -484,12 +516,14 @@ ai-bug-bounty-scanner/
 - **async-trait** - Async traits
 
 ### **Desktop Integration**
+
 - **Native Window** - Platform-specific UI
 - **IPC (Inter-Process Communication)** - Frontend ↔ Backend
 - **System Commands** - Execute package managers and tools
 - **File System Access** - Read/write local data
 
 ### **Package Manager Integration**
+
 - **Dynamic Detection** - Finds managers in PATH and custom locations
 - **Cross-Platform** - Windows, Linux, macOS support
 - **Auto-Installation** - Installs missing dependencies
@@ -514,12 +548,14 @@ ai-bug-bounty-scanner/
 ### **Application Won't Start?**
 
 1. **Check Node.js**:
+
    ```bash
    node --version  # Should be 18+
    npm --version
    ```
 
 2. **Check Rust**:
+
    ```bash
    cargo --version  # Should be 1.70+
    rustc --version
@@ -536,11 +572,13 @@ ai-bug-bounty-scanner/
 ### **Package Manager Not Detected?**
 
 **Windows**:
+
 - npm: Install Node.js from https://nodejs.org or via WinGet
 - gem: Install Ruby from https://rubyinstaller.org or via WinGet
 - WinGet: Install from Microsoft Store (App Installer)
 
 **Linux**:
+
 ```bash
 # npm
 sudo apt install nodejs npm
@@ -553,6 +591,7 @@ sudo apt install golang-go
 ```
 
 **macOS**:
+
 ```bash
 # Install Homebrew first
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -585,14 +624,14 @@ cargo update
 
 ### **Common Issues**
 
-| Issue | Solution |
-|-------|----------|
-| `npm.cmd not found` | Install Node.js or add to PATH |
-| `gem.cmd not found` | Install Ruby or add to PATH |
-| `cargo not found` | Install Rust toolchain |
-| `go not found` | Install Go or add to PATH |
+| Issue               | Solution                                                           |
+| ------------------- | ------------------------------------------------------------------ |
+| `npm.cmd not found` | Install Node.js or add to PATH                                     |
+| `gem.cmd not found` | Install Ruby or add to PATH                                        |
+| `cargo not found`   | Install Rust toolchain                                             |
+| `go not found`      | Install Go or add to PATH                                          |
 | Build takes forever | First build compiles Rust (~3-5 min), subsequent builds are faster |
-| Port conflict | Frontend uses 1420, ensure it's available |
+| Port conflict       | Frontend uses 1420, ensure it's available                          |
 
 ---
 
@@ -613,14 +652,17 @@ npm run tauri build
 **Output Locations**:
 
 **Windows**:
+
 - MSI Installer: `src-tauri/target/release/bundle/msi/AI Bug Bounty Scanner_2.0.0_x64_en-US.msi`
 - Executable: `src-tauri/target/release/ai-bug-bounty-scanner.exe`
 
 **Linux**:
+
 - AppImage: `src-tauri/target/release/bundle/appimage/ai-bug-bounty-scanner_2.0.0_amd64.AppImage`
 - DEB Package: `src-tauri/target/release/bundle/deb/ai-bug-bounty-scanner_2.0.0_amd64.deb`
 
 **macOS**:
+
 - DMG: `src-tauri/target/release/bundle/dmg/AI Bug Bounty Scanner_2.0.0_x64.dmg`
 - App Bundle: `src-tauri/target/release/bundle/macos/AI Bug Bounty Scanner.app`
 
@@ -754,6 +796,7 @@ Contributions are welcome! This is a professional security tool for the communit
 ### **API Documentation**
 
 Tauri commands are documented in `src-tauri/src/commands/mod.rs`:
+
 - `get_available_tools` - List all tools
 - `install_tool` - Install a specific tool
 - `detect_package_managers` - Check package manager status
@@ -764,6 +807,7 @@ Tauri commands are documented in `src-tauri/src/commands/mod.rs`:
 ## 🎯 Roadmap
 
 ### **Phase 1: Foundation** ✅ COMPLETE
+
 - [x] Package manager detection and integration
 - [x] Tool catalog system
 - [x] Auto-installation for npm, gem, cargo, go, pipx
@@ -771,6 +815,7 @@ Tauri commands are documented in `src-tauri/src/commands/mod.rs`:
 - [x] Tool-specific adapters (7 tools)
 
 ### **Phase 2: Scan Engine** 🚧 IN PROGRESS
+
 - [ ] Workflow system for chaining tools
 - [ ] Scan templates (subdomain enum, port scan, vuln scan)
 - [ ] Real-time execution monitoring
@@ -778,6 +823,7 @@ Tauri commands are documented in `src-tauri/src/commands/mod.rs`:
 - [ ] Result aggregation
 
 ### **Phase 3: Reporting** 📋 PLANNED
+
 - [ ] Report generation (PDF, HTML, JSON, CSV)
 - [ ] Vulnerability database
 - [ ] Finding deduplication
@@ -785,6 +831,7 @@ Tauri commands are documented in `src-tauri/src/commands/mod.rs`:
 - [ ] Export/import functionality
 
 ### **Phase 4: Advanced Features** 🔮 FUTURE
+
 - [ ] Plugin system for custom tools
 - [ ] Cloud storage integration
 - [ ] Team collaboration features
@@ -794,6 +841,7 @@ Tauri commands are documented in `src-tauri/src/commands/mod.rs`:
 - [ ] Multi-language support
 
 ### **Phase 5: Platform Expansion** 🌐 FUTURE
+
 - [ ] Linux package distribution (snap, flatpak)
 - [ ] macOS Homebrew formula
 - [ ] Docker container support
@@ -831,6 +879,7 @@ This tool is designed for **authorized security testing only**. Users must:
 ### **Reporting Bugs**
 
 Please include:
+
 - Operating system and version
 - Application version
 - Steps to reproduce
@@ -840,6 +889,7 @@ Please include:
 ### **Feature Requests**
 
 Open an issue with:
+
 - Clear description of the feature
 - Use case and benefits
 - Proposed implementation (optional)
@@ -849,18 +899,22 @@ Open an issue with:
 ## � Acknowledgments
 
 ### **Built With**
+
 - **Tauri** - Desktop application framework
 - **Rust** - Systems programming language
 - **React** - UI framework
 - **TypeScript** - Type-safe JavaScript
 
 ### **Security Tools**
+
 Thanks to the amazing security community for creating tools like:
+
 - ProjectDiscovery (subfinder, nuclei, naabu, httpx, etc.)
 - OWASP (sqlmap, amass, etc.)
 - And many more open-source contributors
 
 ### **Special Thanks**
+
 - All contributors to this project
 - The bug bounty community
 - Open-source security tool developers
