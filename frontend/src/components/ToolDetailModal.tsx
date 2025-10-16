@@ -430,7 +430,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     }
   }
 
-  const canInstall = installationInfo && ['go', 'pipx', 'git-pip', 'apt', 'cargo', 'gem', 'manual'].includes(installationInfo.install_method)
+  const canInstall = installationInfo && ['go', 'pipx', 'git-pip', 'apt', 'cargo', 'gem', 'homebrew', 'manual'].includes(installationInfo.install_method)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -525,9 +525,10 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                               installationInfo.install_method === 'apt' ? 'bg-blue-700 text-blue-100' :
                                 installationInfo.install_method === 'cargo' ? 'bg-orange-700 text-orange-100' :
                                   installationInfo.install_method === 'gem' ? 'bg-red-700 text-red-100' :
-                                    installationInfo.install_method === 'manual' ? 'bg-purple-700 text-purple-100' :
-                                      installationInfo.install_method === 'runtime' ? 'bg-gray-700 text-gray-100' :
-                                        'bg-gray-700 text-gray-100'
+                                    installationInfo.install_method === 'homebrew' ? 'bg-orange-700 text-orange-100' :
+                                      installationInfo.install_method === 'manual' ? 'bg-purple-700 text-purple-100' :
+                                        installationInfo.install_method === 'runtime' ? 'bg-gray-700 text-gray-100' :
+                                          'bg-gray-700 text-gray-100'
                       }>
                         {installationInfo.install_method}
                       </Badge>
@@ -822,6 +823,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                 <p className="mt-2 text-xs text-gray-400">
                   {selectedInstallMethod === 'pipx' && '🔐 pipx: Isolated environment, no sudo required'}
                   {selectedInstallMethod === 'git-pip' && '📦 git-pip: Clone and install from source'}
+                  {selectedInstallMethod === 'homebrew' && '🍺 Homebrew: macOS package manager, no sudo required'}
                   {(!selectedInstallMethod || selectedInstallMethod === tool.install_method) && '✨ Using recommended installation method'}
                 </p>
               </div>

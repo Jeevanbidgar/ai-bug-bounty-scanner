@@ -421,6 +421,7 @@ const ToolsPage = () => {
             <SelectItem value="gem">gem (Ruby)</SelectItem>
             <SelectItem value="git-pip">Python (pipx/git)</SelectItem>
             <SelectItem value="apt">APT (Linux)</SelectItem>
+            <SelectItem value="homebrew">Homebrew (macOS)</SelectItem>
             <SelectItem value="manual">Manual Install</SelectItem>
             <SelectItem value="runtime">Runtime/System</SelectItem>
           </SelectContent>

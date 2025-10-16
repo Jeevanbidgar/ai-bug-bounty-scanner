@@ -58,6 +58,7 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
       case 'cargo': return 'Cargo (Rust)'
       case 'npm': return 'npm (Node.js)'
       case 'gem': return 'gem (Ruby)'
+      case 'homebrew': return 'Homebrew'
       default: return 'Unknown'
     }
   }
@@ -132,6 +133,9 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
     }
     if (name.includes('gem') || name.includes('ruby')) {
       return <Package className="h-5 w-5 text-red-600" />
+    }
+    if (name.includes('homebrew')) {
+      return <Package className="h-5 w-5 text-orange-500" />
     }
     return <Package className="h-5 w-5" />
   }
@@ -292,10 +296,11 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
           {/* Info Alert */}
           <div className="rounded-md border border-blue-700 bg-blue-900/20 p-4">
             <p className="text-sm text-blue-300">
-              Package managers are required to install security tools automatically. 
-              Supported managers: <strong>Go</strong> (Go tools), <strong>Pipx</strong> (Python tools), 
-              <strong>Cargo</strong> (Rust tools), <strong>npm</strong> (Node.js tools), 
-              <strong>gem</strong> (Ruby tools), <strong>APT</strong> (Linux), <strong>WinGet</strong> (Windows).
+              Package managers are required to install security tools automatically.
+              Supported managers: <strong>Go</strong> (Go tools), <strong>Pipx</strong> (Python tools),
+              <strong>Cargo</strong> (Rust tools), <strong>npm</strong> (Node.js tools),
+              <strong>gem</strong> (Ruby tools), <strong>APT</strong> (Linux), <strong>WinGet</strong> (Windows),
+              <strong>Homebrew</strong> (macOS).
             </p>
           </div>
         </CardContent>

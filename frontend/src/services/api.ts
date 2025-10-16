@@ -254,7 +254,7 @@ export interface WaybackURLsConfig {
 
 // Package Manager Interfaces
 export interface PackageManagerInfo {
-  manager_type: 'go' | 'pipx' | 'apt' | 'winget' | 'cargo' | 'npm' | 'gem'
+  manager_type: 'go' | 'pipx' | 'apt' | 'winget' | 'cargo' | 'npm' | 'gem' | 'homebrew'
   available: boolean
   version: string | null
   path: string | null
