@@ -22,7 +22,6 @@ import { ToastContainer } from '../components/ui/Toast'
 import { useToast } from '../hooks/useToast'
 import ToolDetailModal from '../components/ToolDetailModal'
 import { InstallationProgressModal } from '../components/InstallationProgressModal'
-import { PipxPathWarning } from '../components/PipxPathWarning'
 import { PackageManagerPanel } from '../components/PackageManagerPanel'
 import { InstallationProgress } from '../components/InstallationProgress'
 
@@ -317,8 +316,6 @@ const ToolsPage = () => {
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
 
-      {/* PipxPathWarning Banner */}
-      <PipxPathWarning />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
