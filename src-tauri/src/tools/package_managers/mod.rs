@@ -11,6 +11,8 @@ pub mod elevation_helper;
 pub mod gem_installer;
 pub mod git_pip_installer;
 pub mod go_install;
+pub mod homebrew_manager;
+pub mod homebrew_registry;
 pub mod installation;
 pub mod manual_installer;
 pub mod npm_installer;
@@ -29,6 +31,8 @@ pub use elevation::{
 pub use gem_installer::GemInstaller;
 pub use git_pip_installer::GitPipInstaller;
 pub use go_install::GoInstallManager;
+pub use homebrew_manager::HomebrewManager;
+pub use homebrew_registry::{get_homebrew_mapping, get_all_homebrew_tools, HomebrewMapping};
 pub use installation::{
     install_go_windows, install_pipx, install_winget_windows, InstallationResult,
 };
@@ -36,7 +40,7 @@ pub use manual_installer::ManualInstaller;
 pub use npm_installer::NpmInstaller;
 pub use pipx_manager::PipxManager;
 pub use version_checker::{
-    check_apt_update, check_cargo_update, check_gem_update, check_go_update, 
+    check_apt_update, check_cargo_update, check_gem_update, check_go_update,
     check_npm_update, check_pipx_update, check_winget_update, VersionCheckResult,
 };
 pub use winget_manager::WingetManager;
@@ -64,6 +68,8 @@ pub enum PackageManagerType {
     Npm,
     /// Ruby gems (future)
     Gem,
+    /// Homebrew - macOS package manager
+    Homebrew,
 }
 
 impl PackageManagerType {
@@ -77,6 +83,7 @@ impl PackageManagerType {
             Self::Cargo => "cargo",
             Self::Npm => "npm",
             Self::Gem => "gem",
+            Self::Homebrew => "Homebrew",
         }
     }
 
@@ -90,6 +97,7 @@ impl PackageManagerType {
             Self::Cargo => "cargo",
             Self::Npm => "npm",
             Self::Gem => "gem",
+            Self::Homebrew => "brew",
         }
     }
 
@@ -103,6 +111,7 @@ impl PackageManagerType {
             Self::Cargo => "orange", // 🟠 Rust tools
             Self::Npm => "red",      // 🔴 Node tools
             Self::Gem => "red",      // 🔴 Ruby tools
+            Self::Homebrew => "orange", // 🟠 macOS orange
         }
     }
 }
@@ -117,12 +126,14 @@ mod tests {
         assert_eq!(PackageManagerType::Pipx.display_name(), "pipx");
         assert_eq!(PackageManagerType::Apt.display_name(), "APT");
         assert_eq!(PackageManagerType::WinGet.display_name(), "WinGet");
+        assert_eq!(PackageManagerType::Homebrew.display_name(), "Homebrew");
     }
 
     #[test]
     fn test_package_manager_commands() {
         assert_eq!(PackageManagerType::Go.command_name(), "go");
         assert_eq!(PackageManagerType::Pipx.command_name(), "pipx");
+        assert_eq!(PackageManagerType::Homebrew.command_name(), "brew");
     }
 
     #[test]
@@ -130,5 +141,6 @@ mod tests {
         assert_eq!(PackageManagerType::Go.badge_color(), "green");
         assert_eq!(PackageManagerType::Pipx.badge_color(), "yellow");
         assert_eq!(PackageManagerType::Apt.badge_color(), "blue");
+        assert_eq!(PackageManagerType::Homebrew.badge_color(), "orange");
     }
 }

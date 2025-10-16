@@ -60,6 +60,7 @@ pub async fn detect_all_managers() -> Vec<PackageManagerInfo> {
         PackageManagerType::Gem,
         PackageManagerType::Apt,
         PackageManagerType::WinGet,
+        PackageManagerType::Homebrew,
     ];
 
     let mut results = Vec::new();
@@ -79,7 +80,13 @@ pub async fn detect_manager(manager_type: PackageManagerType) -> PackageManagerI
         PackageManagerType::Gem => detect_gem().await,
         PackageManagerType::Apt => detect_apt().await,
         PackageManagerType::WinGet => detect_winget().await,
-        _ => PackageManagerInfo::unavailable(manager_type, "Not implemented yet".to_string()),
+        #[cfg(target_os = "macos")]
+        PackageManagerType::Homebrew => detect_homebrew().await,
+        #[cfg(not(target_os = "macos"))]
+        PackageManagerType::Homebrew => PackageManagerInfo::unavailable(
+            PackageManagerType::Homebrew,
+            "Homebrew is only available on macOS".to_string(),
+        ),
     }
 }
 
@@ -425,7 +432,7 @@ async fn detect_winget() -> PackageManagerInfo {
 }
 
 /// Execute a command with timeout for detection
-async fn execute_detection_command(
+pub async fn execute_detection_command(
     command: &str,
     args: &[&str],
 ) -> Result<(String, String), String> {
@@ -640,7 +647,7 @@ fn get_unix_executable_search_paths(exe_name: &str) -> Vec<String> {
 
 /// Dynamically find an executable by searching common locations
 /// Returns the full path if found, None otherwise
-async fn find_executable_in_path(exe_name: &str) -> Option<String> {
+pub async fn find_executable_in_path(exe_name: &str) -> Option<String> {
     // Try using 'which' command first (Unix-like systems)
     #[cfg(not(target_os = "windows"))]
     {
@@ -712,6 +719,94 @@ async fn find_executable_in_path(exe_name: &str) -> Option<String> {
     None
 }
 
+/// Get Homebrew prefix (authoritative source for installation location)
+#[cfg(target_os = "macos")]
+async fn get_homebrew_prefix() -> Result<String, String> {
+    match execute_detection_command("brew", &["--prefix"]).await {
+        Ok((stdout, _stderr)) => {
+            let prefix = stdout.trim().to_string();
+            if prefix.is_empty() {
+                Err("brew --prefix returned empty result".to_string())
+            } else {
+                Ok(prefix)
+            }
+        }
+        Err(e) => Err(format!("Failed to get Homebrew prefix: {}", e)),
+    }
+}
+
+/// Detect macOS architecture for logging purposes only
+#[cfg(target_os = "macos")]
+async fn detect_macos_architecture() -> String {
+    match execute_detection_command("uname", &["-m"]).await {
+        Ok((stdout, _stderr)) => {
+            let arch = stdout.trim().to_string();
+            match arch.as_str() {
+                "arm64" => "arm64".to_string(),
+                "x86_64" => "x86_64".to_string(),
+                _ => "unknown".to_string(),
+            }
+        }
+        Err(_) => "unknown".to_string(),
+    }
+}
+
+/// Detect Homebrew installation (macOS only)
+#[cfg(target_os = "macos")]
+async fn detect_homebrew() -> PackageManagerInfo {
+    // Try command first
+    match execute_detection_command("brew", &["--version"]).await {
+        Ok((stdout, _stderr)) => {
+            let version = parse_simple_version(&stdout);
+
+            // Get Homebrew prefix (authoritative source)
+            let prefix = get_homebrew_prefix().await
+                .unwrap_or_else(|_| "/opt/homebrew".to_string());
+
+            // Architecture detection for logging only (don't block on mismatches)
+            let arch = detect_macos_architecture().await;
+            let expected_prefix = match arch.as_str() {
+                "arm64" => "/opt/homebrew",
+                "x86_64" => "/usr/local",
+                _ => "/opt/homebrew",
+            };
+
+            // Warn if prefix doesn't match expectations, but don't block
+            if prefix != expected_prefix {
+                eprintln!(
+                    "⚠️  Homebrew prefix {} doesn't match expected {} for {}. This is usually fine.",
+                    prefix, expected_prefix, arch
+                );
+            }
+
+            return PackageManagerInfo::available(
+                PackageManagerType::Homebrew,
+                version,
+                None, // We don't need the path for detection, just availability
+            );
+        }
+        Err(_) => {
+            // Try dynamic search
+            if let Some(path) = find_executable_in_path("brew").await {
+                if let Ok((stdout, _stderr)) = execute_detection_command(&path, &["--version"]).await {
+                    let version = parse_simple_version(&stdout);
+                    eprintln!("✅ Found Homebrew at: {}", path);
+                    return PackageManagerInfo::available(
+                        PackageManagerType::Homebrew,
+                        version,
+                        Some(path),
+                    );
+                }
+            }
+        }
+    }
+
+    PackageManagerInfo::unavailable(
+        PackageManagerType::Homebrew,
+        "Homebrew not found. Visit https://brew.sh for installation".to_string()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -752,7 +847,7 @@ mod tests {
     #[tokio::test]
     async fn test_detect_all_managers() {
         let managers = detect_all_managers().await;
-        assert_eq!(managers.len(), 7); // go, pipx, cargo, npm, gem, apt, winget
+        assert_eq!(managers.len(), 8); // go, pipx, cargo, npm, gem, apt, winget, homebrew
 
         // At least one should be available (depending on platform)
         // On development machines, usually Go or Python/pipx is available
