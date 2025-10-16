@@ -84,6 +84,64 @@ jobs:
           cd frontend
           npm run build
 
+  # macOS-specific testing for Homebrew functionality
+  macos-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Homebrew
+        run: |
+          brew --version
+          brew update
+          echo "/opt/homebrew/bin" >> $GITHUB_PATH
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: .
+          tauriScript: frontend/package.json
+          args: --no-bundle
+
+      # Test Homebrew functionality
+      - name: Test Homebrew Detection
+        run: |
+          echo "Testing Homebrew detection..."
+          cargo test --package ai-bug-bounty-scanner --test integration_tests homebrew_manager::tests -- --nocapture
+
+      - name: Test Homebrew Registry
+        run: |
+          echo "Testing Homebrew registry..."
+          cargo test --package ai-bug-bounty-scanner homebrew_registry -- --nocapture
+
+      - name: Verify Critical Formulas
+        run: |
+          echo "Verifying critical Homebrew formulas exist..."
+          brew info nuclei || echo "nuclei formula check failed"
+          brew info httpx || echo "httpx formula check failed"
+          brew info subfinder || echo "subfinder formula check failed"
+          brew info nmap || echo "nmap formula check failed"
+
   # Security scanning
   security-scan:
     runs-on: ubuntu-latest
@@ -151,11 +209,10 @@ jobs:
   # Release builds
   release:
     runs-on: ${{ matrix.os }}
-    needs: [backend-test, frontend-test, security-scan]
+    needs: [backend-test, frontend-test, macos-test, security-scan]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
@@ -163,9 +220,14 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: windows
-          - os: macos-latest
+          - os: macos-14  # Apple Silicon (M1/M2/M3)
+            target: aarch64-apple-darwin
+            name: macos-arm64
+            brew_prefix: /opt/homebrew
+          - os: macos-13  # Intel Macs
             target: x86_64-apple-darwin
-            name: macos
+            name: macos-x64
+            brew_prefix: /usr/local
 
     steps:
       - uses: actions/checkout@v4
@@ -190,6 +252,21 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
+
+      # macOS-specific: Set up Homebrew
+      - name: Setup Homebrew (macOS)
+        if: startsWith(matrix.os, 'macos-')
+        run: |
+          echo "Setting up Homebrew for ${{ matrix.os }}..."
+          brew --version
+          brew update
+
+          # Ensure Homebrew binaries are in PATH
+          echo "${{ matrix.brew_prefix }}/bin" >> $GITHUB_PATH
+
+          # Verify Homebrew is working
+          which brew
+          brew --version
 
       - name: Install frontend dependencies
         run: |
@@ -221,7 +298,7 @@ jobs:
   # Deploy to staging (optional)
   deploy-staging:
     runs-on: ubuntu-latest
-    needs: [release]
+    needs: [backend-test, frontend-test, macos-test, security-scan, release]
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
