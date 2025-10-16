@@ -51,7 +51,7 @@ The application can automatically install these through package managers:
 ### **Core Capabilities**
 - ✅ **Native Desktop App** - Built with Tauri (Rust) + React
 - ✅ **Automatic Tool Installation** - One-click install with package manager auto-detection
-- ✅ **7 Package Managers Integrated** - Go, Pipx, npm, gem, Cargo, APT, WinGet
+- ✅ **8 Package Managers Integrated** - Go, Pipx, npm, gem, Cargo, APT, WinGet, Homebrew
 - ✅ **7 Tool-Specific Adapters** - Optimized execution for popular security tools
 - ✅ **Real-time Output Streaming** - Live command output with color coding
 - ✅ **Cross-Platform** - Windows, Linux, and macOS support
@@ -130,7 +130,7 @@ The application can automatically install these through package managers:
 
 ## 🛠️ Supported Tools & Package Managers
 
-### **Package Managers** (7 Integrated)
+### **Package Managers** (8 Integrated)
 
 | Manager | Platform | Status | Use Case |
 |---------|----------|--------|----------|
@@ -141,6 +141,7 @@ The application can automatically install these through package managers:
 | **Cargo** | All | ✅ Full | Rust tools (rustscan, etc.) |
 | **APT** | Linux | ✅ Full | System packages (nmap, masscan, etc.) |
 | **WinGet** | Windows | ✅ Full | System packages and language runtimes |
+| **Homebrew** | macOS | ✅ Full | macOS packages (20+ security tools) |
 
 ### **Security Tools** (30+ Supported)
 
@@ -225,7 +226,7 @@ npm run tauri dev
 - Version information
 
 #### **Package Managers Panel**
-- View all 7 package managers
+- View all 8 package managers
 - Check installation status
 - Auto-install missing managers
 - Version and path information
@@ -269,6 +270,98 @@ If a package manager is missing, the app can install it:
 - npm/Node.js → via Homebrew
 - gem/Ruby → via Homebrew
 - Go → via Homebrew
+
+---
+
+## 🍎 macOS Setup Guide
+
+### **Prerequisites**
+
+1. **Homebrew Installation** (Required for macOS package manager support)
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+
+2. **Verify Homebrew Installation**
+   ```bash
+   brew --version
+   brew --prefix
+   ```
+
+### **Supported Tools on macOS (via Homebrew)**
+
+The application supports 20+ security tools installation via Homebrew:
+
+**CLI Tools**:
+- `nuclei` - Template-based vulnerability scanner
+- `subfinder` - Subdomain discovery
+- `nmap` - Network scanning
+- `httpx` - HTTP toolkit
+- `amass` - Advanced reconnaissance
+- `gobuster` - Directory/file brute-forcing
+- `ffuf` - Web fuzzer
+- `dnsx` - DNS toolkit
+- `shuffledns` - DNS resolver
+- `massdns` - High-performance DNS resolver
+- `masscan` - Fast port scanner
+- `waybackurls` - Wayback Machine URLs
+- `gau` - Get All URLs
+- `rustscan` - Modern port scanner
+- `feroxbuster` - Content discovery
+- And more...
+
+**GUI Tools**:
+- `burp-suite` - Web proxy (via Homebrew Cask)
+- `wireshark` - Network analyzer (via Homebrew Cask)
+
+### **Using on macOS**
+
+1. **Launch the application**:
+   ```bash
+   npm run tauri dev
+   ```
+
+2. **Navigate to the Tools page**
+   - Homebrew will be automatically detected and shown in the Package Managers panel
+   - All compatible tools will display Homebrew as an installation option
+
+3. **Install a tool**:
+   - Click the tool you want to install
+   - Select "Homebrew" as the installation method
+   - Click "Install" and watch the real-time progress
+   - Tool becomes available immediately after installation
+
+### **macOS Architecture Support**
+
+- ✅ **Apple Silicon (M1/M2/M3/M4)** - Native ARM64 support
+- ✅ **Intel Macs** - x86_64 support
+- ✅ **Automatic Detection** - Architecture is detected automatically
+
+### **Troubleshooting on macOS**
+
+**Homebrew not detected?**
+```bash
+# Check if Homebrew is in PATH
+which brew
+
+# If not found, add to PATH
+echo 'export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**Permission Issues?**
+```bash
+# Most Homebrew operations don't require sudo
+# If you see permission errors, check your Homebrew installation:
+brew doctor
+```
+
+**Formula not found?**
+- Ensure you have the latest Homebrew package index
+- Run `brew update` in terminal
+- Some tools may require additional taps - the app will handle this
+
+---
 
 ### **Running Tools**
 
@@ -777,7 +870,7 @@ Thanks to the amazing security community for creating tools like:
 ## 📈 Project Stats
 
 - **Lines of Code**: 10,000+ (Rust + TypeScript)
-- **Package Managers**: 7 integrated
+- **Package Managers**: 8 integrated (including Homebrew for macOS)
 - **Tools Supported**: 30+
 - **Adapters**: 7 specialized
 - **Platforms**: Windows, Linux, macOS
@@ -789,7 +882,7 @@ Thanks to the amazing security community for creating tools like:
 **Made with ❤️ for the security community**
 
 **Version**: 2.0.0  
-**Last Updated**: October 5, 2025  
+**Last Updated**: October 16, 2025  
 **Status**: 🟢 Active Development
 
 ---
