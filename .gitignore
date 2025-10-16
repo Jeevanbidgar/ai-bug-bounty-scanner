@@ -25,7 +25,7 @@ venv/
 ENV/
 env/
 .venv
-
+*.md
 # IDEs
 .vscode/
 .idea/
@@ -130,3 +130,7 @@ ACTUAL_*.md
 test_*.sh
 test_*.py
 fix-*.sh
+COPILOT_INSTRUCTIONS_UPDATE.md
+MACOS_IMPLEMENTATION_EXECUTION.md
+MACOS_IMPLEMENTATION_FINAL_STATUS.md
+MACOS_IMPLEMENTATION_PLAN.md
