@@ -2264,9 +2264,148 @@ pub async fn get_tool_version(
 pub async fn check_tool_update(
     #[allow(non_snake_case)] tool_name: String,
     _state: tauri::State<'_, AppState>,
-    app_handle: tauri::AppHandle,
+    _app_handle: tauri::AppHandle,
 ) -> Result<VersionCheckResult, String> {
     eprintln!("🔄 Checking for updates: {}", tool_name);
+
+    // Get tool definition to find its package manager
+    let tool_catalog = crate::tools::get_tool_catalog();
+    let tool_def = tool_catalog.get(&tool_name);
+    
+    if tool_def.is_none() {
+        eprintln!("   ⚠️  Tool '{}' not found in catalog, trying legacy...", tool_name);
+        return check_tool_update_legacy(tool_name, _state, _app_handle).await;
+    }
+    
+    let tool_def = tool_def.unwrap();
+    let install_method = &tool_def.install_method;
+    
+    // Map install method to package manager name
+    let manager_name = match install_method.as_str() {
+        "go" => "go",
+        "pipx" | "git-pip" => "pipx",
+        "apt" => {
+            #[cfg(not(target_os = "linux"))]
+            {
+                eprintln!("   ⚠️  APT is Linux-only, using legacy checker");
+                return check_tool_update_legacy(tool_name, _state, _app_handle).await;
+            }
+            #[cfg(target_os = "linux")]
+            "apt"
+        },
+        "winget" => {
+            #[cfg(not(target_os = "windows"))]
+            {
+                eprintln!("   ⚠️  WinGet is Windows-only, using legacy checker");
+                return check_tool_update_legacy(tool_name, _state, _app_handle).await;
+            }
+            #[cfg(target_os = "windows")]
+            "winget"
+        },
+        "homebrew" => {
+            #[cfg(not(target_os = "macos"))]
+            {
+                eprintln!("   ⚠️  Homebrew is macOS-only, using legacy checker");
+                return check_tool_update_legacy(tool_name, _state, _app_handle).await;
+            }
+            #[cfg(target_os = "macos")]
+            "homebrew"
+        },
+        "cargo" => "cargo",
+        "gem" => "gem",
+        "npm" => "npm",
+        "manual" | "runtime" => {
+            // Manual/runtime tools don't support automated updates
+            eprintln!("   ⚠️  Tool '{}' uses manual/runtime install, no automated updates", tool_name);
+            return Ok(VersionCheckResult::error(
+                format!("Tool '{}' requires manual update checking", tool_name),
+                install_method.to_string(),
+            ));
+        },
+        _ => {
+            // Unknown install method, use legacy
+            eprintln!("   ⚠️  Unknown install method '{}', using legacy checker", install_method);
+            return check_tool_update_legacy(tool_name, _state, _app_handle).await;
+        }
+    };
+    
+    eprintln!("   📦 Tool installed via: {}", manager_name);
+
+    // Use the new unified update checker coordinator with specific manager
+    let config = crate::tools::package_managers::UpdateCheckerConfig::default();
+    let coordinator = crate::tools::package_managers::UpdateCheckerCoordinator::new(config.clone());
+    
+    // Only add the specific checker for this tool's package manager
+    let checker = crate::tools::package_managers::UpdateCheckerFactory::create_checker_by_name(
+        manager_name,
+        &config
+    ).await;
+    
+    match checker {
+        Some(checker) => {
+            coordinator.add_checker(checker).await;
+            
+            // Check for updates using the coordinator with only the relevant manager
+            match coordinator.check_update(&tool_name).await {
+                Ok(coordinated_result) => {
+                    if let Some(best_result) = coordinated_result.best_result {
+                        let has_update = best_result.has_update;
+                        let current_version = best_result.current_version.clone();
+                        let latest_version = best_result.latest_version.clone();
+                        let package_manager = best_result.package_manager.clone();
+                        let error = best_result.error.clone();
+                        
+                        // Convert new result to old format for backward compatibility
+                        let old_result = VersionCheckResult {
+                            has_update,
+                            current_version: current_version.clone(),
+                            latest_version: latest_version.clone(),
+                            package_manager,
+                            error,
+                        };
+
+                        if has_update {
+                            eprintln!(
+                                "   ⬆️  Update available: {} -> {}",
+                                current_version.as_ref().unwrap_or(&"unknown".to_string()),
+                                latest_version.as_ref().unwrap_or(&"unknown".to_string())
+                            );
+                        } else {
+                            eprintln!(
+                                "   ✅ Up to date: {}",
+                                current_version.as_ref().unwrap_or(&"unknown".to_string())
+                            );
+                        }
+
+                        Ok(old_result)
+                    } else {
+                        // No result from the specific manager - fallback to legacy
+                        eprintln!("   ⚠️  Checker failed, trying legacy...");
+                        check_tool_update_legacy(tool_name, _state, _app_handle).await
+                    }
+                }
+                Err(error) => {
+                    eprintln!("   ❌ Update check failed: {}, trying legacy...", error);
+                    // Fallback to legacy on error
+                    check_tool_update_legacy(tool_name, _state, _app_handle).await
+                }
+            }
+        }
+        None => {
+            // Checker not available, use legacy
+            eprintln!("   ⚠️  Package manager '{}' not available, using legacy", manager_name);
+            check_tool_update_legacy(tool_name, _state, _app_handle).await
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn check_tool_update_legacy(
+    #[allow(non_snake_case)] tool_name: String,
+    _state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<VersionCheckResult, String> {
+    eprintln!("🔄 Checking for updates (legacy): {}", tool_name);
 
     // Look up tool in catalog
     let catalog = get_tool_catalog();
@@ -2742,4 +2881,89 @@ pub async fn has_adapter(#[allow(non_snake_case)] tool_name: String) -> Result<b
 pub async fn get_adapter_categories() -> Result<Vec<String>, String> {
     let registry = crate::adapters::AdapterRegistry::new();
     Ok(registry.get_categories())
+}
+
+/// Enhanced update check with detailed results from multiple package managers
+#[tauri::command]
+pub async fn check_tool_update_enhanced(
+    #[allow(non_snake_case)] tool_name: String,
+    _state: tauri::State<'_, AppState>,
+    _app_handle: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    eprintln!("🔄 Checking for updates (enhanced): {}", tool_name);
+
+    // Use the new unified update checker coordinator
+    let config = crate::tools::package_managers::UpdateCheckerConfig::default();
+    let coordinator = crate::tools::package_managers::UpdateCheckerCoordinator::new(config.clone());
+
+    // Add all available checkers
+    let checkers = crate::tools::package_managers::UpdateCheckerFactory::create_all_checkers(&config).await;
+    for checker in checkers {
+        coordinator.add_checker(checker).await;
+    }
+
+    // Check for updates using the coordinator
+    match coordinator.check_update(&tool_name).await {
+        Ok(coordinated_result) => {
+            // Convert to JSON for frontend
+            let json_result = serde_json::to_value(coordinated_result)
+                .map_err(|e| format!("Failed to serialize result: {}", e))?;
+
+            eprintln!("   📊 Enhanced update check completed for {}", tool_name);
+            Ok(json_result)
+        }
+        Err(error) => {
+            eprintln!("   ❌ Enhanced update check failed: {}", error);
+            Err(error.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_update_checker_telemetry(
+    _state: tauri::State<'_, AppState>,
+    _app_handle: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    eprintln!("📊 Getting update checker telemetry");
+
+    // Use the new unified update checker coordinator
+    let config = crate::tools::package_managers::UpdateCheckerConfig::default();
+    let coordinator = crate::tools::package_managers::UpdateCheckerCoordinator::new(config);
+
+    // Get telemetry summary
+    let summary = coordinator.get_telemetry_summary();
+    
+    // Get recent events
+    let recent_events = coordinator.get_recent_telemetry_events(Some(50));
+    
+    // Export events to JSON
+    let events_json = coordinator.export_telemetry_events()
+        .map_err(|e| format!("Failed to export telemetry events: {}", e))?;
+
+    let telemetry_data = serde_json::json!({
+        "summary": summary,
+        "recent_events": recent_events,
+        "events_json": events_json
+    });
+
+    eprintln!("   📊 Telemetry data retrieved");
+    Ok(telemetry_data)
+}
+
+#[tauri::command]
+pub async fn clear_update_checker_telemetry(
+    _state: tauri::State<'_, AppState>,
+    _app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    eprintln!("🗑️ Clearing update checker telemetry");
+
+    // Use the new unified update checker coordinator
+    let config = crate::tools::package_managers::UpdateCheckerConfig::default();
+    let coordinator = crate::tools::package_managers::UpdateCheckerCoordinator::new(config);
+
+    // Clear telemetry
+    coordinator.clear_telemetry();
+
+    eprintln!("   ✅ Telemetry cleared");
+    Ok(())
 }

@@ -291,6 +291,31 @@ export interface VersionCheckResult {
   error: string | null
 }
 
+// Enhanced update check result with additional metadata
+export interface EnhancedVersionCheckResult {
+  has_update: boolean
+  current_version: string | null
+  latest_version: string | null
+  package_manager: string
+  error: string | null
+  error_code?: string
+  source?: string
+  update_type?: 'patch' | 'minor' | 'major' | 'prerelease' | 'unknown'
+  diagnostic?: string
+  checked_at?: string
+  duration?: number
+}
+
+// Coordinated update result from multiple managers
+export interface CoordinatedUpdateResult {
+  package: string
+  results: Record<string, EnhancedVersionCheckResult>
+  best_result?: EnhancedVersionCheckResult
+  has_update: boolean
+  duration: number
+  managers_checked: number
+}
+
 // Event Payloads
 export interface ToolInstallationEvent {
   tool_name: string
@@ -819,6 +844,36 @@ class ApiService {
       package_manager: string
       error: string | null
     }
+  }
+
+  // Enhanced update check with detailed results
+  async checkToolUpdateEnhanced(toolName: string): Promise<CoordinatedUpdateResult> {
+    return await this.invokeCommand('check_tool_update_enhanced', { toolName }) as CoordinatedUpdateResult
+  }
+
+  // Legacy update check for backward compatibility
+  async checkToolUpdateLegacy(toolName: string): Promise<{
+    has_update: boolean
+    current_version: string | null
+    latest_version: string | null
+    package_manager: string
+    error: string | null
+  }> {
+    return await this.invokeCommand('check_tool_update_legacy', { toolName }) as {
+      has_update: boolean
+      current_version: string | null
+      latest_version: string | null
+      package_manager: string
+      error: string | null
+    }
+  }
+
+  async getUpdateCheckerTelemetry(): Promise<any> {
+    return await this.invokeCommand('get_update_checker_telemetry', {})
+  }
+
+  async clearUpdateCheckerTelemetry(): Promise<void> {
+    return await this.invokeCommand('clear_update_checker_telemetry', {})
   }
 
   async getToolInstallationInfo(toolName: string): Promise<{

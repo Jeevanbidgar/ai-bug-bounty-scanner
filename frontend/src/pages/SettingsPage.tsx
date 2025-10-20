@@ -17,6 +17,7 @@ import { Input } from '../components/ui/Input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
 import { PackageManagerTest } from '../components/PackageManagerTest'
+import { TelemetryDebugView } from '../components/TelemetryDebugView'
 
 // Default configuration structure
 const defaultConfig = {
@@ -384,6 +385,21 @@ const SettingsPage = () => {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* Telemetry Debug View */}
+      <div className="mt-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Update Checker Telemetry</CardTitle>
+            <CardDescription>
+              Debug view for update checker telemetry and performance metrics
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TelemetryDebugView />
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

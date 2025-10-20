@@ -17,6 +17,7 @@ pub mod installation;
 pub mod manual_installer;
 pub mod npm_installer;
 pub mod pipx_manager;
+pub mod update_checker;
 pub mod version;
 pub mod version_checker;
 pub mod winget_manager;
@@ -36,6 +37,10 @@ pub use homebrew_registry::get_homebrew_mapping;
 pub use installation::{install_pipx, InstallationResult};
 pub use npm_installer::NpmInstaller;
 pub use pipx_manager::PipxManager;
+pub use update_checker::{
+    UpdateCheckerCoordinator, UpdateCheckResult as NewUpdateCheckResult,
+    UpdateCheckError, UpdateCheckErrorCode, UpdateCheckerConfig, UpdateCheckerFactory,
+};
 pub use version_checker::{
     check_apt_update, check_go_update, check_pipx_update, VersionCheckResult,
 };

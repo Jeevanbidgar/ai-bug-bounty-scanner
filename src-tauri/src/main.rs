@@ -102,6 +102,10 @@ fn main() {
             crate::commands::check_tool_installed,
             crate::commands::get_tool_version,
             crate::commands::check_tool_update,
+            crate::commands::check_tool_update_legacy,
+            crate::commands::check_tool_update_enhanced,
+            crate::commands::get_update_checker_telemetry,
+            crate::commands::clear_update_checker_telemetry,
             crate::commands::get_tool_installation_info,
             // Package manager commands
             crate::commands::detect_package_managers,

@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
-import { X, CheckCircle, XCircle, AlertTriangle, Loader2, Play, RefreshCw, Copy, ExternalLink, Check, Download, Trash2, ArrowUpCircle } from 'lucide-react'
+import { X, CheckCircle, XCircle, AlertTriangle, Loader2, Play, RefreshCw, Copy, ExternalLink, Check, Download, Trash2, ArrowUpCircle, Info } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/Card'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
-import type { Tool } from '../services/api'
+import type { Tool, CoordinatedUpdateResult } from '../services/api'
 import { invoke } from '@tauri-apps/api/core'
 import { useToast } from '../hooks/useToast'
 import Toast from './ui/Toast'
 import apiService from '../services/api'
+import UpdateStatusBadge from './UpdateStatusBadge'
+import UpdateDetailsModal from './UpdateDetailsModal'
 
 interface ToolDetailModalProps {
   tool: Tool
@@ -88,6 +90,8 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false)
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
+  const [enhancedUpdateResult, setEnhancedUpdateResult] = useState<CoordinatedUpdateResult | null>(null)
+  const [showUpdateDetails, setShowUpdateDetails] = useState(false)
   const [installationInfo, setInstallationInfo] = useState<any>(null)
   const [selectedInstallMethod, setSelectedInstallMethod] = useState<string | null>(null)
   const { toasts, success, error: showError, info, removeToast } = useToast()
@@ -196,13 +200,28 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     const checkForUpdates = async () => {
       if (tool.installed) {
         try {
-          const result = await apiService.checkToolUpdate(tool.name)
-          if (result.has_update) {
-            setUpdateAvailable(true)
-            setLatestVersion(result.latest_version)
-          } else {
-            setUpdateAvailable(false)
-            setLatestVersion(null)
+          // Try enhanced update check first
+          try {
+            const enhancedResult = await apiService.checkToolUpdateEnhanced(tool.name)
+            setEnhancedUpdateResult(enhancedResult)
+            if (enhancedResult.has_update && enhancedResult.best_result) {
+              setUpdateAvailable(true)
+              setLatestVersion(enhancedResult.best_result.latest_version)
+            } else {
+              setUpdateAvailable(false)
+              setLatestVersion(null)
+            }
+          } catch (enhancedError) {
+            console.warn('Enhanced update check failed, falling back to legacy:', enhancedError)
+            // Fallback to legacy update check
+            const result = await apiService.checkToolUpdate(tool.name)
+            if (result.has_update) {
+              setUpdateAvailable(true)
+              setLatestVersion(result.latest_version)
+            } else {
+              setUpdateAvailable(false)
+              setLatestVersion(null)
+            }
           }
         } catch (error) {
           console.error('Failed to check for updates:', error)
@@ -496,21 +515,40 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     try {
       info(`Checking for ${tool.name} updates...`)
 
-      const result = await apiService.checkToolUpdate(tool.name)
+      // Try enhanced update check first
+      try {
+        const enhancedResult = await apiService.checkToolUpdateEnhanced(tool.name)
+        setEnhancedUpdateResult(enhancedResult)
+        
+        if (enhancedResult.has_update && enhancedResult.best_result) {
+          setUpdateAvailable(true)
+          setLatestVersion(enhancedResult.best_result.latest_version)
+          success(`Update available! Current: ${enhancedResult.best_result.current_version}, Latest: ${enhancedResult.best_result.latest_version}`)
+        } else {
+          setUpdateAvailable(false)
+          setLatestVersion(null)
+          success(`${tool.name} is up to date`)
+        }
+      } catch (enhancedError) {
+        console.warn('Enhanced update check failed, falling back to legacy:', enhancedError)
+        
+        // Fallback to legacy update check
+        const result = await apiService.checkToolUpdate(tool.name)
 
-      if (result.error) {
-        showError(`Update check failed: ${result.error}`)
-        return
-      }
+        if (result.error) {
+          showError(`Update check failed: ${result.error}`)
+          return
+        }
 
-      if (result.has_update) {
-        setUpdateAvailable(true)
-        setLatestVersion(result.latest_version)
-        success(`Update available! Current: ${result.current_version}, Latest: ${result.latest_version}`)
-      } else {
-        setUpdateAvailable(false)
-        setLatestVersion(null)
-        success(`${tool.name} is up to date (v${result.current_version})`)
+        if (result.has_update) {
+          setUpdateAvailable(true)
+          setLatestVersion(result.latest_version)
+          success(`Update available! Current: ${result.current_version}, Latest: ${result.latest_version}`)
+        } else {
+          setUpdateAvailable(false)
+          setLatestVersion(null)
+          success(`${tool.name} is up to date (v${result.current_version})`)
+        }
       }
 
     } catch (error) {
@@ -617,10 +655,19 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                     <p className="text-white font-mono">
                       {tool.raw_version || tool.version || 'Unknown'}
                     </p>
-                    {updateAvailable && latestVersion && (
-                      <Badge className="bg-green-700 text-green-100 animate-pulse">
-                        ⬆️ {latestVersion}
-                      </Badge>
+                    <UpdateStatusBadge 
+                      result={enhancedUpdateResult} 
+                      isLoading={isCheckingUpdate}
+                    />
+                    {enhancedUpdateResult && (
+                      <Button
+                        onClick={() => setShowUpdateDetails(true)}
+                        variant="ghost"
+                        size="sm"
+                        className="text-gray-400 hover:text-white"
+                      >
+                        <Info className="h-3 w-3" />
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -1069,6 +1116,14 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
           </div>
         </div>
       </div>
+
+      {/* Update Details Modal */}
+      {showUpdateDetails && (
+        <UpdateDetailsModal
+          toolName={tool.name}
+          onClose={() => setShowUpdateDetails(false)}
+        />
+      )}
 
       {/* Toast Notifications */}
       <div className="fixed top-4 right-4 z-[60] space-y-2">
