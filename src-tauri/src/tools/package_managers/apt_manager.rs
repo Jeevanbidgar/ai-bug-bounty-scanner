@@ -72,19 +72,13 @@ impl AptManager {
                 tool_name,
                 "🔐 Using pkexec (GUI password dialog will appear)...\n",
             );
-            (
-                "pkexec",
-                vec!["apt", "install", "-y", package_name],
-            )
+            ("pkexec", vec!["apt", "install", "-y", package_name])
         } else {
             self.emit_output(
                 tool_name,
                 "⚠️  Using sudo (password prompt in terminal)...\n",
             );
-            (
-                "sudo",
-                vec!["apt", "install", "-y", package_name],
-            )
+            ("sudo", vec!["apt", "install", "-y", package_name])
         };
 
         // Run apt install with -y flag for non-interactive mode
@@ -248,10 +242,7 @@ impl AptManager {
             return Err(anyhow!("apt is not available."));
         }
 
-        self.emit_output(
-            tool_name,
-            &format!("Uninstalling {}...\n", tool_name),
-        );
+        self.emit_output(tool_name, &format!("Uninstalling {}...\n", tool_name));
 
         // Use pkexec for GUI password prompt if available, otherwise fall back to sudo
         let (elevation_cmd, elevation_args) = if self.is_pkexec_available().await {
@@ -259,19 +250,13 @@ impl AptManager {
                 tool_name,
                 "🔐 Using pkexec (GUI password dialog will appear)...\n",
             );
-            (
-                "pkexec",
-                vec!["apt", "remove", "-y", package_name],
-            )
+            ("pkexec", vec!["apt", "remove", "-y", package_name])
         } else {
             self.emit_output(
                 tool_name,
                 "⚠️  Using sudo (password prompt in terminal)...\n",
             );
-            (
-                "sudo",
-                vec!["apt", "remove", "-y", package_name],
-            )
+            ("sudo", vec!["apt", "remove", "-y", package_name])
         };
 
         let output = Command::new(elevation_cmd)

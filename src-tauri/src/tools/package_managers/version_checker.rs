@@ -10,7 +10,8 @@ use tokio::process::Command;
 /// Normalize version string by removing 'v' prefix and trimming whitespace
 /// This ensures consistent version comparison across different sources
 fn normalize_version(version: &str) -> String {
-    version.trim()
+    version
+        .trim()
         .trim_start_matches('v')
         .trim_start_matches('V')
         .to_string()
@@ -87,9 +88,11 @@ pub async fn check_go_update(
     // Step 3: Normalize versions to remove 'v' prefix inconsistencies
     let current_normalized = normalize_version(&current_version);
     let latest_normalized = normalize_version(&latest_version);
-    
-    eprintln!("   📊 Version comparison: current='{}' (normalized: '{}'), latest='{}' (normalized: '{}')",
-        current_version, current_normalized, latest_version, latest_normalized);
+
+    eprintln!(
+        "   📊 Version comparison: current='{}' (normalized: '{}'), latest='{}' (normalized: '{}')",
+        current_version, current_normalized, latest_version, latest_normalized
+    );
 
     // Step 4: Compare versions using SemVer
     match (
@@ -98,14 +101,20 @@ pub async fn check_go_update(
     ) {
         (Some(current), Some(latest)) => {
             if latest > current {
-                eprintln!("   ✅ SemVer comparison: {} < {} (update available)", current_normalized, latest_normalized);
+                eprintln!(
+                    "   ✅ SemVer comparison: {} < {} (update available)",
+                    current_normalized, latest_normalized
+                );
                 Ok(VersionCheckResult::has_update(
                     current_version,
                     latest_version,
                     "go".to_string(),
                 ))
             } else {
-                eprintln!("   ✅ SemVer comparison: {} >= {} (up to date)", current_normalized, latest_normalized);
+                eprintln!(
+                    "   ✅ SemVer comparison: {} >= {} (up to date)",
+                    current_normalized, latest_normalized
+                );
                 Ok(VersionCheckResult::no_update(
                     current_version,
                     "go".to_string(),
@@ -116,14 +125,20 @@ pub async fn check_go_update(
             // Fallback to string comparison if parsing fails
             eprintln!("   ⚠️  SemVer parse failed, using string comparison");
             if latest_normalized != current_normalized {
-                eprintln!("   📝 String comparison: '{}' != '{}' (update available)", current_normalized, latest_normalized);
+                eprintln!(
+                    "   📝 String comparison: '{}' != '{}' (update available)",
+                    current_normalized, latest_normalized
+                );
                 Ok(VersionCheckResult::has_update(
                     current_version,
                     latest_version,
                     "go".to_string(),
                 ))
             } else {
-                eprintln!("   📝 String comparison: '{}' == '{}' (up to date)", current_normalized, latest_normalized);
+                eprintln!(
+                    "   📝 String comparison: '{}' == '{}' (up to date)",
+                    current_normalized, latest_normalized
+                );
                 Ok(VersionCheckResult::no_update(
                     current_version,
                     "go".to_string(),
@@ -390,10 +405,7 @@ pub async fn check_npm_update(package_name: &str) -> Result<VersionCheckResult, 
         "npm"
     };
 
-    let check_install = Command::new(npm_cmd)
-        .arg("--version")
-        .output()
-        .await;
+    let check_install = Command::new(npm_cmd).arg("--version").output().await;
 
     if check_install.is_err() || !check_install.unwrap().status.success() {
         return Ok(VersionCheckResult::error(
@@ -411,7 +423,7 @@ pub async fn check_npm_update(package_name: &str) -> Result<VersionCheckResult, 
 
     let current_version = if list_output.status.success() {
         let stdout = String::from_utf8_lossy(&list_output.stdout);
-        
+
         // Parse JSON to extract version
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
             json["dependencies"][package_name]["version"]
@@ -453,7 +465,7 @@ pub async fn check_npm_update(package_name: &str) -> Result<VersionCheckResult, 
         if let Some(package_info) = json.get(package_name) {
             if let Some(latest) = package_info["latest"].as_str() {
                 let latest_version = normalize_version(latest);
-                
+
                 // Compare versions
                 match (Version::parse(&current), Version::parse(&latest_version)) {
                     (Some(current_v), Some(latest_v)) => {
@@ -495,10 +507,7 @@ pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, 
         "gem"
     };
 
-    let check_install = Command::new(gem_cmd)
-        .arg("--version")
-        .output()
-        .await;
+    let check_install = Command::new(gem_cmd).arg("--version").output().await;
 
     if check_install.is_err() || !check_install.unwrap().status.success() {
         return Ok(VersionCheckResult::error(
@@ -521,7 +530,9 @@ pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, 
         if let Some(line) = stdout.lines().next() {
             if let Some(versions_part) = line.split('(').nth(1) {
                 if let Some(first_version) = versions_part.split(',').next() {
-                    Some(normalize_version(first_version.trim().trim_end_matches(')')))
+                    Some(normalize_version(
+                        first_version.trim().trim_end_matches(')'),
+                    ))
                 } else {
                     None
                 }
@@ -559,13 +570,15 @@ pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, 
     }
 
     let stdout = String::from_utf8_lossy(&search_output.stdout);
-    
+
     // Parse the output for the latest version
     // Output format: "package_name (version, version2, ...)"
     let latest_version = if let Some(line) = stdout.lines().next() {
         if let Some(versions_part) = line.split('(').nth(1) {
             if let Some(first_version) = versions_part.split(',').next() {
-                Some(normalize_version(first_version.trim().trim_end_matches(')')))
+                Some(normalize_version(
+                    first_version.trim().trim_end_matches(')'),
+                ))
             } else {
                 None
             }
@@ -611,10 +624,7 @@ pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, 
 /// Check for updates for a Cargo package using `cargo install --list` and crates.io
 pub async fn check_cargo_update(package_name: &str) -> Result<VersionCheckResult, String> {
     // First check if cargo is installed
-    let check_install = Command::new("cargo")
-        .arg("--version")
-        .output()
-        .await;
+    let check_install = Command::new("cargo").arg("--version").output().await;
 
     if check_install.is_err() || !check_install.unwrap().status.success() {
         return Ok(VersionCheckResult::error(
@@ -632,7 +642,7 @@ pub async fn check_cargo_update(package_name: &str) -> Result<VersionCheckResult
 
     let current_version = if list_output.status.success() {
         let stdout = String::from_utf8_lossy(&list_output.stdout);
-        
+
         // Find the package in the output
         // Format: "package_name v1.2.3:"
         let mut found_version: Option<String> = None;
@@ -674,7 +684,7 @@ pub async fn check_cargo_update(package_name: &str) -> Result<VersionCheckResult
     }
 
     let stdout = String::from_utf8_lossy(&search_output.stdout);
-    
+
     // Parse the output for the latest version
     // Format: "package_name = "1.2.3"    # description"
     let latest_version = if let Some(line) = stdout.lines().next() {

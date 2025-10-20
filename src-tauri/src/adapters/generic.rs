@@ -13,25 +13,25 @@ pub struct GenericAdapter {
 pub struct ToolConfig {
     /// How to pass the target (e.g., "-d", "-target", "--domain", "-u")
     pub target_flag: String,
-    
+
     /// How to specify output file (None = stdout redirect)
     pub output_flag: Option<String>,
-    
+
     /// Common flags to always include
     pub default_flags: Vec<String>,
-    
+
     /// Does this tool require the target to be a URL?
     pub requires_url: bool,
-    
+
     /// Does this tool output JSON by default?
     pub outputs_json: bool,
-    
+
     /// Tool category
     pub category: String,
-    
+
     /// Execution timeout in seconds
     pub timeout: u64,
-    
+
     /// Does this tool require authorization?
     pub requires_auth: bool,
 }
@@ -66,7 +66,7 @@ impl GenericAdapter {
                 timeout: 120,
                 requires_auth: false,
             },
-            
+
             // Web Crawlers
             "hakrawler" => ToolConfig {
                 target_flag: "-url".to_string(),
@@ -81,7 +81,12 @@ impl GenericAdapter {
             "gospider" => ToolConfig {
                 target_flag: "-s".to_string(),
                 output_flag: Some("-o".to_string()),
-                default_flags: vec!["-c".to_string(), "10".to_string(), "-d".to_string(), "3".to_string()],
+                default_flags: vec![
+                    "-c".to_string(),
+                    "10".to_string(),
+                    "-d".to_string(),
+                    "3".to_string(),
+                ],
                 requires_url: true,
                 outputs_json: false,
                 category: "crawler".to_string(),
@@ -98,7 +103,7 @@ impl GenericAdapter {
                 timeout: 600,
                 requires_auth: false,
             },
-            
+
             // HTTP Probing
             "httpx" => ToolConfig {
                 target_flag: "-l".to_string(), // Takes file input
@@ -116,7 +121,7 @@ impl GenericAdapter {
                 timeout: 300,
                 requires_auth: false,
             },
-            
+
             // Directory/File Fuzzing
             "ffuf" => ToolConfig {
                 target_flag: "-u".to_string(),
@@ -176,7 +181,7 @@ impl GenericAdapter {
                 timeout: 1800,
                 requires_auth: true,
             },
-            
+
             // DNS Tools
             "dnsx" => ToolConfig {
                 target_flag: "-l".to_string(), // Takes file input
@@ -213,7 +218,7 @@ impl GenericAdapter {
                 timeout: 600,
                 requires_auth: false,
             },
-            
+
             // Parameter Discovery
             "arjun" => ToolConfig {
                 target_flag: "-u".to_string(),
@@ -235,7 +240,7 @@ impl GenericAdapter {
                 timeout: 600,
                 requires_auth: false,
             },
-            
+
             // Technology Detection
             "wappalyzer" => ToolConfig {
                 target_flag: "".to_string(), // Just URL
@@ -257,7 +262,7 @@ impl GenericAdapter {
                 timeout: 120,
                 requires_auth: false,
             },
-            
+
             // Screenshot Tools
             "gowitness" => ToolConfig {
                 target_flag: "file".to_string(), // Special: uses 'file' subcommand
@@ -279,7 +284,7 @@ impl GenericAdapter {
                 timeout: 1800,
                 requires_auth: false,
             },
-            
+
             // JavaScript Analysis
             "linkfinder" => ToolConfig {
                 target_flag: "-i".to_string(),
@@ -301,7 +306,7 @@ impl GenericAdapter {
                 timeout: 300,
                 requires_auth: false,
             },
-            
+
             // Git Tools
             "gitdumper" => ToolConfig {
                 target_flag: "".to_string(), // <url> <output_dir>
@@ -323,7 +328,7 @@ impl GenericAdapter {
                 timeout: 900,
                 requires_auth: false,
             },
-            
+
             // CMS Scanners
             "wpscan" => ToolConfig {
                 target_flag: "--url".to_string(),
@@ -360,7 +365,7 @@ impl GenericAdapter {
                 timeout: 1800,
                 requires_auth: true,
             },
-            
+
             // Vulnerability Scanners
             "nikto" => ToolConfig {
                 target_flag: "-h".to_string(),
@@ -372,7 +377,7 @@ impl GenericAdapter {
                 timeout: 3600,
                 requires_auth: true,
             },
-            
+
             // Miscellaneous
             "cloudflare-enum" => ToolConfig {
                 target_flag: "-d".to_string(),
@@ -394,7 +399,7 @@ impl GenericAdapter {
                 timeout: 300,
                 requires_auth: false,
             },
-            
+
             _ => return Err(format!("No preset configuration for tool: {}", tool_name)),
         };
 
@@ -414,7 +419,7 @@ impl GenericAdapter {
         if !self.config.target_flag.is_empty() {
             command.push(self.config.target_flag.clone());
         }
-        
+
         // Format target (URL if required)
         let formatted_target = if self.config.requires_url && !target.starts_with("http") {
             format!("https://{}", target)
@@ -472,13 +477,35 @@ impl GenericAdapterManager {
 
         // Load all preset adapters
         let tool_names = vec![
-            "assetfinder", "crt.sh", "hakrawler", "gospider", "katana",
-            "httpx", "ffuf", "gobuster", "feroxbuster", "dirsearch",
-            "dnsx", "shuffledns", "massdns", "arjun", "paramspider",
-            "wappalyzer", "whatweb", "gowitness", "aquatone",
-            "linkfinder", "getjs", "gitdumper", "truffleHog",
-            "wpscan", "joomscan", "droopescan", "nikto",
-            "cloudflare-enum", "chaos",
+            "assetfinder",
+            "crt.sh",
+            "hakrawler",
+            "gospider",
+            "katana",
+            "httpx",
+            "ffuf",
+            "gobuster",
+            "feroxbuster",
+            "dirsearch",
+            "dnsx",
+            "shuffledns",
+            "massdns",
+            "arjun",
+            "paramspider",
+            "wappalyzer",
+            "whatweb",
+            "gowitness",
+            "aquatone",
+            "linkfinder",
+            "getjs",
+            "gitdumper",
+            "truffleHog",
+            "wpscan",
+            "joomscan",
+            "droopescan",
+            "nikto",
+            "cloudflare-enum",
+            "chaos",
         ];
 
         for tool_name in tool_names {
@@ -521,7 +548,8 @@ impl GenericAdapterManager {
         output_file: Option<&str>,
         extra_flags: Option<Vec<String>>,
     ) -> Result<Vec<String>, String> {
-        let adapter = self.get_adapter(tool_name)
+        let adapter = self
+            .get_adapter(tool_name)
             .ok_or_else(|| format!("No adapter found for: {}", tool_name))?;
 
         Ok(adapter.build_command(target, output_file, extra_flags))
@@ -549,7 +577,7 @@ mod tests {
     fn test_command_building() {
         let adapter = GenericAdapter::from_preset("httpx").unwrap();
         let cmd = adapter.build_command("example.com", Some("/tmp/output.json"), None);
-        
+
         assert!(cmd.contains(&"httpx".to_string()));
         assert!(cmd.contains(&"-l".to_string()));
         assert!(cmd.contains(&"-o".to_string()));
@@ -574,7 +602,7 @@ mod tests {
     fn test_url_formatting() {
         let adapter = GenericAdapter::from_preset("hakrawler").unwrap();
         let cmd = adapter.build_command("example.com", None, None);
-        
+
         // Should add https:// prefix
         assert!(cmd.iter().any(|s| s.starts_with("https://")));
     }

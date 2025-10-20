@@ -1,16 +1,15 @@
 /// Helper for privilege elevation with GUI support on Linux
-/// 
+///
 /// This module provides utilities for running commands with elevated privileges.
 /// On Linux, it prefers pkexec (GUI password dialog) over sudo (terminal prompt).
-/// 
+///
 /// Usage:
 /// ```rust
 /// use crate::tools::package_managers::elevation_helper::ElevationHelper;
-/// 
+///
 /// let helper = ElevationHelper::new();
 /// let (cmd, args) = helper.elevate_command(&["apt", "install", "-y", "package"]).await;
 /// ```
-
 use tokio::process::Command;
 
 pub struct ElevationHelper;
@@ -29,7 +28,7 @@ impl ElevationHelper {
     }
 
     /// Get the appropriate elevation command and arguments
-    /// 
+    ///
     /// Returns: (command, arguments)
     /// - On Linux with pkexec: ("pkexec", ["apt", "install", "package"])
     /// - On Linux without pkexec: ("sudo", ["apt", "install", "package"])

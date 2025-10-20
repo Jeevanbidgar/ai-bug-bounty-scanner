@@ -6,6 +6,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[cfg(target_os = "macos")]
+use crate::tools::package_managers::get_homebrew_mapping;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
     pub name: String,
@@ -78,7 +81,10 @@ impl ToolDefinition {
         self.git_repo = Some(repo.to_string());
         self.install_method = "git-pip".to_string();
         // If git_repo is provided, add pipx as alternative method
-        if !self.alternative_install_methods.contains(&"pipx".to_string()) {
+        if !self
+            .alternative_install_methods
+            .contains(&"pipx".to_string())
+        {
             self.alternative_install_methods.push("pipx".to_string());
         }
         self
@@ -386,9 +392,9 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "vulnerability",
             vec!["wpscan"],
         )
-        .with_apt_package("wpscan")  // Set apt package (for metadata)
-        .with_gem_package("wpscan")  // Set gem as primary method (last call wins)
-        .with_alternative_methods(vec!["apt"]),  // Explicitly add apt as alternative
+        .with_apt_package("wpscan") // Set apt package (for metadata)
+        .with_gem_package("wpscan") // Set gem as primary method (last call wins)
+        .with_alternative_methods(vec!["apt"]), // Explicitly add apt as alternative
     );
 
     catalog.insert(
@@ -490,8 +496,13 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
 
     catalog.insert(
         "xsstrike".to_string(),
-        ToolDefinition::new("xsstrike", "XSS detection suite (Python script - no setup.py)", "web", vec!["xsstrike"])
-            .with_git_repo_no_pipx("https://github.com/s0md3v/XSStrike.git"),
+        ToolDefinition::new(
+            "xsstrike",
+            "XSS detection suite (Python script - no setup.py)",
+            "web",
+            vec!["xsstrike"],
+        )
+        .with_git_repo_no_pipx("https://github.com/s0md3v/XSStrike.git"),
     );
 
     // === Technology Detection ===
@@ -516,9 +527,9 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             vec!["whatweb"],
         )
         .with_os_dependencies(vec!["ruby"])
-        .with_apt_package("whatweb")  // Set apt package (for metadata)
-        .with_gem_package("whatweb")  // Set gem as primary method (last call wins)
-        .with_alternative_methods(vec!["apt"]),  // Explicitly add apt as alternative
+        .with_apt_package("whatweb") // Set apt package (for metadata)
+        .with_gem_package("whatweb") // Set gem as primary method (last call wins)
+        .with_alternative_methods(vec!["apt"]), // Explicitly add apt as alternative
     );
 
     // === Screenshot & Visual Recon ===
@@ -719,7 +730,65 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             .with_install_method("runtime"),
     );
 
+    #[cfg(target_os = "macos")]
+    apply_macos_homebrew_overrides(&mut catalog);
+
     catalog
+}
+
+#[cfg(target_os = "macos")]
+fn apply_macos_homebrew_overrides(catalog: &mut HashMap<String, ToolDefinition>) {
+    use std::collections::HashSet;
+
+    for (tool_name, definition) in catalog.iter_mut() {
+        if definition.install_method == "homebrew" {
+            continue;
+        }
+
+        if let Some(_mapping) = get_homebrew_mapping(tool_name) {
+            let prefers_homebrew = matches!(
+                definition.install_method.as_str(),
+                "apt" | "winget" | "pipx" | "git-pip" | "manual"
+            );
+
+            if prefers_homebrew {
+                let current_method = definition.install_method.clone();
+
+                if current_method != "homebrew"
+                    && !definition
+                        .alternative_install_methods
+                        .contains(&current_method)
+                {
+                    definition
+                        .alternative_install_methods
+                        .push(current_method.clone());
+                }
+
+                if !definition
+                    .alternative_install_methods
+                    .contains(&"homebrew".to_string())
+                {
+                    definition
+                        .alternative_install_methods
+                        .push("homebrew".to_string());
+                }
+
+                definition.install_method = "homebrew".to_string();
+            }
+        }
+    }
+
+    // Remove duplicate alternative entries if any were added in previous calls
+    for definition in catalog.values_mut() {
+        if definition.alternative_install_methods.is_empty() {
+            continue;
+        }
+
+        let mut seen = HashSet::new();
+        definition
+            .alternative_install_methods
+            .retain(|method| seen.insert(method.clone()));
+    }
 }
 
 #[cfg(test)]

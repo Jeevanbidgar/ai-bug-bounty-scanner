@@ -23,7 +23,10 @@ pub struct InstallationStatus {
 
 #[derive(Debug, Clone)]
 pub struct HomebrewManager {
-    registry: &'static HashMap<&'static str, crate::tools::package_managers::homebrew_registry::HomebrewMapping>,
+    registry: &'static HashMap<
+        &'static str,
+        crate::tools::package_managers::homebrew_registry::HomebrewMapping,
+    >,
 }
 
 impl HomebrewManager {
@@ -54,11 +57,14 @@ impl HomebrewManager {
         }
 
         // Emit installation start event
-        app_handle.emit("installation:started", serde_json::json!({
-            "tool": tool_name,
-            "package": package,
-            "manager": "homebrew"
-        }))?;
+        app_handle.emit(
+            "installation:started",
+            serde_json::json!({
+                "tool": tool_name,
+                "package": package,
+                "manager": "homebrew"
+            }),
+        )?;
 
         // Execute installation
         let output = cmd.output().await?;
@@ -97,12 +103,15 @@ impl HomebrewManager {
         }
 
         // Emit upgrade start event
-        app_handle.emit("installation:started", serde_json::json!({
-            "tool": tool_name,
-            "package": package,
-            "manager": "homebrew",
-            "action": "upgrade"
-        }))?;
+        app_handle.emit(
+            "installation:started",
+            serde_json::json!({
+                "tool": tool_name,
+                "package": package,
+                "manager": "homebrew",
+                "action": "upgrade"
+            }),
+        )?;
 
         // Execute upgrade
         let output = cmd.output().await?;
@@ -136,12 +145,15 @@ impl HomebrewManager {
         }
 
         // Emit uninstall start event
-        app_handle.emit("installation:started", serde_json::json!({
-            "tool": tool_name,
-            "package": package,
-            "manager": "homebrew",
-            "action": "uninstall"
-        }))?;
+        app_handle.emit(
+            "installation:started",
+            serde_json::json!({
+                "tool": tool_name,
+                "package": package,
+                "manager": "homebrew",
+                "action": "uninstall"
+            }),
+        )?;
 
         // Execute uninstall
         let output = cmd.output().await?;
@@ -156,18 +168,20 @@ impl HomebrewManager {
 
     /// Verify tool version meets minimum requirements
     pub async fn verify_version(tool_name: &str, min_version: &str) -> Result<()> {
-        let detected = get_version(tool_name).await
+        let detected = get_version(tool_name)
+            .await
             .ok_or_else(|| anyhow!("Could not detect version for {}", tool_name))?;
 
         // Use semver comparison if available, otherwise string comparison
-        if let (Ok(detected_ver), Ok(min_ver)) = (
-            Version::parse(&detected),
-            Version::parse(min_version)
-        ) {
+        if let (Ok(detected_ver), Ok(min_ver)) =
+            (Version::parse(&detected), Version::parse(min_version))
+        {
             if detected_ver < min_ver {
                 return Err(anyhow!(
                     "Installed version {} is below minimum required {} for {}",
-                    detected, min_version, tool_name
+                    detected,
+                    min_version,
+                    tool_name
                 ));
             }
         } else {
@@ -175,7 +189,9 @@ impl HomebrewManager {
             if detected.as_str() < min_version {
                 return Err(anyhow!(
                     "Installed version {} is below minimum required {} for {}",
-                    detected, min_version, tool_name
+                    detected,
+                    min_version,
+                    tool_name
                 ));
             }
         }
@@ -184,7 +200,7 @@ impl HomebrewManager {
     }
 
     /// Check if tool needs update using Homebrew
-    async fn check_homebrew_update(tool_name: &str) -> Result<bool> {
+    async fn check_homebrew_update(tool_name: &str) -> Result<Option<(String, String)>> {
         let mapping = get_homebrew_mapping(tool_name)
             .ok_or_else(|| anyhow!("No Homebrew mapping for tool: {}", tool_name))?;
 
@@ -194,11 +210,36 @@ impl HomebrewManager {
                 .output()
                 .await?;
 
-            // If command succeeds and returns non-empty output, tool needs update
-            Ok(output.status.success() && !output.stdout.is_empty())
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(anyhow!(
+                    "Homebrew outdated command failed for {}: {}",
+                    formula,
+                    stderr.trim()
+                ));
+            }
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            Ok(parse_outdated_output(&stdout))
+        } else if let Some(cask) = &mapping.brew_cask {
+            let output = TokioCommand::new("brew")
+                .args(["outdated", "--cask", cask])
+                .output()
+                .await?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(anyhow!(
+                    "Homebrew outdated command failed for cask {}: {}",
+                    cask,
+                    stderr.trim()
+                ));
+            }
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            Ok(parse_outdated_output(&stdout))
         } else {
-            // For casks, use different approach - for now return false
-            Ok(false) // TODO: Implement cask update checking
+            Ok(None)
         }
     }
 }
@@ -206,8 +247,7 @@ impl HomebrewManager {
 /// Simple version extraction from command output
 fn extract_version_from_line(line: &str) -> Option<String> {
     // Look for version patterns like "1.2.3", "v1.2.3", "version 1.2.3"
-    let version_regex = Regex::new(r"v?(\d+\.\d+(?:\.\d+)?(?:-[a-zA-Z0-9]+)?)")
-        .ok()?;
+    let version_regex = Regex::new(r"v?(\d+\.\d+(?:\.\d+)?(?:-[a-zA-Z0-9]+)?)").ok()?;
 
     version_regex
         .captures(line)
@@ -215,80 +255,157 @@ fn extract_version_from_line(line: &str) -> Option<String> {
         .map(|m| m.as_str().to_string())
 }
 
-    /// Check if tool is installed (PATH + Homebrew verification)
-    pub async fn is_installed(tool_name: &str) -> bool {
-        // Check if tool is in PATH (fast check)
-        if let Ok(output) = TokioCommand::new("which")
-            .arg(tool_name)
-            .output()
-            .await
-        {
-            if output.status.success() {
-                return true;
-            }
+/// Check if tool is installed (PATH + Homebrew verification)
+pub async fn is_installed(tool_name: &str) -> bool {
+    // Check if tool is in PATH (fast check)
+    if let Ok(output) = TokioCommand::new("which").arg(tool_name).output().await {
+        if output.status.success() {
+            return true;
         }
-
-        // Then verify via Homebrew (authoritative check)
-        if let Some(mapping) = get_homebrew_mapping(tool_name) {
-            if let Some(formula) = &mapping.brew_formula {
-                let output = TokioCommand::new("brew")
-                    .args(["ls", "--versions", formula])
-                    .output()
-                    .await;
-
-                return output.map(|o| o.status.success()).unwrap_or(false);
-            }
-        }
-
-        false
     }
 
-    /// Check if tool needs update
-    pub async fn needs_update(tool_name: &str) -> bool {
-        // First check if tool is installed
-        if !is_installed(tool_name).await {
-            return false;
-        }
+    // Then verify via Homebrew (authoritative check)
+    if let Some(mapping) = get_homebrew_mapping(tool_name) {
+        if let Some(formula) = &mapping.brew_formula {
+            let output = TokioCommand::new("brew")
+                .args(["ls", "--versions", formula])
+                .output()
+                .await;
 
-        // For now, always return false - update checking not implemented
-        false
+            return output.map(|o| o.status.success()).unwrap_or(false);
+        }
     }
 
-    /// Get tool version
-    pub async fn get_version(tool_name: &str) -> Option<String> {
-        // Simple version detection using the tool's version command
-        if let Ok(output) = TokioCommand::new(tool_name)
-            .arg("--version")
-            .output()
-            .await
-        {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                // Extract first line and try to find version pattern
-                if let Some(first_line) = stdout.lines().next() {
-                    // Simple regex-like extraction for version numbers
-                    if let Some(version) = extract_version_from_line(first_line) {
-                        return Some(version);
+    false
+}
+
+/// Check if tool needs update
+pub async fn needs_update(tool_name: &str) -> bool {
+    // First check if tool is installed
+    if !is_installed(tool_name).await {
+        return false;
+    }
+
+    match HomebrewManager::check_homebrew_update(tool_name).await {
+        Ok(Some(_)) => true,
+        _ => false,
+    }
+}
+
+/// Get tool version
+pub async fn get_version(tool_name: &str) -> Option<String> {
+    // Simple version detection using the tool's version command
+    if let Ok(output) = TokioCommand::new(tool_name).arg("--version").output().await {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Extract first line and try to find version pattern
+            if let Some(first_line) = stdout.lines().next() {
+                // Simple regex-like extraction for version numbers
+                if let Some(version) = extract_version_from_line(first_line) {
+                    return Some(version);
+                }
+            }
+        }
+    }
+    // Fallback: use Homebrew metadata if direct command fails
+    if let Some(mapping) = get_homebrew_mapping(tool_name) {
+        if let Some(formula) = &mapping.brew_formula {
+            if let Ok(output) = TokioCommand::new("brew")
+                .args(["list", "--versions", formula])
+                .output()
+                .await
+            {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    if let Some(version) = stdout
+                        .split_whitespace()
+                        .skip(1)
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .last()
+                        .map(|s| s.to_string())
+                    {
+                        if !version.is_empty() {
+                            return Some(version);
+                        }
                     }
                 }
             }
         }
-        None
     }
 
-    /// Get installation status info
-    pub async fn get_status(tool_name: &str) -> Result<InstallationStatus> {
-        let installed = is_installed(tool_name).await;
-        let version = get_version(tool_name).await;
-        let needs_update = needs_update(tool_name).await;
+    None
+}
 
-        Ok(InstallationStatus {
-            installed,
-            version,
-            needs_update,
-            manager: PackageManagerType::Homebrew,
-        })
+/// Get installation status info
+pub async fn get_status(tool_name: &str) -> Result<InstallationStatus> {
+    let installed = is_installed(tool_name).await;
+    let version = get_version(tool_name).await;
+    let needs_update = needs_update(tool_name).await;
+
+    Ok(InstallationStatus {
+        installed,
+        version,
+        needs_update,
+        manager: PackageManagerType::Homebrew,
+    })
+}
+
+/// Get update information for a Homebrew-managed tool.
+pub async fn get_update_versions(tool_name: &str) -> Result<Option<(String, String)>> {
+    HomebrewManager::check_homebrew_update(tool_name).await
+}
+
+fn parse_outdated_output(output: &str) -> Option<(String, String)> {
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // Expected format examples:
+        //   toolname (1.0.0) < 1.2.0
+        //   toolname (1.0.0, 1.1.0) < 1.2.0
+        //   toolname (1.0.0) != 1.1.0   (seen for some casks)
+        if let Some(start_idx) = line.find('(') {
+            let rest = &line[start_idx + 1..];
+            if let Some(end_idx) = rest.find(')') {
+                let installed_segment = &rest[..end_idx];
+                let remainder = &rest[end_idx + 1..];
+
+                let (sep_index, sep_len) = if let Some(pos) = remainder.find('<') {
+                    (pos, 1_usize)
+                } else if let Some(pos) = remainder.find("!=") {
+                    (pos, 2_usize)
+                } else {
+                    continue;
+                };
+
+                let latest_part = remainder[sep_index + sep_len..].trim();
+                if latest_part.is_empty() {
+                    continue;
+                }
+
+                let latest_version = latest_part.split_whitespace().next().unwrap_or("").trim();
+                if latest_version.is_empty() {
+                    continue;
+                }
+
+                let installed_version = installed_segment
+                    .split(|c| c == ',' || c == ' ')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .last()
+                    .unwrap_or(installed_segment.trim())
+                    .to_string();
+
+                return Some((installed_version, latest_version.to_string()));
+            }
+        }
     }
+
+    None
+}
 
 #[cfg(test)]
 mod tests {

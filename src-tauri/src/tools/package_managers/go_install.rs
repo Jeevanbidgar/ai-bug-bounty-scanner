@@ -393,7 +393,7 @@ impl GoInstallManager {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        
+
         // Parse output: look for "mod" line with version
         // Format: "mod    module_path    version    hash"
         for line in stdout.lines() {

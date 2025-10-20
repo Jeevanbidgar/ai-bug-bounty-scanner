@@ -418,8 +418,8 @@ async fn detect_winget() -> PackageManagerInfo {
                     "ℹ️  WinGet package detected but executable not found in common locations"
                 );
                 return PackageManagerInfo::available(
-                    PackageManagerType::WinGet, 
-                    version, 
+                    PackageManagerType::WinGet,
+                    version,
                     Some("WinGet is installed but path not resolved. Try running from a regular terminal.".to_string())
                 );
             }
@@ -760,7 +760,8 @@ async fn detect_homebrew() -> PackageManagerInfo {
             let version = parse_simple_version(&stdout);
 
             // Get Homebrew prefix (authoritative source)
-            let prefix = get_homebrew_prefix().await
+            let prefix = get_homebrew_prefix()
+                .await
                 .unwrap_or_else(|_| "/opt/homebrew".to_string());
 
             // Architecture detection for logging only (don't block on mismatches)
@@ -788,7 +789,9 @@ async fn detect_homebrew() -> PackageManagerInfo {
         Err(_) => {
             // Try dynamic search
             if let Some(path) = find_executable_in_path("brew").await {
-                if let Ok((stdout, _stderr)) = execute_detection_command(&path, &["--version"]).await {
+                if let Ok((stdout, _stderr)) =
+                    execute_detection_command(&path, &["--version"]).await
+                {
                     let version = parse_simple_version(&stdout);
                     eprintln!("✅ Found Homebrew at: {}", path);
                     return PackageManagerInfo::available(
@@ -803,7 +806,7 @@ async fn detect_homebrew() -> PackageManagerInfo {
 
     PackageManagerInfo::unavailable(
         PackageManagerType::Homebrew,
-        "Homebrew not found. Visit https://brew.sh for installation".to_string()
+        "Homebrew not found. Visit https://brew.sh for installation".to_string(),
     )
 }
 

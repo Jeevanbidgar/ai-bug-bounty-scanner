@@ -3,8 +3,8 @@
 // This module maintains mappings between tool names and their corresponding
 // Homebrew formulas/casks, with verification dates and metadata.
 
-use std::collections::HashMap;
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct HomebrewMapping {
@@ -65,108 +65,170 @@ pub static HOMEBREW_REGISTRY: Lazy<HashMap<&'static str, HomebrewMapping>> = Laz
     // === Tier 1 - Critical Tools (Must verify ALL before adding) ===
 
     // Subdomain enumeration tools
-    map.insert("subfinder", HomebrewMapping::new()
-        .with_formula("subfinder")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "subfinder",
+        HomebrewMapping::new()
+            .with_formula("subfinder")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
-    map.insert("amass", HomebrewMapping::new()
-        .with_formula("amass")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "amass",
+        HomebrewMapping::new()
+            .with_formula("amass")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
     // Network scanning tools
-    map.insert("nmap", HomebrewMapping::new()
-        .with_formula("nmap")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "nmap",
+        HomebrewMapping::new()
+            .with_formula("nmap")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
-    map.insert("naabu", HomebrewMapping::new()
-        .with_formula("naabu")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "naabu",
+        HomebrewMapping::new()
+            .with_formula("naabu")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
-    map.insert("masscan", HomebrewMapping::new()
-        .with_formula("masscan")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "masscan",
+        HomebrewMapping::new()
+            .with_formula("masscan")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
     // Web analysis tools
-    map.insert("httpx", HomebrewMapping::new()
-        .with_formula("httpx")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "httpx",
+        HomebrewMapping::new()
+            .with_formula("httpx")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
     // Nuclei - Critical tool with version requirements
-    map.insert("nuclei", HomebrewMapping::new()
-        .with_formula("nuclei")
-        .with_min_version("3.0.0")  // Cross-OS version parity
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "nuclei",
+        HomebrewMapping::new()
+            .with_formula("nuclei")
+            .with_min_version("3.0.0") // Cross-OS version parity
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
     // Directory scanning tools
-    map.insert("gobuster", HomebrewMapping::new()
-        .with_formula("gobuster")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "gobuster",
+        HomebrewMapping::new()
+            .with_formula("gobuster")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
-    map.insert("ffuf", HomebrewMapping::new()
-        .with_formula("ffuf")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "ffuf",
+        HomebrewMapping::new()
+            .with_formula("ffuf")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
+
+    map.insert(
+        "wfuzz",
+        HomebrewMapping::new()
+            .with_formula("wfuzz")
+            .verified()
+            .with_verified_date("2025-10-20"),
+    );
 
     // Vulnerability scanning
-    map.insert("sqlmap", HomebrewMapping::new()
-        .with_formula("sqlmap")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "sqlmap",
+        HomebrewMapping::new()
+            .with_formula("sqlmap")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
     // === Tier 2 - High Priority Tools ===
 
     // Additional subdomain tools
-    map.insert("waybackurls", HomebrewMapping::new()
-        .with_formula("waybackurls")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "waybackurls",
+        HomebrewMapping::new()
+            .with_formula("waybackurls")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
-    map.insert("gau", HomebrewMapping::new()
-        .with_formula("gau")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "gau",
+        HomebrewMapping::new()
+            .with_formula("gau")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
-    map.insert("dnsx", HomebrewMapping::new()
-        .with_formula("dnsx")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "dnsx",
+        HomebrewMapping::new()
+            .with_formula("dnsx")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
-    map.insert("shuffledns", HomebrewMapping::new()
-        .with_formula("shuffledns")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "shuffledns",
+        HomebrewMapping::new()
+            .with_formula("shuffledns")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
     // Additional scanning tools
-    map.insert("rustscan", HomebrewMapping::new()
-        .with_formula("rustscan")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "rustscan",
+        HomebrewMapping::new()
+            .with_formula("rustscan")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
-    map.insert("feroxbuster", HomebrewMapping::new()
-        .with_formula("feroxbuster")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "feroxbuster",
+        HomebrewMapping::new()
+            .with_formula("feroxbuster")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
     // === Tier 3 - GUI Tools (Casks) ===
 
     // GUI applications use casks instead of formulas
-    map.insert("burp-suite", HomebrewMapping::new()
-        .with_cask("burp-suite")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "burp-suite",
+        HomebrewMapping::new()
+            .with_cask("burp-suite")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
-    map.insert("wireshark", HomebrewMapping::new()
-        .with_cask("wireshark")
-        .verified()
-        .with_verified_date("2025-10-16"));
+    map.insert(
+        "wireshark",
+        HomebrewMapping::new()
+            .with_cask("wireshark")
+            .verified()
+            .with_verified_date("2025-10-16"),
+    );
 
     // Note: Add more tools as they are verified with `brew info`
     // Each addition must be verified before including in registry
@@ -196,7 +258,10 @@ pub fn get_homebrew_tools_by_category() -> HashMap<&'static str, Vec<&'static st
             "CLI Tools"
         };
 
-        categories.entry(category).or_insert_with(Vec::new).push(*tool_name);
+        categories
+            .entry(category)
+            .or_insert_with(Vec::new)
+            .push(*tool_name);
     }
 
     categories

@@ -1,7 +1,7 @@
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
 use crate::tools::catalog::ToolDefinition;
-use crate::tools::package_managers::{detection::detect_manager, PackageManagerType};
 use crate::tools::package_managers::elevation_helper::ElevationHelper;
+use crate::tools::package_managers::{detection::detect_manager, PackageManagerType};
 use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
 use tauri::{Emitter, Manager};
@@ -134,7 +134,9 @@ impl GemInstaller {
             self.emit_output(tool_name, elevation_msg);
             self.emit_output(tool_name, "Installing Ruby via apt...\n");
 
-            let (elevation_cmd, elevation_args) = elevation.elevate_command(&["apt", "install", "-y", "ruby", "ruby-dev"]).await;
+            let (elevation_cmd, elevation_args) = elevation
+                .elevate_command(&["apt", "install", "-y", "ruby", "ruby-dev"])
+                .await;
 
             let mut child = Command::new(elevation_cmd)
                 .args(&elevation_args)
@@ -404,7 +406,7 @@ impl GemInstaller {
         #[cfg(target_os = "linux")]
         {
             use crate::tools::package_managers::elevation_helper::ElevationHelper;
-            
+
             // First attempt without elevation (for user gems in ~/.local/share/gem)
             let mut child = Command::new("gem")
                 .args(&["update", package_name])
@@ -436,9 +438,15 @@ impl GemInstaller {
             let status = child.wait().await?;
 
             // If it failed due to permissions, retry with pkexec
-            if !status.success() && (stderr_output.contains("Permission denied") || stderr_output.contains("cannot open directory")) {
-                self.emit_output(tool_name, "⚠️ Permission denied, retrying with elevated privileges...\n");
-                
+            if !status.success()
+                && (stderr_output.contains("Permission denied")
+                    || stderr_output.contains("cannot open directory"))
+            {
+                self.emit_output(
+                    tool_name,
+                    "⚠️ Permission denied, retrying with elevated privileges...\n",
+                );
+
                 let elevation = ElevationHelper::new();
                 let elevation_msg = elevation.get_elevation_message().await;
                 self.emit_output(tool_name, elevation_msg);
@@ -475,17 +483,26 @@ impl GemInstaller {
 
                 if !status.success() {
                     let error_msg = if let Some(code) = status.code() {
-                        format!("❌ Failed to update {} with elevated privileges (exit code: {})\n", tool.name, code)
+                        format!(
+                            "❌ Failed to update {} with elevated privileges (exit code: {})\n",
+                            tool.name, code
+                        )
                     } else {
                         format!("❌ Failed to update {} with elevated privileges (process terminated)\n", tool.name)
                     };
                     self.emit_output(tool_name, &error_msg);
-                    return Err(anyhow!("Gem update failed for {}. Check if the gem is installed.", tool.name));
+                    return Err(anyhow!(
+                        "Gem update failed for {}. Check if the gem is installed.",
+                        tool.name
+                    ));
                 }
 
                 self.emit_output(
                     tool_name,
-                    &format!("✅ Successfully updated {} with elevated privileges\n", tool.name),
+                    &format!(
+                        "✅ Successfully updated {} with elevated privileges\n",
+                        tool.name
+                    ),
                 );
                 return Ok(format!("Successfully updated {}", tool.name));
             } else if !status.success() {

@@ -60,11 +60,11 @@ impl ToolRegistry {
         let additional_paths = self.get_additional_search_paths();
         for search_dir in additional_paths {
             let tool_path = search_dir.join(tool_name);
-            
+
             // Check exact match
             if tool_path.exists() && tool_path.is_file() {
                 let path_str = tool_path.to_string_lossy().to_string();
-                
+
                 // Cache the result
                 let mut tools = self.tools.write().await;
                 tools.insert(
@@ -76,17 +76,17 @@ impl ToolRegistry {
                         category: "unknown".to_string(),
                     },
                 );
-                
+
                 return Some(path_str);
             }
-            
+
             // On Windows, try with .exe extension
             #[cfg(target_os = "windows")]
             {
                 let tool_path_exe = search_dir.join(format!("{}.exe", tool_name));
                 if tool_path_exe.exists() && tool_path_exe.is_file() {
                     let path_str = tool_path_exe.to_string_lossy().to_string();
-                    
+
                     let mut tools = self.tools.write().await;
                     tools.insert(
                         tool_name.to_string(),
@@ -97,7 +97,7 @@ impl ToolRegistry {
                             category: "unknown".to_string(),
                         },
                     );
-                    
+
                     return Some(path_str);
                 }
             }
@@ -125,7 +125,7 @@ impl ToolRegistry {
                 paths.push(PathBuf::from(&home).join(".cargo/bin"));
                 paths.push(PathBuf::from(&home).join(".local/bin"));
             }
-            
+
             // Also check /usr/local/bin and /usr/bin (common on Linux)
             paths.push(PathBuf::from("/usr/local/bin"));
             paths.push(PathBuf::from("/usr/bin"));

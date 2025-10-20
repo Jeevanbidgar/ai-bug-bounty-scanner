@@ -114,15 +114,15 @@ impl GitPipInstaller {
         // Stream stdout
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-        
+
         let tool_name_clone = tool_name.to_string();
         let app_handle_clone = app_handle.map(|h| h.clone());
-        
+
         let stdout_task = tokio::spawn(async move {
             if let Some(stdout) = stdout {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
-                
+
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(handle) = &app_handle_clone {
                         let _ = handle.emit(
@@ -140,12 +140,12 @@ impl GitPipInstaller {
         // Stream stderr
         let tool_name_clone2 = tool_name.to_string();
         let app_handle_clone2 = app_handle.map(|h| h.clone());
-        
+
         let stderr_task = tokio::spawn(async move {
             if let Some(stderr) = stderr {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
-                
+
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(handle) = &app_handle_clone2 {
                         let _ = handle.emit(
@@ -172,7 +172,10 @@ impl GitPipInstaller {
         let result = if status.success() {
             // Determine installed path based on platform
             let installed_path = if cfg!(target_os = "windows") {
-                Some(format!("%USERPROFILE%\\AppData\\Roaming\\Python\\Scripts\\{}.exe", tool_name))
+                Some(format!(
+                    "%USERPROFILE%\\AppData\\Roaming\\Python\\Scripts\\{}.exe",
+                    tool_name
+                ))
             } else {
                 Some(format!("~/.local/bin/{}", tool_name))
             };
@@ -341,7 +344,7 @@ impl GitPipInstaller {
 
         if is_linux {
             eprintln!("� Linux detected - creating virtual environment to avoid PEP 668...");
-            
+
             // Create venv
             let venv_result = self
                 .run_command_with_output(
@@ -370,8 +373,16 @@ impl GitPipInstaller {
             }
 
             // Use venv's pip and python
-            pip_cmd = venv_path.join("bin").join("pip").to_string_lossy().to_string();
-            python_executable = venv_path.join("bin").join("python").to_string_lossy().to_string();
+            pip_cmd = venv_path
+                .join("bin")
+                .join("pip")
+                .to_string_lossy()
+                .to_string();
+            python_executable = venv_path
+                .join("bin")
+                .join("python")
+                .to_string_lossy()
+                .to_string();
             eprintln!("✅ Virtual environment created at: {}", venv_path.display());
         } else {
             // Windows: use system pip
@@ -383,11 +394,17 @@ impl GitPipInstaller {
         let requirements_path = clone_path.join("requirements.txt");
         if requirements_path.exists() {
             eprintln!("📋 Found requirements.txt, installing dependencies...");
-            
+
             let pip_args = if is_linux {
                 vec!["install", "-r", requirements_path.to_str().unwrap()]
             } else {
-                vec!["-m", "pip", "install", "-r", requirements_path.to_str().unwrap()]
+                vec![
+                    "-m",
+                    "pip",
+                    "install",
+                    "-r",
+                    requirements_path.to_str().unwrap(),
+                ]
             };
 
             let requirements_result = self
@@ -429,7 +446,11 @@ impl GitPipInstaller {
                 eprintln!("📦 Trying setup.py install...");
                 let setup_result = self
                     .run_command_with_output(
-                        if is_linux { &python_executable } else { &python_cmd },
+                        if is_linux {
+                            &python_executable
+                        } else {
+                            &python_cmd
+                        },
                         &[setup_py.to_str().unwrap(), "install"],
                         tool_name,
                         "setup.py install",

@@ -62,7 +62,7 @@ impl ManualInstaller {
                     target: Self::get_bin_dir().join("xsstrike").to_string_lossy().to_string(),
                 },
             ],
-            
+
             "cloudfail" => vec![
                 InstallStep::GitClone {
                     url: "https://github.com/m0rtem/CloudFail.git".to_string(),
@@ -136,7 +136,7 @@ impl ManualInstaller {
                     args: vec!["install", "--without", "test", "development"].iter().map(|s| s.to_string()).collect(),
                 },
             ],
-            
+
             "whatweb" => vec![
                 InstallStep::GitClone {
                     url: "https://github.com/urbanadventurer/WhatWeb.git".to_string(),

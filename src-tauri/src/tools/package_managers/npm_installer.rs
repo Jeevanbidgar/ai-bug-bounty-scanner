@@ -1,7 +1,7 @@
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
 use crate::tools::catalog::ToolDefinition;
-use crate::tools::package_managers::{detection::detect_manager, PackageManagerType};
 use crate::tools::package_managers::elevation_helper::ElevationHelper;
+use crate::tools::package_managers::{detection::detect_manager, PackageManagerType};
 use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
 use tauri::{Emitter, Manager};
@@ -130,7 +130,9 @@ impl NpmInstaller {
             self.emit_output(tool_name, elevation_msg);
             self.emit_output(tool_name, "Installing Node.js via apt...\n");
 
-            let (elevation_cmd, elevation_args) = elevation.elevate_command(&["apt", "install", "-y", "nodejs", "npm"]).await;
+            let (elevation_cmd, elevation_args) = elevation
+                .elevate_command(&["apt", "install", "-y", "nodejs", "npm"])
+                .await;
 
             let mut child = Command::new(elevation_cmd)
                 .args(&elevation_args)
@@ -228,12 +230,12 @@ impl NpmInstaller {
         let install_args: Vec<&str> = if !prefix_path.is_empty() {
             self.emit_output(
                 tool_name,
-                &format!("📦 Installing {} to user directory (~/.local)...\n", package_name),
+                &format!(
+                    "📦 Installing {} to user directory (~/.local)...\n",
+                    package_name
+                ),
             );
-            self.emit_output(
-                tool_name,
-                "💡 Note: Ensure ~/.local/bin is in your PATH\n",
-            );
+            self.emit_output(tool_name, "💡 Note: Ensure ~/.local/bin is in your PATH\n");
             vec!["install", "-g", package_name, "--prefix", &prefix_path]
         } else {
             // Fallback to global if HOME not found (unlikely)
@@ -379,7 +381,10 @@ impl NpmInstaller {
             }
         }
 
-                Ok(format!("Successfully installed {} globally via npm", tool.name))
+        Ok(format!(
+            "Successfully installed {} globally via npm",
+            tool.name
+        ))
     }
 
     /// Verify that the tool is installed and get version
@@ -429,7 +434,7 @@ impl NpmInstaller {
         #[cfg(target_os = "linux")]
         {
             use crate::tools::package_managers::elevation_helper::ElevationHelper;
-            
+
             let elevation = ElevationHelper::new();
             let elevation_msg = elevation.get_elevation_message().await;
             self.emit_output(tool_name, elevation_msg);

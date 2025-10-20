@@ -136,9 +136,7 @@ impl WorkflowEngine {
                     execution_id: execution_id.clone(),
                     timestamp: Utc::now().to_rfc3339(),
                 };
-                let _ = self
-                    .app_handle
-                    .emit(WORKFLOW_EXECUTION_COMPLETED, event);
+                let _ = self.app_handle.emit(WORKFLOW_EXECUTION_COMPLETED, event);
             }
             Err(e) => {
                 // Update execution status to failed
