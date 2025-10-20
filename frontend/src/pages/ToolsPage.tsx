@@ -199,14 +199,18 @@ const ToolsPage = () => {
         (statusFilter === 'not-installed' && !tool.installed) ||
         (statusFilter === 'updates-available' && tool.installed && toolUpdates[tool.name]?.hasUpdate)
 
-      // Package manager filter logic - match against install_method
+      const allInstallMethods: string[] = []
+      if (tool.install_method) {
+        allInstallMethods.push(tool.install_method)
+      }
+      if (tool.alternative_install_methods) {
+        allInstallMethods.push(...tool.alternative_install_methods)
+      }
       const matchesPackageManager = packageManagerFilter === 'all' ||
-        (tool.install_method && (
-          tool.install_method === packageManagerFilter ||
-          // Handle git-pip as Python (includes both pipx-installable and no-pipx)
-          (packageManagerFilter === 'git-pip' && (tool.install_method === 'git-pip' || tool.install_method.includes('git')))
-        ))
-
+        allInstallMethods.some(method =>
+          method === packageManagerFilter ||
+          (packageManagerFilter === 'git-pip' && method.includes('git'))
+        )
       return matchesSearch && matchesCategory && matchesStatus && matchesPackageManager
     })
 

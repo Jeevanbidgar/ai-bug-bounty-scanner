@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { X, CheckCircle, XCircle, AlertTriangle, Loader2, Play, RefreshCw, Copy, ExternalLink, Check, Download, Trash2, ArrowUpCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/Card'
 import { Badge } from './ui/Badge'
@@ -21,6 +21,59 @@ interface OsInfo {
   arch: string
 }
 
+const INSTALL_METHOD_LABELS: Record<string, string> = {
+  go: 'Go install',
+  pipx: 'pipx',
+  'git-pip': 'Git + pip',
+  apt: 'APT',
+  winget: 'WinGet',
+  cargo: 'Cargo',
+  npm: 'npm',
+  gem: 'Ruby gem',
+  homebrew: 'Homebrew',
+  manual: 'Manual',
+  runtime: 'Runtime helper',
+}
+
+const INSTALL_METHOD_ICONS: Record<string, string> = {
+  go: '🐹',
+  pipx: '🔐',
+  'git-pip': '📦',
+  apt: '🐧',
+  winget: '🪟',
+  cargo: '🦀',
+  npm: '⬢',
+  gem: '💎',
+  homebrew: '🍺',
+  manual: '🛠️',
+  runtime: '⚙️',
+}
+
+const toTitleCase = (value: string) =>
+  value
+    .split(/[-_ ]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+
+const getInstallMethodLabel = (method?: string | null) => {
+  if (!method) {
+    return 'recommended'
+  }
+
+  return INSTALL_METHOD_LABELS[method] ?? toTitleCase(method)
+}
+
+const formatInstallMethod = (method?: string | null) => {
+  if (!method) {
+    return 'recommended method'
+  }
+
+  const label = getInstallMethodLabel(method)
+  const icon = INSTALL_METHOD_ICONS[method]
+  return icon ? `${icon} ${label}` : label
+}
+
 const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallStart }: ToolDetailModalProps) => {
   const [tool, setTool] = useState(initialTool)
   const [isTestRunning, setIsTestRunning] = useState(false)
@@ -38,6 +91,75 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
   const [installationInfo, setInstallationInfo] = useState<any>(null)
   const [selectedInstallMethod, setSelectedInstallMethod] = useState<string | null>(null)
   const { toasts, success, error: showError, info, removeToast } = useToast()
+
+  const availableMethods = useMemo(() => {
+    const unique = new Set<string>()
+    if (tool.install_method) {
+      unique.add(tool.install_method)
+    }
+    if (installationInfo?.install_method) {
+      unique.add(installationInfo.install_method)
+    }
+    ;(tool.alternative_install_methods || []).forEach(method => {
+      if (method) {
+        unique.add(method)
+      }
+    })
+    return Array.from(unique)
+  }, [tool.install_method, tool.alternative_install_methods, installationInfo])
+
+  useEffect(() => {
+    if (selectedInstallMethod && !availableMethods.includes(selectedInstallMethod)) {
+      setSelectedInstallMethod(null)
+    }
+  }, [availableMethods, selectedInstallMethod])
+
+  const recommendedMethod = useMemo(() => {
+    if (availableMethods.length === 0) {
+      return null
+    }
+
+    const preferences: string[] = []
+
+    switch (osInfo?.platform) {
+      case 'macos':
+        preferences.push('homebrew')
+        break
+      case 'windows':
+        preferences.push('winget')
+        break
+      case 'linux':
+        preferences.push('apt')
+        break
+      default:
+        break
+    }
+
+    if (tool.install_method) {
+      preferences.push(tool.install_method)
+    }
+    if (installationInfo?.install_method) {
+      preferences.push(installationInfo.install_method)
+    }
+
+    for (const method of preferences) {
+      if (method && availableMethods.includes(method)) {
+        return method
+      }
+    }
+
+    return availableMethods[0]
+  }, [availableMethods, installationInfo, osInfo?.platform, tool.install_method])
+
+  const recommendedMethodLabel = recommendedMethod ? formatInstallMethod(recommendedMethod) : 'Recommended'
+  const recommendedMethodDescription = recommendedMethod
+    ? `via ${recommendedMethodLabel}`
+    : 'using the recommended method'
+
+  const otherMethods = useMemo(
+    () => availableMethods.filter(method => !recommendedMethod || method !== recommendedMethod),
+    [availableMethods, recommendedMethod]
+  )
 
   useEffect(() => {
     const fetchOsInfo = async () => {
@@ -254,10 +376,10 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     }
 
     try {
-      const methodToUse = installMethod || selectedInstallMethod || tool.install_method
+      const methodToUse = installMethod || selectedInstallMethod || recommendedMethod || tool.install_method
 
       if (methodToUse && methodToUse !== tool.install_method) {
-        info(`Installing ${tool.name} via ${methodToUse}...`)
+        info(`Installing ${tool.name} via ${formatInstallMethod(methodToUse)}...`)
         const result = await apiService.installToolWithMethod(tool.name, methodToUse)
 
         if (result.success) {
@@ -664,12 +786,11 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                       Install directly from this app
                     </p>
                     <p className="text-sm text-green-100">
-                      Use the <strong>Install {tool.name}</strong> button below to perform an automated installation via
-                      {installationInfo?.install_method ? ` ${installationInfo.install_method}` : ' the recommended method'}.
+                      Use the <strong>Install {tool.name}</strong> button below to perform an automated installation {recommendedMethodDescription}.
                     </p>
-                    {tool.alternative_install_methods && tool.alternative_install_methods.length > 0 && (
+                    {otherMethods.length > 0 && (
                       <p className="text-xs text-green-200">
-                        Alternate methods supported: {tool.alternative_install_methods.join(', ')}
+                        Alternate methods supported: {otherMethods.map(method => formatInstallMethod(method)).join(', ')}
                       </p>
                     )}
                     <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
@@ -813,7 +934,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
         <div className="sticky bottom-0 bg-gray-900 border-t border-gray-700 px-6 py-4">
           <div className="flex flex-col gap-3">
             {/* Installation Method Selector (if alternatives available) */}
-            {!tool.installed && canInstall && tool.alternative_install_methods && tool.alternative_install_methods.length > 0 && (
+            {!tool.installed && canInstall && availableMethods.length > 1 && (
               <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-700">
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Installation Method
@@ -821,18 +942,18 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                 <div className="flex flex-wrap gap-2">
                   {/* Primary method button */}
                   <button
-                    onClick={() => setSelectedInstallMethod(tool.install_method || null)}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${(selectedInstallMethod === tool.install_method || selectedInstallMethod === null)
+                    onClick={() => setSelectedInstallMethod(recommendedMethod)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${(selectedInstallMethod === recommendedMethod || selectedInstallMethod === null)
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                       }`}
                   >
-                    {tool.install_method || 'default'}
+                    {recommendedMethodLabel}
                     <span className="ml-1 text-xs opacity-75">(recommended)</span>
                   </button>
 
                   {/* Alternative method buttons */}
-                  {tool.alternative_install_methods.map((method) => (
+                  {otherMethods.map((method) => (
                     <button
                       key={method}
                       onClick={() => setSelectedInstallMethod(method)}
@@ -841,7 +962,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                         }`}
                     >
-                      {method}
+                      {formatInstallMethod(method)}
                     </button>
                   ))}
                 </div>
@@ -849,7 +970,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                   {selectedInstallMethod === 'pipx' && '🔐 pipx: Isolated environment, no sudo required'}
                   {selectedInstallMethod === 'git-pip' && '📦 git-pip: Clone and install from source'}
                   {selectedInstallMethod === 'homebrew' && '🍺 Homebrew: macOS package manager, no sudo required'}
-                  {(!selectedInstallMethod || selectedInstallMethod === tool.install_method) && '✨ Using recommended installation method'}
+                  {(!selectedInstallMethod || selectedInstallMethod === recommendedMethod) && `✨ Using recommended installation method${recommendedMethodLabel ? ` (${recommendedMethodLabel})` : ''}`}
                 </p>
               </div>
             )}
@@ -872,8 +993,8 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                       <>
                         <Download className="mr-2 h-4 w-4" />
                         Install {tool.name}
-                        {selectedInstallMethod && selectedInstallMethod !== tool.install_method && (
-                          <span className="ml-1 text-xs opacity-75">via {selectedInstallMethod}</span>
+                        {selectedInstallMethod && selectedInstallMethod !== recommendedMethod && (
+                          <span className="ml-1 text-xs opacity-75">via {formatInstallMethod(selectedInstallMethod)}</span>
                         )}
                       </>
                     )}
