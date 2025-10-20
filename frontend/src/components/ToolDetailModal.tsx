@@ -8,7 +8,6 @@ import { invoke } from '@tauri-apps/api/core'
 import { useToast } from '../hooks/useToast'
 import Toast from './ui/Toast'
 import apiService from '../services/api'
-import UpdateStatusBadge from './UpdateStatusBadge'
 import UpdateDetailsModal from './UpdateDetailsModal'
 
 interface ToolDetailModalProps {
@@ -200,31 +199,19 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     const checkForUpdates = async () => {
       if (tool.installed) {
         try {
-          // Try enhanced update check first
-          try {
-            const enhancedResult = await apiService.checkToolUpdateEnhanced(tool.name)
-            setEnhancedUpdateResult(enhancedResult)
-            if (enhancedResult.has_update && enhancedResult.best_result) {
-              setUpdateAvailable(true)
-              setLatestVersion(enhancedResult.best_result.latest_version)
-            } else {
-              setUpdateAvailable(false)
-              setLatestVersion(null)
-            }
-          } catch (enhancedError) {
-            console.warn('Enhanced update check failed, falling back to legacy:', enhancedError)
-            // Fallback to legacy update check
-            const result = await apiService.checkToolUpdate(tool.name)
-            if (result.has_update) {
-              setUpdateAvailable(true)
-              setLatestVersion(result.latest_version)
-            } else {
-              setUpdateAvailable(false)
-              setLatestVersion(null)
-            }
+          // Use optimized single-manager check (fast, targeted)
+          const result = await apiService.checkToolUpdate(tool.name)
+          if (result.has_update) {
+            setUpdateAvailable(true)
+            setLatestVersion(result.latest_version)
+          } else {
+            setUpdateAvailable(false)
+            setLatestVersion(null)
           }
         } catch (error) {
           console.error('Failed to check for updates:', error)
+          setUpdateAvailable(false)
+          setLatestVersion(null)
         }
       }
     }
@@ -515,40 +502,22 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     try {
       info(`Checking for ${tool.name} updates...`)
 
-      // Try enhanced update check first
-      try {
-        const enhancedResult = await apiService.checkToolUpdateEnhanced(tool.name)
-        setEnhancedUpdateResult(enhancedResult)
-        
-        if (enhancedResult.has_update && enhancedResult.best_result) {
-          setUpdateAvailable(true)
-          setLatestVersion(enhancedResult.best_result.latest_version)
-          success(`Update available! Current: ${enhancedResult.best_result.current_version}, Latest: ${enhancedResult.best_result.latest_version}`)
-        } else {
-          setUpdateAvailable(false)
-          setLatestVersion(null)
-          success(`${tool.name} is up to date`)
-        }
-      } catch (enhancedError) {
-        console.warn('Enhanced update check failed, falling back to legacy:', enhancedError)
-        
-        // Fallback to legacy update check
-        const result = await apiService.checkToolUpdate(tool.name)
+      // Use optimized single-manager check (fast, targeted)
+      const result = await apiService.checkToolUpdate(tool.name)
 
-        if (result.error) {
-          showError(`Update check failed: ${result.error}`)
-          return
-        }
+      if (result.error) {
+        showError(`Update check failed: ${result.error}`)
+        return
+      }
 
-        if (result.has_update) {
-          setUpdateAvailable(true)
-          setLatestVersion(result.latest_version)
-          success(`Update available! Current: ${result.current_version}, Latest: ${result.latest_version}`)
-        } else {
-          setUpdateAvailable(false)
-          setLatestVersion(null)
-          success(`${tool.name} is up to date (v${result.current_version})`)
-        }
+      if (result.has_update) {
+        setUpdateAvailable(true)
+        setLatestVersion(result.latest_version)
+        success(`Update available! Current: ${result.current_version}, Latest: ${result.latest_version}`)
+      } else {
+        setUpdateAvailable(false)
+        setLatestVersion(null)
+        success(`${tool.name} is up to date (v${result.current_version})`)
       }
 
     } catch (error) {
@@ -556,6 +525,19 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
       showError(errorMessage)
     } finally {
       setIsCheckingUpdate(false)
+    }
+  }
+
+  const handleViewUpdateDetails = async () => {
+    try {
+      // Load enhanced update results (checks all package managers)
+      info(`Loading detailed update information...`)
+      const enhancedResult = await apiService.checkToolUpdateEnhanced(tool.name)
+      setEnhancedUpdateResult(enhancedResult)
+      setShowUpdateDetails(true)
+    } catch (error) {
+      console.error('Failed to load enhanced update details:', error)
+      showError('Failed to load detailed update information')
     }
   }
 
@@ -655,16 +637,18 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                     <p className="text-white font-mono">
                       {tool.raw_version || tool.version || 'Unknown'}
                     </p>
-                    <UpdateStatusBadge 
-                      result={enhancedUpdateResult} 
-                      isLoading={isCheckingUpdate}
-                    />
-                    {enhancedUpdateResult && (
+                    {updateAvailable && (
+                      <Badge className="text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
+                        Update available
+                      </Badge>
+                    )}
+                    {tool.installed && (
                       <Button
-                        onClick={() => setShowUpdateDetails(true)}
+                        onClick={handleViewUpdateDetails}
                         variant="ghost"
                         size="sm"
                         className="text-gray-400 hover:text-white"
+                        title="View detailed update information from all package managers"
                       >
                         <Info className="h-3 w-3" />
                       </Button>
