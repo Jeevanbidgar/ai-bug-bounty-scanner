@@ -14,6 +14,8 @@ pub enum ElevationMethod {
     LinuxPolkit,
     /// Linux sudo with GUI askpass
     LinuxSudoAskpass,
+    /// macOS elevation via administrator prompt (osascript)
+    MacOsAppleScript,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,7 +97,12 @@ pub async fn execute_elevated(
         execute_elevated_linux(command, args, timeout_secs).await
     }
 
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    {
+        execute_elevated_macos(command, args, timeout_secs).await
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
         let _ = timeout_secs;
         Err("Elevation not supported on this platform".to_string())
@@ -189,6 +196,108 @@ async fn execute_elevated_windows(
             Err(format!("Failed to trigger UAC: {}", e))
         }
     }
+}
+
+/// Execute command with macOS elevation using AppleScript prompt
+#[cfg(target_os = "macos")]
+async fn execute_elevated_macos(
+    command: &str,
+    args: &[&str],
+    timeout_secs: u64,
+) -> Result<ElevationResult, String> {
+    eprintln!("   → Using macOS administrator privileges prompt");
+
+    let command_line = std::iter::once(command)
+        .chain(args.iter().copied())
+        .map(shell_escape_arg)
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let applescript = format!(
+        "do shell script \"{}\" with administrator privileges",
+        escape_for_applescript(&command_line)
+    );
+
+    let mut child = Command::new("osascript")
+        .arg("-e")
+        .arg(applescript)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn osascript: {}", e))?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture stdout".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Failed to capture stderr".to_string())?;
+
+    let mut stdout_buf = String::new();
+    let mut stderr_buf = String::new();
+
+    let read_task = async {
+        let mut stdout_reader = tokio::io::BufReader::new(stdout);
+        let mut stderr_reader = tokio::io::BufReader::new(stderr);
+
+        let _ = stdout_reader.read_to_string(&mut stdout_buf).await;
+        let _ = stderr_reader.read_to_string(&mut stderr_buf).await;
+
+        child.wait().await
+    };
+
+    match timeout(Duration::from_secs(timeout_secs), read_task).await {
+        Ok(Ok(status)) => {
+            let output = if !stdout_buf.trim().is_empty() {
+                stdout_buf.clone()
+            } else {
+                stderr_buf.clone()
+            };
+
+            if status.success() {
+                eprintln!("   ✓ Elevated command succeeded");
+                Ok(ElevationResult {
+                    success: true,
+                    output,
+                    elevated: true,
+                    error: None,
+                })
+            } else {
+                let apple_error = if stderr_buf.trim().is_empty() {
+                    format!("Command failed with exit code {:?}", status.code())
+                } else {
+                    stderr_buf.trim().to_string()
+                };
+
+                Ok(ElevationResult {
+                    success: false,
+                    output,
+                    elevated: true,
+                    error: Some(apple_error),
+                })
+            }
+        }
+        Ok(Err(e)) => Err(format!("Failed to wait for osascript: {}", e)),
+        Err(_) => {
+            let _ = child.kill().await;
+            Err(format!(
+                "Elevated command timed out after {} seconds",
+                timeout_secs
+            ))
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn escape_for_applescript(input: &str) -> String {
+    input.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+#[cfg(target_os = "macos")]
+fn shell_escape_arg(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', "'\\''"))
 }
 
 /// Execute command with Linux elevation (polkit or sudo with askpass)
@@ -502,7 +611,23 @@ pub async fn check_elevation_support() -> ElevationMethod {
         ElevationMethod::None
     }
 
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    {
+        // macOS ships with osascript for GUI privilege prompts
+        if Command::new("which")
+            .arg("osascript")
+            .output()
+            .await
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            ElevationMethod::MacOsAppleScript
+        } else {
+            ElevationMethod::None
+        }
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
         ElevationMethod::None
     }

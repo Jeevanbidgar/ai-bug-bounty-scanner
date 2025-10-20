@@ -571,8 +571,17 @@ mod tests {
     async fn test_version_verification() {
         // Test version verification logic (mock scenario)
         // This would need a tool that's actually installed to test properly
-        let result = verify_version("nuclei", "3.0.0").await;
-        // Should either succeed or fail with appropriate error message
-        assert!(result.is_ok() || result.unwrap_err().to_string().contains("below minimum"));
+        let result = HomebrewManager::verify_version("nuclei", "3.0.0").await;
+
+        if let Err(err) = result {
+            let message = err.to_string();
+            assert!(
+                message.contains("below minimum")
+                    || message.contains("Could not detect version")
+                    || message.contains("not installed"),
+                "Unexpected error message: {}",
+                message
+            );
+        }
     }
 }

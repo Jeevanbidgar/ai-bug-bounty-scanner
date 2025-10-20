@@ -1227,12 +1227,7 @@ fn resolve_install_method(tool_name: &str, tool_def: &ToolDefinition) -> String 
             "apt" | "winget" | "pipx" | "git-pip" | "manual"
         );
 
-        if prefers_homebrew
-            || tool_def
-                .alternative_install_methods
-                .iter()
-                .any(|m| m == "homebrew")
-        {
+        if prefers_homebrew {
             if crate::tools::package_managers::get_homebrew_mapping(tool_name).is_some() {
                 method = "homebrew".to_string();
             }

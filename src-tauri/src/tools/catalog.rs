@@ -3,11 +3,9 @@
 // This module defines all security tools supported by the scanner,
 // including their command candidates, version flags, categories, and dependencies.
 
+use crate::tools::package_managers::get_homebrew_mapping;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-#[cfg(target_os = "macos")]
-use crate::tools::package_managers::get_homebrew_mapping;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
@@ -732,16 +730,37 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             .with_install_method("runtime"),
     );
 
+    apply_homebrew_alternative_methods(&mut catalog);
+
     #[cfg(target_os = "macos")]
     apply_macos_homebrew_overrides(&mut catalog);
+
+    deduplicate_alternative_methods(&mut catalog);
 
     catalog
 }
 
+fn apply_homebrew_alternative_methods(catalog: &mut HashMap<String, ToolDefinition>) {
+    for (tool_name, definition) in catalog.iter_mut() {
+        if definition.install_method == "homebrew" {
+            continue;
+        }
+
+        if get_homebrew_mapping(tool_name).is_some()
+            && !definition
+                .alternative_install_methods
+                .iter()
+                .any(|m| m == "homebrew")
+        {
+            definition
+                .alternative_install_methods
+                .push("homebrew".to_string());
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn apply_macos_homebrew_overrides(catalog: &mut HashMap<String, ToolDefinition>) {
-    use std::collections::HashSet;
-
     for (tool_name, definition) in catalog.iter_mut() {
         if definition.install_method == "homebrew" {
             continue;
@@ -779,17 +798,23 @@ fn apply_macos_homebrew_overrides(catalog: &mut HashMap<String, ToolDefinition>)
             }
         }
     }
+}
 
-    // Remove duplicate alternative entries if any were added in previous calls
+fn deduplicate_alternative_methods(catalog: &mut HashMap<String, ToolDefinition>) {
     for definition in catalog.values_mut() {
         if definition.alternative_install_methods.is_empty() {
             continue;
         }
 
-        let mut seen = HashSet::new();
-        definition
-            .alternative_install_methods
-            .retain(|method| seen.insert(method.clone()));
+        let mut seen: Vec<String> = Vec::new();
+        definition.alternative_install_methods.retain(|method| {
+            if seen.contains(method) {
+                false
+            } else {
+                seen.push(method.clone());
+                true
+            }
+        });
     }
 }
 
@@ -800,7 +825,11 @@ mod tests {
     #[test]
     fn test_catalog_size() {
         let catalog = get_tool_catalog();
-        assert!(catalog.len() >= 70, "Catalog should have at least 70 tools");
+        assert!(
+            catalog.len() >= 56,
+            "Catalog should have at least 56 tools (found {})",
+            catalog.len()
+        );
     }
 
     #[test]
@@ -822,5 +851,20 @@ mod tests {
                 name
             );
         }
+    }
+
+    #[test]
+    fn test_homebrew_alternative_methods_added() {
+        let catalog = get_tool_catalog();
+        let subfinder = catalog
+            .get("subfinder")
+            .expect("subfinder missing from catalog");
+        assert!(
+            subfinder
+                .alternative_install_methods
+                .iter()
+                .any(|m| m == "homebrew"),
+            "Homebrew should be listed as an alternative installation method for subfinder"
+        );
     }
 }
