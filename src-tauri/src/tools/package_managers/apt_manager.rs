@@ -1,7 +1,7 @@
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
 use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 

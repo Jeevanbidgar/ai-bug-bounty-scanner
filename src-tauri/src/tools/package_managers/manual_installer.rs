@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
@@ -722,7 +722,7 @@ impl ManualInstaller {
 
             InstallStep::ConfigureEnvironment {
                 var_name,
-                var_value,
+                var_value: _,
             } => {
                 // For PATH, this is informational only (requires restart)
                 Ok(StepResult {

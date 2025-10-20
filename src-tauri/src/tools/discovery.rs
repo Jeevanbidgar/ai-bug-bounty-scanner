@@ -1097,7 +1097,7 @@ impl ToolDiscoveryService {
     }
 
     async fn get_winget_paths(&self) -> Vec<PathBuf> {
-        let mut paths = vec![];
+        let paths = vec![];
 
         eprintln!("🔍 Getting WinGet-specific paths...");
 

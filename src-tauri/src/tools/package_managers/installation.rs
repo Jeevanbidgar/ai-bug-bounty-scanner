@@ -202,7 +202,7 @@ pub async fn install_apt_package(package_name: &str) -> Result<InstallationResul
             .await;
 
             match install_output {
-                Ok(output) => {
+                Ok(_output) => {
                     steps.last_mut().unwrap().success = true;
                     steps.last_mut().unwrap().output =
                         format!("✓ {} installed successfully", package_name);

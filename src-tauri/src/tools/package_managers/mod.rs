@@ -32,16 +32,12 @@ pub use gem_installer::GemInstaller;
 pub use git_pip_installer::GitPipInstaller;
 pub use go_install::GoInstallManager;
 pub use homebrew_manager::HomebrewManager;
-pub use homebrew_registry::{get_all_homebrew_tools, get_homebrew_mapping, HomebrewMapping};
-pub use installation::{
-    install_go_windows, install_pipx, install_winget_windows, InstallationResult,
-};
-pub use manual_installer::ManualInstaller;
+pub use homebrew_registry::get_homebrew_mapping;
+pub use installation::{install_pipx, InstallationResult};
 pub use npm_installer::NpmInstaller;
 pub use pipx_manager::PipxManager;
 pub use version_checker::{
-    check_apt_update, check_cargo_update, check_gem_update, check_go_update, check_npm_update,
-    check_pipx_update, check_winget_update, VersionCheckResult,
+    check_apt_update, check_go_update, check_pipx_update, VersionCheckResult,
 };
 pub use winget_manager::WingetManager;
 

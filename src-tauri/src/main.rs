@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 mod adapters;
 mod commands;

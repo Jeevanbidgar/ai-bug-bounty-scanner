@@ -96,6 +96,7 @@ pub async fn execute_elevated(
 
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
+        let _ = timeout_secs;
         Err("Elevation not supported on this platform".to_string())
     }
 }

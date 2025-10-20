@@ -3,7 +3,7 @@ use crate::tools::catalog::ToolDefinition;
 use anyhow::{anyhow, Context, Result};
 use std::path::PathBuf;
 use std::process::Stdio;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 

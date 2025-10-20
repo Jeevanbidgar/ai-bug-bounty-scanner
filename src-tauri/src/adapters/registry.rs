@@ -4,7 +4,6 @@
 // making it easy to build commands programmatically across the application.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 use super::{
     amass::{AmassAdapter, AmassConfig},

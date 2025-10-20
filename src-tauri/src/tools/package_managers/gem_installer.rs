@@ -1,10 +1,9 @@
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
 use crate::tools::catalog::ToolDefinition;
-use crate::tools::package_managers::elevation_helper::ElevationHelper;
 use crate::tools::package_managers::{detection::detect_manager, PackageManagerType};
 use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
