@@ -26,9 +26,10 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
 }) => {
   const [managers, setManagers] = useState<PackageManagerInfo[]>([])
   const [loading, setLoading] = useState(true)
-  const [installing, setInstalling] = useState<string | null>(null)
+  const [installing, setInstalling] = useState<PackageManagerInfo['manager_type'] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isExpanded, setIsExpanded] = useState(false)
+  const [checkingManager, setCheckingManager] = useState<PackageManagerInfo['manager_type'] | null>(null)
   const { success, error: showError, info } = useToast()
 
   const loadPackageManagers = async () => {
@@ -63,13 +64,15 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
     }
   }
 
-  const installManager = async (managerName: string) => {
-    setInstalling(managerName)
+  const installManager = async (manager: PackageManagerInfo) => {
+    const managerType = manager.manager_type
+    const managerName = getManagerName(manager)
+    setInstalling(managerType)
     
     try {
       let result
       
-      switch (managerName.toLowerCase()) {
+      switch (managerType) {
         case 'go':
           result = await apiService.installPackageManagerGo()
           break
@@ -96,10 +99,45 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
       } else {
         throw new Error(result.message)
       }
-    } catch (err: any) {
-      showError(err.message || `Failed to install ${managerName}`)
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : `Failed to install ${managerName}`)
     } finally {
       setInstalling(null)
+    }
+  }
+
+  const recheckManager = async (manager: PackageManagerInfo) => {
+    const managerType = manager.manager_type
+    const managerName = getManagerName(manager)
+
+    if (!(managerType === 'go' || managerType === 'pipx' || managerType === 'apt' || managerType === 'winget')) {
+      return
+    }
+
+    setCheckingManager(managerType)
+
+    try {
+      const updated = await apiService.checkPackageManager(managerType)
+
+      setManagers(prev => prev.map(existing =>
+        existing.manager_type === updated.manager_type ? updated : existing
+      ))
+
+      if (updated.available) {
+        if (!manager.available) {
+          success(`${managerName} is now available`)
+          onInstallComplete?.()
+        } else {
+          success(`${managerName} is available`)
+        }
+      } else {
+        info(`${managerName} is still unavailable`)
+      }
+    } catch (err) {
+      console.error('Error rechecking package manager:', err)
+      showError(`Failed to recheck ${managerName}`)
+    } finally {
+      setCheckingManager(null)
     }
   }
 
@@ -120,24 +158,27 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
     )
   }
 
-  const getIcon = (managerName: string) => {
-    const name = managerName.toLowerCase()
-    if (name.includes('go')) {
-      return <Terminal className="h-5 w-5" />
+  const getIcon = (manager: PackageManagerInfo) => {
+    switch (manager.manager_type) {
+      case 'go':
+        return <Terminal className="h-5 w-5 text-emerald-500" />
+      case 'pipx':
+        return <Terminal className="h-5 w-5 text-sky-500" />
+      case 'apt':
+        return <Package className="h-5 w-5 text-blue-500" />
+      case 'winget':
+        return <Package className="h-5 w-5 text-indigo-400" />
+      case 'cargo':
+        return <Package className="h-5 w-5 text-orange-500" />
+      case 'npm':
+        return <Package className="h-5 w-5 text-red-500" />
+      case 'gem':
+        return <Package className="h-5 w-5 text-rose-500" />
+      case 'homebrew':
+        return <Package className="h-5 w-5 text-amber-500" />
+      default:
+        return <Package className="h-5 w-5" />
     }
-    if (name.includes('cargo') || name.includes('rust')) {
-      return <Package className="h-5 w-5 text-orange-500" />
-    }
-    if (name.includes('npm') || name.includes('node')) {
-      return <Package className="h-5 w-5 text-red-500" />
-    }
-    if (name.includes('gem') || name.includes('ruby')) {
-      return <Package className="h-5 w-5 text-red-600" />
-    }
-    if (name.includes('homebrew')) {
-      return <Package className="h-5 w-5 text-orange-500" />
-    }
-    return <Package className="h-5 w-5" />
   }
 
   if (loading) {
@@ -204,18 +245,21 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
       </CardHeader>
       
       {isExpanded && (
-        <CardContent className="space-y-4">\n          {/* Available Managers */}
+        <CardContent className="space-y-4">
+          {/* Available Managers */}
           <div className="space-y-2">
             {managers.filter(m => m.available).map((manager) => {
               const name = getManagerName(manager)
+              const canRecheck = manager.manager_type === 'go' || manager.manager_type === 'pipx' || manager.manager_type === 'apt' || manager.manager_type === 'winget'
+
               return (
                 <div
-                  key={name}
+                  key={manager.manager_type}
                   className="flex items-center justify-between p-3 border rounded-lg bg-background"
                 >
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-md bg-primary/10 text-primary">
-                      {getIcon(name)}
+                      {getIcon(manager)}
                     </div>
                     <div>
                       <div className="font-medium">{name}</div>
@@ -231,6 +275,26 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
                   </div>
                   <div className="flex items-center gap-2">
                     {getStatusBadge(manager)}
+                    {canRecheck && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => recheckManager(manager)}
+                        disabled={checkingManager === manager.manager_type}
+                      >
+                        {checkingManager === manager.manager_type ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            Checking
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-1" />
+                            Recheck
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </div>
               )
@@ -245,32 +309,60 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
               </h4>
               {unavailableManagers.map((manager) => {
                 const name = getManagerName(manager)
-                const isInstalling = installing === name
-                const canInstall = ['Go', 'Pipx', 'WinGet'].includes(name)
+                const isInstalling = installing === manager.manager_type
+                const canInstall = manager.manager_type === 'go' || manager.manager_type === 'pipx' || manager.manager_type === 'winget'
+                const canRecheck = manager.manager_type === 'go' || manager.manager_type === 'pipx' || manager.manager_type === 'apt' || manager.manager_type === 'winget'
 
                 return (
                   <div
-                    key={name}
+                    key={manager.manager_type}
                     className="flex items-center justify-between p-3 border rounded-lg bg-muted/50"
                   >
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-md bg-muted text-muted-foreground">
-                        {getIcon(name)}
+                        {getIcon(manager)}
                       </div>
                       <div>
                         <div className="font-medium">{name}</div>
                         <div className="text-sm text-muted-foreground">
                           {manager.error || 'Not found on system'}
                         </div>
+                        {manager.error && (
+                          <div className="mt-2 rounded-md border border-red-900/40 bg-red-950/40 p-2">
+                            <p className="text-xs leading-relaxed text-red-200 whitespace-pre-wrap">
+                              {manager.error}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       {getStatusBadge(manager)}
+                      {canRecheck && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => recheckManager(manager)}
+                          disabled={checkingManager === manager.manager_type}
+                        >
+                          {checkingManager === manager.manager_type ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Checking...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Recheck
+                            </>
+                          )}
+                        </Button>
+                      )}
                       {canInstall && (
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => installManager(name)}
+                          onClick={() => installManager(manager)}
                           disabled={isInstalling}
                         >
                           {isInstalling ? (

@@ -24,6 +24,7 @@ impl CargoInstaller {
         }
     }
 
+    #[allow(dead_code)]
     fn get_cargo_path(&self) -> PathBuf {
         if cfg!(windows) {
             let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());

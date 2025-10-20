@@ -43,6 +43,7 @@ impl PipxManager {
     ///
     /// # Returns
     /// * `InstallationResult` with success status and message
+    #[allow(dead_code)]
     pub async fn install(
         &self,
         package_name: &str,
@@ -54,6 +55,7 @@ impl PipxManager {
     }
 
     /// Single installation attempt (internal method)
+    #[allow(dead_code)]
     async fn install_attempt(
         &self,
         package_name: &str,

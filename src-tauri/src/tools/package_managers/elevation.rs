@@ -17,6 +17,7 @@ pub enum ElevationMethod {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ElevationRequest {
     pub command: String,
     pub args: Vec<String>,

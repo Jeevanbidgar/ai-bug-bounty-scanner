@@ -430,7 +430,10 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     }
   }
 
-  const canInstall = installationInfo && ['go', 'pipx', 'git-pip', 'apt', 'cargo', 'gem', 'homebrew', 'manual'].includes(installationInfo.install_method)
+  const autoInstallMethods = ['go', 'pipx', 'git-pip', 'apt', 'cargo', 'gem', 'homebrew', 'npm', 'winget']
+  const canInstall = installationInfo ? autoInstallMethods.includes(installationInfo.install_method) : false
+  const requiresManualInstall = installationInfo ? installationInfo.install_method === 'manual' : false
+  const installCommands = osInfo ? getInstallCommands(tool.name, osInfo.platform) : []
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -532,9 +535,10 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                       }>
                         {installationInfo.install_method}
                       </Badge>
-                      {canInstall ? (
+                      {canInstall && (
                         <span className="text-xs text-green-400">• One-click install available</span>
-                      ) : (
+                      )}
+                      {!canInstall && requiresManualInstall && (
                         <span className="text-xs text-gray-400">• Manual installation required</span>
                       )}
                     </div>
@@ -606,9 +610,9 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {getInstallCommands(tool.name, osInfo.platform).length > 0 ? (
+                {installCommands.length > 0 ? (
                   <div className="space-y-3">
-                    {getInstallCommands(tool.name, osInfo.platform).map((installMethod, index) => (
+                    {installCommands.map((installMethod, index) => (
                       <div key={index} className="bg-gray-800 rounded-lg p-4 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium text-gray-300">{installMethod.name}:</span>
@@ -650,6 +654,27 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                     <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 mt-4">
                       <p className="text-sm text-blue-300">
                         <strong>💡 Tip:</strong> After installing {tool.name}, click the "Recheck Status" button below to verify the installation.
+                      </p>
+                    </div>
+                  </div>
+                ) : canInstall ? (
+                  <div className="bg-green-900/20 border border-green-700 rounded-lg p-4 space-y-3">
+                    <p className="text-sm text-green-300 font-medium flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4" />
+                      Install directly from this app
+                    </p>
+                    <p className="text-sm text-green-100">
+                      Use the <strong>Install {tool.name}</strong> button below to perform an automated installation via
+                      {installationInfo?.install_method ? ` ${installationInfo.install_method}` : ' the recommended method'}.
+                    </p>
+                    {tool.alternative_install_methods && tool.alternative_install_methods.length > 0 && (
+                      <p className="text-xs text-green-200">
+                        Alternate methods supported: {tool.alternative_install_methods.join(', ')}
+                      </p>
+                    )}
+                    <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
+                      <p className="text-sm text-blue-200">
+                        After installation completes, click <strong>Recheck Status</strong> to confirm the tool is available.
                       </p>
                     </div>
                   </div>

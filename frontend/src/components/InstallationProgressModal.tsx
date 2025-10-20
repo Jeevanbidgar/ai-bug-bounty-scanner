@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { X, Terminal, Check, AlertCircle, Loader2, Minimize2, Maximize2 } from 'lucide-react';
+import { Badge } from './ui/Badge';
+import apiService from '../services/api';
 
 interface InstallationProgressModalProps {
   isOpen: boolean;
@@ -14,6 +16,49 @@ interface OutputLine {
   timestamp: string;
 }
 
+interface InstallationInfo {
+  name: string;
+  install_method: string;
+  go_module: string | null;
+  pipx_package: string | null;
+  apt_package: string | null;
+  winget_id: string | null;
+  description: string;
+  category: string;
+}
+
+const INSTALL_METHOD_META: Record<string, { label: string; badgeClass: string; helperText?: string }> = {
+  go: { label: 'Go Install', badgeClass: 'bg-emerald-700 text-emerald-100', helperText: 'Builds from source using go install' },
+  'git-pip': { label: 'Git + Pip', badgeClass: 'bg-yellow-700 text-yellow-100', helperText: 'Clones repository and installs via pip' },
+  pipx: { label: 'pipx', badgeClass: 'bg-sky-700 text-sky-100', helperText: 'Isolated Python environment via pipx' },
+  apt: { label: 'APT', badgeClass: 'bg-blue-700 text-blue-100', helperText: 'Installs via Debian/Ubuntu package manager' },
+  winget: { label: 'WinGet', badgeClass: 'bg-indigo-700 text-indigo-100', helperText: 'Installs via Windows package manager' },
+  cargo: { label: 'Cargo', badgeClass: 'bg-orange-700 text-orange-100', helperText: 'Rust crate installation' },
+  gem: { label: 'Ruby Gem', badgeClass: 'bg-rose-700 text-rose-100', helperText: 'Installs via gem' },
+  npm: { label: 'npm', badgeClass: 'bg-red-700 text-red-100', helperText: 'Installs via Node package manager' },
+  homebrew: { label: 'Homebrew', badgeClass: 'bg-amber-700 text-amber-100', helperText: 'Installs via brew' },
+  manual: { label: 'Manual', badgeClass: 'bg-gray-700 text-gray-100', helperText: 'Manual steps required after install' },
+  runtime: { label: 'Runtime', badgeClass: 'bg-slate-700 text-slate-100', helperText: 'Provided by runtime environment' },
+};
+
+const AUTO_INSTALL_METHODS = new Set(['go', 'git-pip', 'pipx', 'apt', 'winget', 'cargo', 'gem', 'npm', 'homebrew']);
+
+const getMethodDetail = (info: InstallationInfo | null): string | null => {
+  if (!info) return null;
+  switch (info.install_method) {
+    case 'go':
+      return info.go_module ? `Module: ${info.go_module}` : null;
+    case 'pipx':
+      return info.pipx_package ? `Package: ${info.pipx_package}` : null;
+    case 'apt':
+      return info.apt_package ? `Package: ${info.apt_package}` : null;
+    case 'winget':
+      return info.winget_id ? `ID: ${info.winget_id}` : null;
+    default:
+      return null;
+  }
+};
+
 export const InstallationProgressModal: React.FC<InstallationProgressModalProps> = ({
   isOpen,
   toolName,
@@ -24,8 +69,37 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
   const [finalMessage, setFinalMessage] = useState<string>('');
   const [isMinimized, setIsMinimized] = useState(false);
   const outputEndRef = useRef<HTMLDivElement>(null);
-  const [currentEventId, setCurrentEventId] = useState<string | null>(null);
   const [allowForceClose, setAllowForceClose] = useState(false);
+  const [installationInfo, setInstallationInfo] = useState<InstallationInfo | null>(null);
+
+  const methodMeta = installationInfo ? INSTALL_METHOD_META[installationInfo.install_method] : undefined;
+  const methodLabel = methodMeta?.label ?? installationInfo?.install_method ?? 'Unknown';
+  const methodDetailText = getMethodDetail(installationInfo);
+  const isAutomatedInstall = installationInfo ? AUTO_INSTALL_METHODS.has(installationInfo.install_method) : false;
+
+  useEffect(() => {
+    if (!isOpen) {
+      setInstallationInfo(null);
+      return;
+    }
+
+    let active = true;
+    (async () => {
+      try {
+        const info = await apiService.getToolInstallationInfo(toolName);
+        if (!active) return;
+        setInstallationInfo(info);
+      } catch (error) {
+        console.error('Failed to load installation info:', error);
+        if (!active) return;
+        setInstallationInfo(null);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, toolName]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -34,7 +108,6 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
     setStatus('installing');
     setOutputLines([]);
     setFinalMessage('');
-    setCurrentEventId(null);
     setAllowForceClose(false);
 
     // Add timeout to allow force close after 5 minutes
@@ -171,6 +244,11 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
             <h2 className="text-lg font-semibold text-white">
               Installing {toolName}
             </h2>
+            {installationInfo && (
+              <Badge className={`${methodMeta?.badgeClass ?? 'bg-gray-700 text-gray-100'} text-xs px-2 py-0.5`}>
+                {methodLabel}
+              </Badge>
+            )}
             {status === 'installing' && (
               <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
             )}
@@ -244,7 +322,20 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-700 flex items-center justify-between">
-          <div className="text-sm text-gray-400">
+          <div className="flex flex-col gap-2 text-sm text-gray-400">
+            {installationInfo && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                <span className="font-medium text-gray-300">Method:</span>
+                <span>{methodLabel}</span>
+                {methodDetailText && <span className="text-gray-500">({methodDetailText})</span>}
+                {methodMeta?.helperText && (
+                  <span className="text-gray-500">{methodMeta.helperText}</span>
+                )}
+                {!isAutomatedInstall && (
+                  <span className="text-yellow-400">Manual follow-up steps required</span>
+                )}
+              </div>
+            )}
             {status === 'installing' && (
               <div className="flex flex-col gap-1">
                 <span className="flex items-center gap-2">

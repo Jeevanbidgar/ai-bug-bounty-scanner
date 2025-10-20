@@ -139,6 +139,7 @@ pub struct WorkflowArtifact {
 
 impl WorkflowArtifact {
     /// Get the path (alias for file_path for backwards compatibility)
+    #[allow(dead_code)]
     pub fn path(&self) -> String {
         self.file_path.clone().unwrap_or_default()
     }

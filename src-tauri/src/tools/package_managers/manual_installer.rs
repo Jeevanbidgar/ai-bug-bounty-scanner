@@ -10,9 +10,11 @@ use crate::events::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ManualInstaller;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct InstallationResult {
     pub success: bool,
     pub message: String,
@@ -21,6 +23,7 @@ pub struct InstallationResult {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum InstallStep {
     GitClone { url: String, target_dir: String },
     ChangeDirectory { path: String },
@@ -35,12 +38,14 @@ pub enum InstallStep {
 
 // Result structure for individual step execution
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct StepResult {
     message: String,
     new_working_dir: Option<PathBuf>,
     installed_path: Option<String>,
 }
 
+#[allow(dead_code)]
 impl ManualInstaller {
     pub fn new() -> Self {
         Self

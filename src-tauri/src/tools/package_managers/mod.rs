@@ -84,6 +84,7 @@ impl PackageManagerType {
     }
 
     /// Get the command name for the package manager
+    #[allow(dead_code)]
     pub fn command_name(&self) -> &'static str {
         match self {
             Self::Go => "go",
@@ -98,6 +99,7 @@ impl PackageManagerType {
     }
 
     /// Get the color badge for UI display
+    #[allow(dead_code)]
     pub fn badge_color(&self) -> &'static str {
         match self {
             Self::Go => "green",        // 🟢 Primary method

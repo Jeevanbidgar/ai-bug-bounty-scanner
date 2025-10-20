@@ -27,6 +27,7 @@ impl WingetManager {
     }
 
     /// Check if winget is available (Windows only)
+    #[allow(dead_code)]
     async fn is_winget_available(&self) -> bool {
         if !cfg!(target_os = "windows") {
             return false;

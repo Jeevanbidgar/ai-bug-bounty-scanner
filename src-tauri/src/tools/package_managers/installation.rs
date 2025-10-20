@@ -94,6 +94,7 @@ pub async fn install_pipx() -> Result<InstallationResult, String> {
 }
 
 /// Install Go from official site (user can download, or use winget if available)
+#[allow(dead_code)]
 pub async fn install_go_windows() -> Result<InstallationResult, String> {
     let mut steps = Vec::new();
 
@@ -165,6 +166,7 @@ pub async fn install_go_windows() -> Result<InstallationResult, String> {
 }
 
 /// Install APT package (requires sudo on Linux)
+#[allow(dead_code)]
 pub async fn install_apt_package(package_name: &str) -> Result<InstallationResult, String> {
     let mut steps = Vec::new();
 
@@ -241,6 +243,7 @@ pub async fn install_apt_package(package_name: &str) -> Result<InstallationResul
 }
 
 /// Open Microsoft Store to App Installer page
+#[allow(dead_code)]
 pub async fn install_winget_windows() -> Result<InstallationResult, String> {
     let mut steps = Vec::new();
 

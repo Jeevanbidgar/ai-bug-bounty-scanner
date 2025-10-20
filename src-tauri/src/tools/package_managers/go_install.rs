@@ -7,7 +7,7 @@ use tokio::process::Command;
 use uuid::Uuid;
 
 pub struct GoInstallManager {
-    go_path: Option<PathBuf>,
+    _go_path: Option<PathBuf>,
     go_bin_path: Option<PathBuf>,
     app_handle: tauri::AppHandle,
 }
@@ -24,7 +24,7 @@ impl GoInstallManager {
     /// Create a new GoInstallManager instance
     pub fn new(app_handle: tauri::AppHandle) -> Self {
         Self {
-            go_path: Self::detect_gopath(),
+            _go_path: Self::detect_gopath(),
             go_bin_path: Self::detect_go_bin_path(),
             app_handle,
         }
@@ -73,6 +73,7 @@ impl GoInstallManager {
     }
 
     /// Get the GOPATH/bin directory as a string
+    #[allow(dead_code)]
     pub fn get_go_bin_path(&self) -> Option<String> {
         self.go_bin_path
             .as_ref()
@@ -447,6 +448,7 @@ impl GoInstallManager {
     ///
     /// # Returns
     /// * Vector of tool names found in GOPATH/bin
+    #[allow(dead_code)]
     pub async fn list_installed_tools(&self) -> Vec<String> {
         let mut tools = Vec::new();
 
@@ -480,6 +482,7 @@ impl GoInstallManager {
     ///
     /// # Returns
     /// * Vector of InstallationResult for each tool
+    #[allow(dead_code)]
     pub async fn install_batch(&self, tools: Vec<(&str, &str)>) -> Vec<InstallationResult> {
         let mut results = Vec::new();
 
@@ -517,7 +520,7 @@ mod tests {
     async fn test_go_install_manager_creation() {
         // Skip this test for now as it requires AppHandle setup
         // let manager = GoInstallManager::new(mock_app_handle());
-        // assert!(manager.go_path.is_some() || manager.go_bin_path.is_some());
+        // assert!(manager._go_path.is_some() || manager.go_bin_path.is_some());
     }
 
     #[tokio::test]

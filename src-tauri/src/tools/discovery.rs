@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use super::catalog::{get_tool_catalog, ToolDefinition as CatalogToolDefinition};
 use crate::tools::registry::ToolRegistry;
 use crate::workflow::types::WorkflowTemplate;

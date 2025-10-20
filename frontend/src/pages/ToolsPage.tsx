@@ -245,6 +245,22 @@ const ToolsPage = () => {
     return Array.from(new Set((tools?.data || []).map(tool => tool.category)))
   }, [tools?.data])
 
+  const installationMethodMeta: Record<string, { label: string; badgeClass: string; helperText?: string }> = {
+    go: { label: 'Go Install', badgeClass: 'bg-emerald-700 text-emerald-100', helperText: 'go install automation available' },
+    'git-pip': { label: 'Git + Pip', badgeClass: 'bg-yellow-700 text-yellow-100', helperText: 'clones repo then pip install' },
+    pipx: { label: 'pipx', badgeClass: 'bg-sky-700 text-sky-100', helperText: 'isolated pipx environment' },
+    apt: { label: 'APT', badgeClass: 'bg-blue-700 text-blue-100', helperText: 'Requires sudo on Linux' },
+    winget: { label: 'WinGet', badgeClass: 'bg-indigo-700 text-indigo-100', helperText: 'Windows package manager' },
+    cargo: { label: 'Cargo', badgeClass: 'bg-orange-700 text-orange-100', helperText: 'Rust package manager' },
+    gem: { label: 'Ruby Gem', badgeClass: 'bg-rose-700 text-rose-100', helperText: 'Ruby gem install' },
+    npm: { label: 'npm', badgeClass: 'bg-red-700 text-red-100', helperText: 'Node package manager' },
+    homebrew: { label: 'Homebrew', badgeClass: 'bg-amber-700 text-amber-100', helperText: 'macOS/Linux package manager' },
+    manual: { label: 'Manual', badgeClass: 'bg-gray-700 text-gray-100', helperText: 'No automation available yet' },
+    runtime: { label: 'Runtime', badgeClass: 'bg-slate-700 text-slate-100', helperText: 'Built-in runtime tool' },
+  }
+
+  const autoInstallMethods = ['go', 'git-pip', 'pipx', 'apt', 'winget', 'cargo', 'gem', 'npm', 'homebrew']
+
   // Initial discovery loading state with overlay
   if (isInitialDiscovery || (isLoading && !tools)) {
     return (
@@ -604,6 +620,8 @@ const ToolsPage = () => {
           ))
         ) : (
           filteredTools.map((tool: Tool) => {
+            const installMeta = tool.install_method ? installationMethodMeta[tool.install_method] : undefined
+            const hasAutoInstall = tool.install_method ? autoInstallMethods.includes(tool.install_method) : false
             return (
               <div
                 key={tool.name}
@@ -661,6 +679,32 @@ const ToolsPage = () => {
                         </span>
                       </div>
                     </div>
+
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-400">Install Method:</span>
+                      <div className="flex items-center gap-2">
+                        {installMeta ? (
+                          <Badge className={`${installMeta.badgeClass} capitalize`}>
+                            {installMeta.label}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-gray-300 border-gray-600">
+                            Unknown
+                          </Badge>
+                        )}
+                        {hasAutoInstall ? (
+                          <span className="text-xs text-green-400">One-click</span>
+                        ) : (
+                          <span className="text-xs text-gray-500">Manual</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {installMeta?.helperText && (
+                      <div className="text-xs text-gray-500 text-right">
+                        {installMeta.helperText}
+                      </div>
+                    )}
 
                     {tool.last_checked && (
                       <div className="flex items-center justify-between text-sm">

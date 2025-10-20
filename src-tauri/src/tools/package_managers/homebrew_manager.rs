@@ -10,10 +10,13 @@ use regex::Regex;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::ErrorKind;
+use std::process::{ExitStatus, Output};
 use tauri::{AppHandle, Emitter};
 use tokio::process::Command as TokioCommand;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct InstallationStatus {
     pub installed: bool,
     pub version: Option<String>,
@@ -23,7 +26,7 @@ pub struct InstallationStatus {
 
 #[derive(Debug, Clone)]
 pub struct HomebrewManager {
-    registry: &'static HashMap<
+    _registry: &'static HashMap<
         &'static str,
         crate::tools::package_managers::homebrew_registry::HomebrewMapping,
     >,
@@ -32,7 +35,7 @@ pub struct HomebrewManager {
 impl HomebrewManager {
     pub fn new() -> Self {
         Self {
-            registry: &crate::tools::package_managers::homebrew_registry::HOMEBREW_REGISTRY,
+            _registry: &crate::tools::package_managers::homebrew_registry::HOMEBREW_REGISTRY,
         }
     }
 
@@ -41,37 +44,43 @@ impl HomebrewManager {
         let mapping = get_homebrew_mapping(tool_name)
             .ok_or_else(|| anyhow!("No Homebrew mapping for tool: {}", tool_name))?;
 
-        let (mut cmd, package) = if let Some(cask) = &mapping.brew_cask {
-            (TokioCommand::new("brew"), cask.clone())
-        } else if let Some(formula) = &mapping.brew_formula {
-            (TokioCommand::new("brew"), formula.clone())
-        } else {
-            return Err(anyhow!("No formula or cask defined for {}", tool_name));
-        };
-
-        // Add arguments based on type
-        if mapping.brew_cask.is_some() {
-            cmd.args(["install", "--cask", &package]);
-        } else {
-            cmd.args(["install", &package]);
-        }
+        let (package, brew_args_owned): (String, Vec<String>) =
+            if let Some(cask) = &mapping.brew_cask {
+                let package = cask.clone();
+                let args = vec!["install".to_string(), "--cask".to_string(), package.clone()];
+                (package, args)
+            } else if let Some(formula) = &mapping.brew_formula {
+                let package = formula.clone();
+                let args = vec!["install".to_string(), package.clone()];
+                (package, args)
+            } else {
+                return Err(anyhow!("No formula or cask defined for {}", tool_name));
+            };
 
         // Emit installation start event
         app_handle.emit(
             "installation:started",
             serde_json::json!({
                 "tool": tool_name,
-                "package": package,
+                "package": package.clone(),
                 "manager": "homebrew"
             }),
         )?;
 
-        // Execute installation
-        let output = cmd.output().await?;
+        ensure_brew_available().await?;
+
+        let brew_args = arg_refs(&brew_args_owned);
+        let command_label = brew_command_label(&brew_args);
+        let output = run_brew_command(&brew_args).await?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("Homebrew installation failed: {}", stderr));
+            let diagnostic = brew_diagnostic(&output);
+            return Err(anyhow!(
+                "Homebrew failed to install {} using '{}': {}",
+                tool_name,
+                command_label,
+                diagnostic
+            ));
         }
 
         // Verify minimum version if specified
@@ -87,38 +96,44 @@ impl HomebrewManager {
         let mapping = get_homebrew_mapping(tool_name)
             .ok_or_else(|| anyhow!("No Homebrew mapping for tool: {}", tool_name))?;
 
-        let (mut cmd, package) = if let Some(cask) = &mapping.brew_cask {
-            (TokioCommand::new("brew"), cask.clone())
-        } else if let Some(formula) = &mapping.brew_formula {
-            (TokioCommand::new("brew"), formula.clone())
-        } else {
-            return Err(anyhow!("No formula or cask defined for {}", tool_name));
-        };
-
-        // Add arguments based on type
-        if mapping.brew_cask.is_some() {
-            cmd.args(["upgrade", "--cask", &package]);
-        } else {
-            cmd.args(["upgrade", &package]);
-        }
+        let (package, brew_args_owned): (String, Vec<String>) =
+            if let Some(cask) = &mapping.brew_cask {
+                let package = cask.clone();
+                let args = vec!["upgrade".to_string(), "--cask".to_string(), package.clone()];
+                (package, args)
+            } else if let Some(formula) = &mapping.brew_formula {
+                let package = formula.clone();
+                let args = vec!["upgrade".to_string(), package.clone()];
+                (package, args)
+            } else {
+                return Err(anyhow!("No formula or cask defined for {}", tool_name));
+            };
 
         // Emit upgrade start event
         app_handle.emit(
             "installation:started",
             serde_json::json!({
                 "tool": tool_name,
-                "package": package,
+                "package": package.clone(),
                 "manager": "homebrew",
                 "action": "upgrade"
             }),
         )?;
 
-        // Execute upgrade
-        let output = cmd.output().await?;
+        ensure_brew_available().await?;
+
+        let brew_args = arg_refs(&brew_args_owned);
+        let command_label = brew_command_label(&brew_args);
+        let output = run_brew_command(&brew_args).await?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("Homebrew upgrade failed: {}", stderr));
+            let diagnostic = brew_diagnostic(&output);
+            return Err(anyhow!(
+                "Homebrew failed to upgrade {} using '{}': {}",
+                tool_name,
+                command_label,
+                diagnostic
+            ));
         }
 
         Ok(())
@@ -129,38 +144,48 @@ impl HomebrewManager {
         let mapping = get_homebrew_mapping(tool_name)
             .ok_or_else(|| anyhow!("No Homebrew mapping for tool: {}", tool_name))?;
 
-        let (mut cmd, package) = if let Some(cask) = &mapping.brew_cask {
-            (TokioCommand::new("brew"), cask.clone())
-        } else if let Some(formula) = &mapping.brew_formula {
-            (TokioCommand::new("brew"), formula.clone())
-        } else {
-            return Err(anyhow!("No formula or cask defined for {}", tool_name));
-        };
-
-        // Add arguments based on type
-        if mapping.brew_cask.is_some() {
-            cmd.args(["uninstall", "--cask", &package]);
-        } else {
-            cmd.args(["uninstall", &package]);
-        }
+        let (package, brew_args_owned): (String, Vec<String>) =
+            if let Some(cask) = &mapping.brew_cask {
+                let package = cask.clone();
+                let args = vec![
+                    "uninstall".to_string(),
+                    "--cask".to_string(),
+                    package.clone(),
+                ];
+                (package, args)
+            } else if let Some(formula) = &mapping.brew_formula {
+                let package = formula.clone();
+                let args = vec!["uninstall".to_string(), package.clone()];
+                (package, args)
+            } else {
+                return Err(anyhow!("No formula or cask defined for {}", tool_name));
+            };
 
         // Emit uninstall start event
         app_handle.emit(
             "installation:started",
             serde_json::json!({
                 "tool": tool_name,
-                "package": package,
+                "package": package.clone(),
                 "manager": "homebrew",
                 "action": "uninstall"
             }),
         )?;
 
-        // Execute uninstall
-        let output = cmd.output().await?;
+        ensure_brew_available().await?;
+
+        let brew_args = arg_refs(&brew_args_owned);
+        let command_label = brew_command_label(&brew_args);
+        let output = run_brew_command(&brew_args).await?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("Homebrew uninstall failed: {}", stderr));
+            let diagnostic = brew_diagnostic(&output);
+            return Err(anyhow!(
+                "Homebrew failed to uninstall {} using '{}': {}",
+                tool_name,
+                command_label,
+                diagnostic
+            ));
         }
 
         Ok(())
@@ -205,34 +230,34 @@ impl HomebrewManager {
             .ok_or_else(|| anyhow!("No Homebrew mapping for tool: {}", tool_name))?;
 
         if let Some(formula) = &mapping.brew_formula {
-            let output = TokioCommand::new("brew")
-                .args(["outdated", formula])
-                .output()
-                .await?;
+            let args = ["outdated", formula.as_str()];
+            let command_label = brew_command_label(&args);
+            let output = run_brew_command(&args).await?;
 
             if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
+                let diagnostic = brew_diagnostic(&output);
                 return Err(anyhow!(
-                    "Homebrew outdated command failed for {}: {}",
+                    "Homebrew outdated command '{}' failed for {}: {}",
+                    command_label,
                     formula,
-                    stderr.trim()
+                    diagnostic
                 ));
             }
 
             let stdout = String::from_utf8_lossy(&output.stdout);
             Ok(parse_outdated_output(&stdout))
         } else if let Some(cask) = &mapping.brew_cask {
-            let output = TokioCommand::new("brew")
-                .args(["outdated", "--cask", cask])
-                .output()
-                .await?;
+            let args = ["outdated", "--cask", cask.as_str()];
+            let command_label = brew_command_label(&args);
+            let output = run_brew_command(&args).await?;
 
             if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
+                let diagnostic = brew_diagnostic(&output);
                 return Err(anyhow!(
-                    "Homebrew outdated command failed for cask {}: {}",
+                    "Homebrew outdated command '{}' failed for cask {}: {}",
+                    command_label,
                     cask,
-                    stderr.trim()
+                    diagnostic
                 ));
             }
 
@@ -242,6 +267,68 @@ impl HomebrewManager {
             Ok(None)
         }
     }
+}
+
+fn brew_command_label(args: &[&str]) -> String {
+    if args.is_empty() {
+        "brew".to_string()
+    } else {
+        format!("brew {}", args.join(" "))
+    }
+}
+
+fn decode_brew_output(bytes: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(bytes).trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+fn brew_diagnostic(output: &Output) -> String {
+    decode_brew_output(&output.stderr)
+        .or_else(|| decode_brew_output(&output.stdout))
+        .unwrap_or_else(|| "No diagnostic output captured from Homebrew".to_string())
+}
+
+fn arg_refs(args: &[String]) -> Vec<&str> {
+    args.iter().map(|s| s.as_str()).collect()
+}
+
+fn describe_exit_status(status: ExitStatus) -> String {
+    status
+        .code()
+        .map(|c| format!("exit code {}", c))
+        .unwrap_or_else(|| "terminated by signal".to_string())
+}
+
+async fn run_brew_command(args: &[&str]) -> Result<Output> {
+    let mut command = TokioCommand::new("brew");
+    command.args(args);
+
+    command.output().await.map_err(|err| match err.kind() {
+        ErrorKind::NotFound => anyhow!(
+            "Homebrew is not installed or not on PATH. Install it from https://brew.sh and restart the app."
+        ),
+        _ => anyhow!(
+            "Failed to execute '{}': {}",
+            brew_command_label(args),
+            err
+        ),
+    })
+}
+
+async fn ensure_brew_available() -> Result<()> {
+    let output = run_brew_command(&["--version"]).await?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let diagnostic = brew_diagnostic(&output);
+    let status_desc = describe_exit_status(output.status);
+    Err(anyhow!("'brew --version' {}: {}", status_desc, diagnostic))
 }
 
 /// Simple version extraction from command output
@@ -267,12 +354,21 @@ pub async fn is_installed(tool_name: &str) -> bool {
     // Then verify via Homebrew (authoritative check)
     if let Some(mapping) = get_homebrew_mapping(tool_name) {
         if let Some(formula) = &mapping.brew_formula {
-            let output = TokioCommand::new("brew")
-                .args(["ls", "--versions", formula])
-                .output()
-                .await;
+            let args = ["ls", "--versions", formula.as_str()];
+            if let Ok(output) = run_brew_command(&args).await {
+                if output.status.success() {
+                    return true;
+                }
+            }
+        }
 
-            return output.map(|o| o.status.success()).unwrap_or(false);
+        if let Some(cask) = &mapping.brew_cask {
+            let args = ["list", "--cask", "--versions", cask.as_str()];
+            if let Ok(output) = run_brew_command(&args).await {
+                if output.status.success() {
+                    return true;
+                }
+            }
         }
     }
 
@@ -280,6 +376,7 @@ pub async fn is_installed(tool_name: &str) -> bool {
 }
 
 /// Check if tool needs update
+#[allow(dead_code)]
 pub async fn needs_update(tool_name: &str) -> bool {
     // First check if tool is installed
     if !is_installed(tool_name).await {
@@ -310,11 +407,29 @@ pub async fn get_version(tool_name: &str) -> Option<String> {
     // Fallback: use Homebrew metadata if direct command fails
     if let Some(mapping) = get_homebrew_mapping(tool_name) {
         if let Some(formula) = &mapping.brew_formula {
-            if let Ok(output) = TokioCommand::new("brew")
-                .args(["list", "--versions", formula])
-                .output()
-                .await
-            {
+            let args = ["list", "--versions", formula.as_str()];
+            if let Ok(output) = run_brew_command(&args).await {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    if let Some(version) = stdout
+                        .split_whitespace()
+                        .skip(1)
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .last()
+                        .map(|s| s.to_string())
+                    {
+                        if !version.is_empty() {
+                            return Some(version);
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(cask) = &mapping.brew_cask {
+            let args = ["list", "--cask", "--versions", cask.as_str()];
+            if let Ok(output) = run_brew_command(&args).await {
                 if output.status.success() {
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     if let Some(version) = stdout
@@ -338,6 +453,7 @@ pub async fn get_version(tool_name: &str) -> Option<String> {
 }
 
 /// Get installation status info
+#[allow(dead_code)]
 pub async fn get_status(tool_name: &str) -> Result<InstallationStatus> {
     let installed = is_installed(tool_name).await;
     let version = get_version(tool_name).await;
@@ -421,7 +537,7 @@ mod tests {
     #[tokio::test]
     async fn test_homebrew_manager_creation() {
         let manager = HomebrewManager::new();
-        assert!(!manager.registry.is_empty());
+        assert!(!manager._registry.is_empty());
     }
 
     #[cfg(target_os = "macos")]
@@ -430,12 +546,12 @@ mod tests {
         let manager = HomebrewManager::new();
 
         // Test that critical tools are in registry
-        assert!(manager.registry.contains_key("nuclei"));
-        assert!(manager.registry.contains_key("subfinder"));
-        assert!(manager.registry.contains_key("nmap"));
+        assert!(manager._registry.contains_key("nuclei"));
+        assert!(manager._registry.contains_key("subfinder"));
+        assert!(manager._registry.contains_key("nmap"));
 
         // Test nuclei mapping specifically
-        let nuclei_mapping = manager.registry.get("nuclei").unwrap();
+        let nuclei_mapping = manager._registry.get("nuclei").unwrap();
         assert_eq!(nuclei_mapping.brew_formula, Some("nuclei".to_string()));
         assert_eq!(nuclei_mapping.min_version, Some("3.0.0".to_string()));
         assert_eq!(nuclei_mapping.verified, true);

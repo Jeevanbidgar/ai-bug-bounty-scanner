@@ -49,6 +49,7 @@ impl Version {
     }
 
     /// Convert to string representation
+    #[allow(dead_code)]
     pub fn to_string(&self) -> String {
         let base = format!("{}.{}.{}", self.major, self.minor, self.patch);
         if let Some(ref pre) = self.pre_release {
@@ -92,6 +93,7 @@ impl Ord for Version {
 }
 
 /// Probe the version of a tool by running it with version flags
+#[allow(dead_code)]
 pub async fn probe_version(tool_name: &str, version_args: &[String]) -> Option<String> {
     // Try each version arg until one works
     for arg in version_args {
@@ -108,6 +110,7 @@ pub async fn probe_version(tool_name: &str, version_args: &[String]) -> Option<S
 }
 
 /// Execute a command to get version with timeout
+#[allow(dead_code)]
 async fn execute_version_command(command: &str, arg: &str) -> Result<String, String> {
     let timeout_duration = Duration::from_secs(5);
 
@@ -143,6 +146,7 @@ async fn execute_version_command(command: &str, arg: &str) -> Result<String, Str
 }
 
 /// Parse version string from command output
+#[allow(dead_code)]
 pub fn parse_version(output: &str) -> Option<String> {
     // Try multiple patterns
     let patterns = [

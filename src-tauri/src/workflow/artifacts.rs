@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};

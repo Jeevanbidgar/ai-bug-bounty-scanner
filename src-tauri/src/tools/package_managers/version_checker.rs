@@ -277,6 +277,7 @@ pub async fn check_apt_update(package_name: &str) -> Result<VersionCheckResult, 
 }
 
 /// Check for updates for a WinGet package using `winget upgrade`
+#[allow(dead_code)]
 pub async fn check_winget_update(package_id: &str) -> Result<VersionCheckResult, String> {
     let output = Command::new("winget")
         .arg("upgrade")
@@ -397,6 +398,7 @@ pub async fn check_pipx_update(package_name: &str) -> Result<VersionCheckResult,
 }
 
 /// Check for updates for an npm package using `npm outdated -g`
+#[allow(dead_code)]
 pub async fn check_npm_update(package_name: &str) -> Result<VersionCheckResult, String> {
     // First check if npm is installed
     let npm_cmd = if cfg!(target_os = "windows") {
@@ -499,6 +501,7 @@ pub async fn check_npm_update(package_name: &str) -> Result<VersionCheckResult, 
 }
 
 /// Check for updates for a Ruby gem using `gem list` and `gem search`
+#[allow(dead_code)]
 pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, String> {
     // First check if gem is installed
     let gem_cmd = if cfg!(target_os = "windows") {
@@ -622,6 +625,7 @@ pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, 
 }
 
 /// Check for updates for a Cargo package using `cargo install --list` and crates.io
+#[allow(dead_code)]
 pub async fn check_cargo_update(package_name: &str) -> Result<VersionCheckResult, String> {
     // First check if cargo is installed
     let check_install = Command::new("cargo").arg("--version").output().await;

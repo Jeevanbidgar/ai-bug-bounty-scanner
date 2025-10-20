@@ -214,15 +214,18 @@ impl GitPipInstaller {
         }
     }
     /// Get the python command (python3 or python)
-    async fn get_python_command(&self) -> Option<String> {
+    async fn get_python_command(&self) -> Result<String, String> {
         for python_cmd in &["python3", "python"] {
             if let Ok(output) = Command::new(python_cmd).arg("--version").output().await {
                 if output.status.success() {
-                    return Some(python_cmd.to_string());
+                    return Ok(python_cmd.to_string());
                 }
             }
         }
-        None
+        Err(
+            "Python executable not found in PATH. Please install Python or add it to PATH."
+                .to_string(),
+        )
     }
 
     /// Install a Python tool via git clone + pip install
@@ -259,7 +262,26 @@ impl GitPipInstaller {
             });
         }
 
-        let python_cmd = self.get_python_command().await.unwrap();
+        let python_cmd = match self.get_python_command().await {
+            Ok(cmd) => cmd,
+            Err(err) => {
+                eprintln!("❌ {}", err);
+
+                if let Some(handle) = app_handle {
+                    let _ = handle.emit(
+                        TOOL_INSTALLATION_COMPLETED,
+                        EventEmitter::tool_installation_completed(tool_name, false, &err),
+                    );
+                }
+
+                return Ok(InstallationResult {
+                    success: false,
+                    message: err,
+                    tool_name: tool_name.to_string(),
+                    installed_path: None,
+                });
+            }
+        };
 
         eprintln!("📦 Installing {} via git clone + pip install", tool_name);
         eprintln!("   Repository: {}", git_repo);
@@ -307,14 +329,10 @@ impl GitPipInstaller {
 
         // Step 1: Clone repository
         eprintln!("📥 Cloning repository...");
+        let clone_path_string = clone_path.to_string_lossy().into_owned();
+        let clone_args = ["clone", git_repo, clone_path_string.as_str()];
         let clone_result = self
-            .run_command_with_output(
-                "git",
-                &["clone", git_repo, clone_path.to_str().unwrap()],
-                tool_name,
-                "git clone",
-                app_handle,
-            )
+            .run_command_with_output("git", &clone_args, tool_name, "git clone", app_handle)
             .await?;
 
         if !clone_result {
@@ -336,20 +354,30 @@ impl GitPipInstaller {
         // Step 2: Install with pip (using venv on Linux to avoid PEP 668)
         eprintln!("📦 Installing with pip...");
 
-        // On Linux, create a virtual environment to avoid PEP 668 errors
-        let is_linux = cfg!(target_os = "linux");
+        // On Unix platforms, create a virtual environment to avoid writing to protected locations
+        let use_venv = cfg!(any(target_os = "linux", target_os = "macos"));
         let venv_path = clone_path.join("venv");
         let pip_cmd: String;
         let python_executable: String;
 
-        if is_linux {
-            eprintln!("� Linux detected - creating virtual environment to avoid PEP 668...");
+        if use_venv {
+            let platform_label = if cfg!(target_os = "macos") {
+                "macOS"
+            } else {
+                "Linux"
+            };
+            eprintln!(
+                "🔒 {} detected - creating virtual environment to avoid system-level pip writes...",
+                platform_label
+            );
 
             // Create venv
+            let venv_path_string = venv_path.to_string_lossy().into_owned();
+            let create_venv_args = ["-m", "venv", venv_path_string.as_str()];
             let venv_result = self
                 .run_command_with_output(
                     &python_cmd,
-                    &["-m", "venv", venv_path.to_str().unwrap()],
+                    &create_venv_args,
                     tool_name,
                     "create venv",
                     app_handle,
@@ -394,22 +422,24 @@ impl GitPipInstaller {
         let requirements_path = clone_path.join("requirements.txt");
         if requirements_path.exists() {
             eprintln!("📋 Found requirements.txt, installing dependencies...");
+            let requirements_path_string = requirements_path.to_string_lossy().into_owned();
 
-            let pip_args = if is_linux {
-                vec!["install", "-r", requirements_path.to_str().unwrap()]
+            let mut pip_args: Vec<&str> = Vec::new();
+            if use_venv {
+                pip_args.extend(["install", "-r", requirements_path_string.as_str()]);
             } else {
-                vec![
+                pip_args.extend([
                     "-m",
                     "pip",
                     "install",
                     "-r",
-                    requirements_path.to_str().unwrap(),
-                ]
-            };
+                    requirements_path_string.as_str(),
+                ]);
+            }
 
             let requirements_result = self
                 .run_command_with_output(
-                    if is_linux { &pip_cmd } else { &python_cmd },
+                    if use_venv { &pip_cmd } else { &python_cmd },
                     &pip_args,
                     tool_name,
                     "pip install requirements",
@@ -423,15 +453,17 @@ impl GitPipInstaller {
         }
 
         // Install the package itself (editable mode for local development)
-        let pip_install_args = if is_linux {
-            vec!["install", "-e", clone_path.to_str().unwrap()]
+        let clone_path_owned = clone_path.to_string_lossy().into_owned();
+        let mut pip_install_args: Vec<&str> = Vec::new();
+        if use_venv {
+            pip_install_args.extend(["install", "-e", clone_path_owned.as_str()]);
         } else {
-            vec!["-m", "pip", "install", "-e", clone_path.to_str().unwrap()]
-        };
+            pip_install_args.extend(["-m", "pip", "install", "-e", clone_path_owned.as_str()]);
+        }
 
         let install_result = self
             .run_command_with_output(
-                if is_linux { &pip_cmd } else { &python_cmd },
+                if use_venv { &pip_cmd } else { &python_cmd },
                 &pip_install_args,
                 tool_name,
                 "pip install",
@@ -444,14 +476,17 @@ impl GitPipInstaller {
             let setup_py = clone_path.join("setup.py");
             if setup_py.exists() {
                 eprintln!("📦 Trying setup.py install...");
+                let setup_py_owned = setup_py.to_string_lossy().into_owned();
+                let setup_args = [setup_py_owned.as_str(), "install"];
+
                 let setup_result = self
                     .run_command_with_output(
-                        if is_linux {
+                        if use_venv {
                             &python_executable
                         } else {
                             &python_cmd
                         },
-                        &[setup_py.to_str().unwrap(), "install"],
+                        &setup_args,
                         tool_name,
                         "setup.py install",
                         app_handle,
@@ -594,7 +629,13 @@ impl GitPipInstaller {
             return Err("Python is not installed.".to_string());
         }
 
-        let python_cmd = self.get_python_command().await.unwrap();
+        let python_cmd = match self.get_python_command().await {
+            Ok(cmd) => cmd,
+            Err(err) => {
+                eprintln!("❌ {}", err);
+                return Err(err);
+            }
+        };
 
         eprintln!("🗑️  Uninstalling {} via pip", tool_name);
 

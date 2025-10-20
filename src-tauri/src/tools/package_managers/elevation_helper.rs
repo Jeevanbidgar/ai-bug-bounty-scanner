@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 /// Helper for privilege elevation with GUI support on Linux
 ///
 /// This module provides utilities for running commands with elevated privileges.

@@ -40,6 +40,7 @@ pub struct WorkflowStatusResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ToolInfo {
     pub name: String,
     pub description: String,
@@ -65,6 +66,7 @@ pub struct AppState {
     pub db: std::sync::Arc<Database>,
     pub workflow_engine: std::sync::Arc<WorkflowEngine>,
     pub tool_discovery: std::sync::Arc<tokio::sync::RwLock<ToolDiscoveryService>>,
+    #[allow(dead_code)]
     pub tool_registry: std::sync::Arc<crate::tools::registry::ToolRegistry>,
 }
 

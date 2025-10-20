@@ -8,11 +8,12 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct HomebrewMapping {
-    pub brew_formula: Option<String>,  // Official formula name
-    pub brew_cask: Option<String>,     // Official cask name (GUI apps only)
-    pub min_version: Option<String>,   // Cross-OS version parity
-    pub custom_tap: Option<String>,    // Only if tool unavailable in official Formulae
-    pub verified: bool,                // Verified via `brew info` (not just `brew search`)
+    pub brew_formula: Option<String>, // Official formula name
+    pub brew_cask: Option<String>,    // Official cask name (GUI apps only)
+    pub min_version: Option<String>,  // Cross-OS version parity
+    #[allow(dead_code)]
+    pub custom_tap: Option<String>, // Only if tool unavailable in official Formulae
+    pub verified: bool,               // Verified via `brew info` (not just `brew search`)
     pub verified_date: Option<String>, // ISO date of last verification (e.g., "2025-10-16")
 }
 
@@ -43,6 +44,7 @@ impl HomebrewMapping {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_custom_tap(mut self, tap: &str) -> Self {
         self.custom_tap = Some(tap.to_string());
         self
@@ -242,11 +244,13 @@ pub fn get_homebrew_mapping(tool_name: &str) -> Option<&HomebrewMapping> {
 }
 
 /// Get all registered tools
+#[allow(dead_code)]
 pub fn get_all_homebrew_tools() -> Vec<&'static str> {
     HOMEBREW_REGISTRY.keys().copied().collect()
 }
 
 /// Get tools by category (for UI organization)
+#[allow(dead_code)]
 pub fn get_homebrew_tools_by_category() -> HashMap<&'static str, Vec<&'static str>> {
     let mut categories = HashMap::new();
 

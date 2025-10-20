@@ -25,7 +25,7 @@ pub struct WorkflowEngine {
     app_handle: AppHandle,
     active_executions: Arc<RwLock<HashMap<String, WorkflowExecution>>>,
     executor: ProcessExecutor,
-    artifact_manager: Arc<ArtifactManager>,
+    _artifact_manager: Arc<ArtifactManager>,
 }
 
 impl WorkflowEngine {
@@ -44,7 +44,7 @@ impl WorkflowEngine {
             app_handle: app_handle.clone(),
             active_executions: Arc::new(RwLock::new(HashMap::new())),
             executor: ProcessExecutor::new(app_handle, tool_discovery, artifact_manager.clone()),
-            artifact_manager,
+            _artifact_manager: artifact_manager,
         }
     }
 
@@ -403,6 +403,7 @@ impl WorkflowEngine {
         Ok(active_executions.get(execution_id).cloned())
     }
 
+    #[allow(dead_code)]
     pub async fn list_executions(&self) -> Result<Vec<WorkflowExecution>> {
         let active_executions = self.active_executions.read().await;
         Ok(active_executions.values().cloned().collect())

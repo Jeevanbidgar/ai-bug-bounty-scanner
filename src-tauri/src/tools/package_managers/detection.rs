@@ -478,6 +478,7 @@ fn parse_go_version(output: &str) -> Option<String> {
 }
 
 /// Parse APT version from output
+#[allow(dead_code)]
 fn parse_apt_version(output: &str) -> Option<String> {
     // Example: "apt 2.4.8 (amd64)"
     output
@@ -498,6 +499,7 @@ fn parse_simple_version(output: &str) -> Option<String> {
 
 /// Get common search paths for Windows executables
 /// Returns a list of potential paths where the executable might be located
+#[allow(dead_code)]
 fn get_windows_executable_search_paths(exe_name: &str) -> Vec<String> {
     let mut paths = Vec::new();
 

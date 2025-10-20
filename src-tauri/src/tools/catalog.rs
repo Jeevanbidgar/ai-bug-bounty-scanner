@@ -122,12 +122,14 @@ impl ToolDefinition {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_npm_package(mut self, package: &str) -> Self {
         self.npm_package = Some(package.to_string());
         self.install_method = "npm".to_string();
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_manual_install(mut self) -> Self {
         self.install_method = "manual".to_string();
         self.install_method = "winget".to_string();
