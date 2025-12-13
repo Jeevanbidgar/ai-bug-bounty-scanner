@@ -426,18 +426,23 @@ mod tests {
         result: UpdateCheckResult,
     }
 
-    #[async_trait::async_trait]
     impl UpdateChecker for MockUpdateChecker {
-        async fn check_update(&self, _package_name: &str) -> Result<UpdateCheckResult, UpdateCheckError> {
-            Ok(self.result.clone())
+        fn check_update(&self, _package_name: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+            let result = self.result.clone();
+            Box::pin(async move {
+                Ok(result)
+            })
         }
 
         fn manager_name(&self) -> &str {
             &self.name
         }
 
-        async fn is_available(&self) -> bool {
-            self.available
+        fn is_available(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+            let available = self.available;
+            Box::pin(async move {
+                available
+            })
         }
 
         fn timeout(&self) -> Duration {

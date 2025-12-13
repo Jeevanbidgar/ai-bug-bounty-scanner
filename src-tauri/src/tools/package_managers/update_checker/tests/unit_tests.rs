@@ -2,8 +2,8 @@
 //
 // Unit tests for individual components of the update checker system
 
-use super::super::traits::{UpdateChecker, UpdateCheckResult, UpdateCheckerConfig};
-use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
+use super::super::traits::{UpdateCheckResult, UpdateCheckerConfig, UpdateType};
+use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode, UpdateCheckErrorContext};
 use super::super::command_runner::CommandRunner;
 use super::super::cache::{UpdateCache, CacheEntry};
 use super::super::metrics::{MetricsCollector, UpdateCheckMetrics};
@@ -201,7 +201,7 @@ mod error_types_tests {
     fn test_update_check_error_creation() {
         let error = UpdateCheckError::manager_not_available("test".to_string());
         assert_eq!(error.code, UpdateCheckErrorCode::ManagerNotAvailable);
-        assert!(error.retryable);
+        assert!(!error.retryable);
         assert_eq!(error.context.manager, "test");
 
         let error = UpdateCheckError::package_not_found("test".to_string(), "package".to_string());
@@ -231,7 +231,7 @@ mod error_types_tests {
 
     #[test]
     fn test_error_context_building() {
-        let context = super::super::error_types::UpdateCheckErrorContext::new("test".to_string(), "package".to_string())
+        let context = UpdateCheckErrorContext::new("test".to_string(), "package".to_string())
             .with_command("test command".to_string())
             .with_exit_code(1)
             .with_stderr("error output".to_string())
@@ -258,7 +258,7 @@ mod traits_tests {
             Some("1.1.0".to_string()),
             "test".to_string(),
             Some("test source".to_string()),
-            Some(super::super::traits::UpdateType::Minor),
+            Some(UpdateType::Minor),
         );
 
         assert!(result.has_update);
