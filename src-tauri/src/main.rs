@@ -61,6 +61,7 @@ fn main() {
                 app_handle.clone(),
                 tool_discovery.clone(),
                 artifacts_dir,
+                db.clone(),
             ));
 
             // Create app state

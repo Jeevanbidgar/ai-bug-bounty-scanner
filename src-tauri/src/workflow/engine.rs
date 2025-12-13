@@ -20,12 +20,18 @@ use crate::workflow::types::{
     WorkflowExecution, WorkflowTemplate,
 };
 
+use crate::database::Database;
+use crate::tools::parsers::ParsedFinding;
+use crate::tools::parsers::ParserRegistry;
+
 #[derive(Clone)]
 pub struct WorkflowEngine {
     app_handle: AppHandle,
     active_executions: Arc<RwLock<HashMap<String, WorkflowExecution>>>,
     executor: ProcessExecutor,
     _artifact_manager: Arc<ArtifactManager>,
+    db: Arc<Database>,
+    parser_registry: Arc<ParserRegistry>,
 }
 
 impl WorkflowEngine {
@@ -33,6 +39,7 @@ impl WorkflowEngine {
         app_handle: AppHandle,
         tool_discovery: Arc<RwLock<ToolDiscoveryService>>,
         artifacts_dir: PathBuf,
+        db: Arc<Database>,
     ) -> Self {
         let artifact_manager = Arc::new(
             ArtifactManager::new(artifacts_dir)
@@ -45,6 +52,8 @@ impl WorkflowEngine {
             active_executions: Arc::new(RwLock::new(HashMap::new())),
             executor: ProcessExecutor::new(app_handle, tool_discovery, artifact_manager.clone()),
             _artifact_manager: artifact_manager,
+            db,
+            parser_registry: Arc::new(ParserRegistry::new()),
         }
     }
 
@@ -208,10 +217,8 @@ impl WorkflowEngine {
             // Wait for all steps to complete
             for (step_id, handle) in handles {
                 // Emit step started event
-                let step_name = workflow
-                    .steps
-                    .iter()
-                    .find(|s| s.id == step_id)
+                let step_opt = workflow.steps.iter().find(|s| s.id == step_id);
+                let step_name = step_opt
                     .map(|s| s.name.clone())
                     .unwrap_or_else(|| step_id.clone());
 
@@ -222,6 +229,31 @@ impl WorkflowEngine {
                 match handle.await {
                     Ok(Ok(artifacts)) => {
                         completed_steps.insert(step_id.clone());
+
+                        // Try to parse artifacts
+                        if let Some(step) = step_opt {
+                            let tool_name = step.run.first().map(|s| s.as_str()).unwrap_or("");
+                            if let Some(parser) = self.parser_registry.get_parser(tool_name) {
+                                for artifact in &artifacts {
+                                    if let Some(path_str) = &artifact.file_path {
+                                        let path = std::path::Path::new(path_str);
+                                        if parser.can_parse(path) {
+                                            match parser.parse(path) {
+                                                Ok(findings) => {
+                                                    eprintln!("✅ Parsed {} findings from {}", findings.len(), path_str);
+                                                    if let Err(e) = self.save_findings(&execution_id, &step_id, findings).await {
+                                                        eprintln!("⚠️ Failed to save findings: {}", e);
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    eprintln!("⚠️ Failed to parse artifact {}: {}", path_str, e);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         // Update step execution record
                         let step_execution = StepExecution {
@@ -434,6 +466,36 @@ impl WorkflowEngine {
             }),
         );
 
+        Ok(())
+    }
+
+    async fn save_findings(
+        &self,
+        execution_id: &str,
+        step_id: &str,
+        findings: Vec<ParsedFinding>,
+    ) -> Result<()> {
+        for finding in findings {
+            let workflow_finding = crate::database::WorkflowFinding {
+                id: Uuid::new_v4().to_string(),
+                execution_id: execution_id.to_string(),
+                step_id: step_id.to_string(),
+                title: finding.title,
+                severity: finding.severity,
+                description: finding.description,
+                cvss: finding.cvss,
+                url: finding.url,
+                parameter: finding.parameter,
+                payload: finding.payload,
+                remediation: finding.remediation,
+                discovered_by: None,
+                evidence: finding.evidence,
+                false_positive: false,
+                confirmed: false,
+                created_at: Utc::now(),
+            };
+            self.db.create_workflow_finding(&workflow_finding).await?;
+        }
         Ok(())
     }
 }
