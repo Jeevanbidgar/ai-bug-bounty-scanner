@@ -15,7 +15,7 @@
 ```bash
 # Clone and setup
 git clone <repository-url>
-cd ai-bug-bounty-scanner
+cd UNIHACK-Cross-Platform-Tool-Orchestrator
 pip install -r requirements.txt
 
 # Start backend with Socket.IO
