@@ -1,4 +1,4 @@
-# AI Bug Bounty Scanner
+# UNIHACK-Cross-Platform-Tool-Orchestrator
 
 🚀 **A comprehensive, automated security testing platform with modern UI and real-time communication that performs real-world penetration testing and vulnerability assessment.**
 
