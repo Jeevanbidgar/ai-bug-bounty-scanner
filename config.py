@@ -19,14 +19,18 @@ class Config:
     TESTING = os.getenv('TESTING', 'False').lower() == 'true'
     
     # Database Configuration
-    basedir = os.path.abspath(os.path.dirname(__file__))
-    instance_dir = os.path.join(basedir, "instance")
-    # Ensure instance directory exists
-    os.makedirs(instance_dir, exist_ok=True)
-    # Use file:/// for absolute path on Windows
-    db_file_path = os.path.join(instance_dir, "bug_bounty_scanner.db").replace("\\", "/")
-    default_db_path = f'sqlite:///{db_file_path}'
-    SQLALCHEMY_DATABASE_URI = os.getenv('SQLALCHEMY_DATABASE_URI', default_db_path)
+    # Use the SQLALCHEMY_DATABASE_URI from .env file directly
+    # For Windows, ensure proper path formatting
+    default_db_uri = os.getenv('SQLALCHEMY_DATABASE_URI', 'sqlite:///instance/bug_bounty_scanner.db')
+    if default_db_uri.startswith('sqlite:///') and 'instance' in default_db_uri:
+        # Ensure proper Windows path handling
+        basedir = os.path.abspath(os.path.dirname(__file__))
+        instance_dir = os.path.join(basedir, "instance")
+        os.makedirs(instance_dir, exist_ok=True)
+        db_file_path = os.path.join(instance_dir, "bug_bounty_scanner.db")
+        SQLALCHEMY_DATABASE_URI = f'sqlite:///{db_file_path}'
+    else:
+        SQLALCHEMY_DATABASE_URI = default_db_uri
     SQLALCHEMY_TRACK_MODIFICATIONS = os.getenv('SQLALCHEMY_TRACK_MODIFICATIONS', 'False').lower() == 'true'
     SQLALCHEMY_POOL_SIZE = int(os.getenv('SQLALCHEMY_POOL_SIZE', '10'))
     SQLALCHEMY_POOL_TIMEOUT = int(os.getenv('SQLALCHEMY_POOL_TIMEOUT', '20'))

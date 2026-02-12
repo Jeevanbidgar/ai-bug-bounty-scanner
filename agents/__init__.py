@@ -12,6 +12,7 @@ from .webapp_agent import WebAppAgent
 from .network_agent import NetworkAgent
 from .api_agent import APIAgent
 from .report_agent import ReportAgent
+from .discovery_agent import DiscoveryAgent
 
 __all__ = [
     'SecurityValidator',
@@ -19,7 +20,8 @@ __all__ = [
     'WebAppAgent',
     'NetworkAgent',
     'APIAgent',
-    'ReportAgent'
+    'ReportAgent',
+    'DiscoveryAgent'
 ]
 
 __version__ = '1.0.0'

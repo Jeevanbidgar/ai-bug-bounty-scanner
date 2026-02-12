@@ -1,1408 +1,1067 @@
 <!DOCTYPE html>
 <html lang="en" data-color-scheme="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Bug Bounty Scanner</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              primary: "#6366f1",
-              secondary: "#8b5cf6",
-              accent: "#06b6d4",
-              success: "#10b981",
-              warning: "#f59e0b",
-              error: "#ef4444",
-              dark: "#1f2937",
-              "dark-lighter": "#374151",
-              "dark-lightest": "#4b5563",
-            },
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Bug Bounty Scanner</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: "#6366f1",
+            secondary: "#8b5cf6",
+            accent: "#06b6d4",
+            success: "#10b981",
+            warning: "#f59e0b",
+            error: "#ef4444",
+            dark: "#1f2937",
+            "dark-lighter": "#374151",
+            "dark-lightest": "#4b5563",
           },
         },
-      };
-    </script>
-    <style>
-      /* View switching styles */
-      .view {
-        display: none;
-      }
-      .view.active {
-        display: block;
-      }
+      },
+    };
+  </script>
+  <style>
+    /* View switching styles */
+    .view {
+      display: none;
+    }
 
-      /* Navigation active state */
-      .nav-item.active {
-        background-color: #6366f1 !important;
-        color: white !important;
-      }
-    </style>
-  </head>
-  <body class="bg-gray-900 text-white">
-    <div class="flex min-h-screen">
-      <!-- Navigation Sidebar -->
-      <nav class="w-64 bg-dark-lighter border-r border-gray-700 flex-shrink-0">
-        <div class="p-6 border-b border-gray-700">
-          <h2 class="text-xl font-bold text-primary">AI Bug Bounty</h2>
-          <span
-            class="inline-block mt-1 px-2 py-1 text-xs bg-primary text-white rounded-full"
-            >Scanner</span
-          >
+    .view.active {
+      display: block;
+    }
+
+    /* Navigation active state */
+    .nav-item.active {
+      background-color: #6366f1 !important;
+      color: white !important;
+    }
+  </style>
+</head>
+
+<body class="bg-gray-900 text-white">
+  <div class="flex min-h-screen">
+    <!-- Navigation Sidebar -->
+    <nav class="w-64 bg-dark-lighter border-r border-gray-700 flex-shrink-0">
+      <div class="p-6 border-b border-gray-700">
+        <h2 class="text-xl font-bold text-primary">AI Bug Bounty</h2>
+        <span class="inline-block mt-1 px-2 py-1 text-xs bg-primary text-white rounded-full">Scanner</span>
+      </div>
+      <ul class="p-4 space-y-2">
+        <li>
+          <a href="#" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg bg-primary text-white font-medium"
+            data-view="dashboard">
+            📊 Dashboard
+          </a>
+        </li>
+        <li>
+          <a href="#"
+            class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+            data-view="scan-manager">
+            🔍 Scan Manager
+          </a>
+        </li>
+        <li>
+          <a href="#"
+            class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+            data-view="ai-agents">
+            🤖 AI Agents
+          </a>
+        </li>
+        <li>
+          <a href="#"
+            class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+            data-view="reports">
+            📋 Reports
+          </a>
+        </li>
+        <li>
+          <a href="#"
+            class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+            data-view="scan-results">
+            📊 Scan Results
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-1 bg-gray-900">
+      <!-- Header -->
+      <header class="bg-dark-lighter border-b border-gray-700 px-6 py-4">
+        <div class="flex items-center justify-between">
+          <h1 id="page-title" class="text-2xl font-bold text-white">
+            Dashboard
+          </h1>
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-3">
+              <span class="px-3 py-1 bg-success text-white text-sm rounded-full">7 Agents Active</span>
+              <span class="px-3 py-1 bg-accent text-white text-sm rounded-full">3/3 APIs Connected</span>
+              <span class="px-3 py-1 bg-purple-600 text-white text-sm rounded-full">Enhanced Mode</span>
+            </div>
+            <!-- Real-time connection status and test -->
+            <div class="flex items-center gap-3">
+              <button id="test-socket"
+                class="px-3 py-1 bg-secondary text-white text-sm rounded-lg hover:bg-purple-600 transition-colors">
+                🔄 Test Socket.IO
+              </button>
+              <div class="flex items-center gap-2">
+                <div id="connection-status" class="w-3 h-3 bg-gray-500 rounded-full"></div>
+                <span id="connection-text" class="text-sm text-gray-400">Connecting...</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <ul class="p-4 space-y-2">
-          <li>
-            <a
-              href="#"
-              class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg bg-primary text-white font-medium"
-              data-view="dashboard"
-            >
-              📊 Dashboard
-            </a>
-          </li>
-          <li>
-            <a
-              href="#"
-              class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-              data-view="scan-manager"
-            >
-              🔍 Scan Manager
-            </a>
-          </li>
-          <li>
-            <a
-              href="#"
-              class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-              data-view="ai-agents"
-            >
-              🤖 AI Agents
-            </a>
-          </li>
-          <li>
-            <a
-              href="#"
-              class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-              data-view="reports"
-            >
-              📋 Reports
-            </a>
-          </li>
-          <li>
-            <a
-              href="#"
-              class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-              data-view="scan-results"
-            >
-              📊 Scan Results
-            </a>
-          </li>
-        </ul>
-      </nav>
+      </header>
 
-      <!-- Main Content -->
-      <main class="flex-1 bg-gray-900">
-        <!-- Header -->
-        <header class="bg-dark-lighter border-b border-gray-700 px-6 py-4">
-          <div class="flex items-center justify-between">
-            <h1 id="page-title" class="text-2xl font-bold text-white">
-              Dashboard
-            </h1>
+      <!-- Dashboard View -->
+      <div id="dashboard-view" class="view active p-6">
+        <!-- Overview Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-primary transition-colors">
             <div class="flex items-center gap-4">
-              <div class="flex items-center gap-3">
-                <span
-                  class="px-3 py-1 bg-success text-white text-sm rounded-full"
-                  >7 Agents Active</span
-                >
-                <span
-                  class="px-3 py-1 bg-accent text-white text-sm rounded-full"
-                  >3/3 APIs Connected</span
-                >
-                <span
-                  class="px-3 py-1 bg-purple-600 text-white text-sm rounded-full"
-                  >Enhanced Mode</span
-                >
+              <div class="w-12 h-12 bg-primary bg-opacity-20 rounded-lg flex items-center justify-center text-2xl">
+                📊
               </div>
-              <!-- Real-time connection status and test -->
-              <div class="flex items-center gap-3">
-                <button
-                  id="test-socket"
-                  class="px-3 py-1 bg-secondary text-white text-sm rounded-lg hover:bg-purple-600 transition-colors"
-                >
-                  🔄 Test Socket.IO
-                </button>
-                <div class="flex items-center gap-2">
-                  <div
-                    id="connection-status"
-                    class="w-3 h-3 bg-gray-500 rounded-full"
-                  ></div>
-                  <span id="connection-text" class="text-sm text-gray-400"
-                    >Connecting...</span
-                  >
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <!-- Dashboard View -->
-        <div id="dashboard-view" class="view active p-6">
-          <!-- Overview Cards -->
-          <div
-            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8"
-          >
-            <div
-              class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-primary transition-colors"
-            >
-              <div class="flex items-center gap-4">
-                <div
-                  class="w-12 h-12 bg-primary bg-opacity-20 rounded-lg flex items-center justify-center text-2xl"
-                >
-                  📊
-                </div>
-                <div>
-                  <h3 class="text-gray-400 text-sm font-medium">Total Scans</h3>
-                  <p class="text-2xl font-bold text-white" id="total-scans">
-                    47
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div
-              class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-success transition-colors"
-            >
-              <div class="flex items-center gap-4">
-                <div
-                  class="w-12 h-12 bg-success bg-opacity-20 rounded-lg flex items-center justify-center text-2xl"
-                >
-                  🤖
-                </div>
-                <div>
-                  <h3 class="text-gray-400 text-sm font-medium">
-                    Active Agents
-                  </h3>
-                  <p class="text-2xl font-bold text-white" id="active-agents">
-                    7
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div
-              class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-warning transition-colors"
-            >
-              <div class="flex items-center gap-4">
-                <div
-                  class="w-12 h-12 bg-warning bg-opacity-20 rounded-lg flex items-center justify-center text-2xl"
-                >
-                  🔍
-                </div>
-                <div>
-                  <h3 class="text-gray-400 text-sm font-medium">
-                    Vulnerabilities Found
-                  </h3>
-                  <p
-                    class="text-2xl font-bold text-white"
-                    id="total-vulnerabilities"
-                  >
-                    156
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div
-              class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-error transition-colors"
-            >
-              <div class="flex items-center gap-4">
-                <div
-                  class="w-12 h-12 bg-error bg-opacity-20 rounded-lg flex items-center justify-center text-2xl"
-                >
-                  ⚠️
-                </div>
-                <div>
-                  <h3 class="text-gray-400 text-sm font-medium">
-                    Critical Issues
-                  </h3>
-                  <p class="text-2xl font-bold text-white" id="critical-issues">
-                    23
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div
-              class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-purple-500 transition-colors"
-            >
-              <div class="flex items-center gap-4">
-                <div
-                  class="w-12 h-12 bg-purple-500 bg-opacity-20 rounded-lg flex items-center justify-center text-2xl"
-                >
-                  🛡️
-                </div>
-                <div>
-                  <h3 class="text-gray-400 text-sm font-medium">
-                    Threat Intel APIs
-                  </h3>
-                  <p
-                    class="text-2xl font-bold text-white"
-                    id="threat-intel-apis"
-                  >
-                    3/3
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Enhancement Status Banner -->
-          <div
-            class="bg-gradient-to-r from-primary to-secondary border border-primary border-opacity-30 rounded-xl p-4 mb-6"
-          >
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-3">
-                <div
-                  class="w-8 h-8 bg-white bg-opacity-20 rounded-lg flex items-center justify-center text-xl"
-                >
-                  �️
-                </div>
-                <div>
-                  <h3 class="text-white font-medium">
-                    Triple Threat Intelligence Active
-                  </h3>
-                  <p class="text-blue-100 text-sm">
-                    AbuseIPDB + Shodan + VirusTotal APIs integrated for enhanced
-                    detection
-                  </p>
-                </div>
-              </div>
-              <div class="flex items-center gap-4 text-white">
-                <div class="flex items-center gap-2">
-                  <div
-                    class="w-2 h-2 bg-green-400 rounded-full animate-pulse"
-                  ></div>
-                  <span class="text-xs">AbuseIPDB</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <div
-                    class="w-2 h-2 bg-green-400 rounded-full animate-pulse"
-                  ></div>
-                  <span class="text-xs">Shodan</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <div
-                    class="w-2 h-2 bg-green-400 rounded-full animate-pulse"
-                  ></div>
-                  <span class="text-xs">VirusTotal</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            <!-- Quick Scan Form -->
-            <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
-              <div class="mb-4">
-                <h3 class="text-lg font-semibold text-white">
-                  🚀 Quick Focused Scan
-                </h3>
-                <p class="text-sm text-gray-400">
-                  High-impact vulnerabilities in 1 hour
+              <div>
+                <h3 class="text-gray-400 text-sm font-medium">Total Scans</h3>
+                <p class="text-2xl font-bold text-white" id="total-scans">
+                  47
                 </p>
               </div>
-              <form id="quick-scan-form" class="space-y-4">
-                <div>
-                  <label class="block text-sm font-medium text-gray-300 mb-2"
-                    >Target URL</label
-                  >
-                  <input
-                    type="url"
-                    id="quick-target-url"
-                    class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-colors"
-                    placeholder="https://testphp.vulnweb.com"
-                    required
-                  />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-300 mb-2"
-                    >Quick Mode</label
-                  >
-                  <select
-                    id="quick-scan-mode"
-                    class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none"
-                  >
-                    <option value="focused" selected>
-                      🎯 Focused (1hr) - Top 4 Categories
-                    </option>
-                    <option value="critical_only">
-                      ⚡ Critical Only (30min) - RCE + Access Control
-                    </option>
-                  </select>
-                </div>
-                <div class="flex items-center gap-2 text-sm text-gray-400">
-                  <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                  <span>Enhanced scanning with priority-based filtering</span>
-                </div>
-                <button
-                  type="submit"
-                  class="w-full px-4 py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all font-medium"
-                >
-                  🛡️ Start Focused Scan
-                </button>
-              </form>
             </div>
-
-            <!-- Threat Intelligence Status -->
-            <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
-              <div class="mb-4">
-                <h3 class="text-lg font-semibold text-white">
-                  🛡️ Threat Intelligence Status
-                </h3>
+          </div>
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-success transition-colors">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 bg-success bg-opacity-20 rounded-lg flex items-center justify-center text-2xl">
+                🤖
               </div>
-              <div class="space-y-4">
-                <div
-                  class="flex items-center justify-between p-3 bg-gray-800 rounded-lg"
-                >
-                  <div class="flex items-center gap-3">
-                    <div
-                      class="w-8 h-8 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center"
-                    >
-                      <span class="text-blue-400 text-sm">�️</span>
-                    </div>
-                    <div>
-                      <div class="text-white text-sm font-medium">
-                        AbuseIPDB
-                      </div>
-                      <div class="text-gray-400 text-xs">
-                        IP Reputation & Abuse Detection
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                </div>
-                <div
-                  class="flex items-center justify-between p-3 bg-gray-800 rounded-lg"
-                >
-                  <div class="flex items-center gap-3">
-                    <div
-                      class="w-8 h-8 bg-cyan-500 bg-opacity-20 rounded-lg flex items-center justify-center"
-                    >
-                      <span class="text-cyan-400 text-sm">🌐</span>
-                    </div>
-                    <div>
-                      <div class="text-white text-sm font-medium">Shodan</div>
-                      <div class="text-gray-400 text-xs">
-                        Internet Device Intelligence
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                </div>
-                <div
-                  class="flex items-center justify-between p-3 bg-gray-800 rounded-lg"
-                >
-                  <div class="flex items-center gap-3">
-                    <div
-                      class="w-8 h-8 bg-purple-500 bg-opacity-20 rounded-lg flex items-center justify-center"
-                    >
-                      <span class="text-purple-400 text-sm">🦠</span>
-                    </div>
-                    <div>
-                      <div class="text-white text-sm font-medium">
-                        VirusTotal
-                      </div>
-                      <div class="text-gray-400 text-xs">
-                        Malware & Domain Analysis
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                </div>
-              </div>
-            </div>
-
-            <!-- External Tool Integrations Status -->
-            <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
-              <div class="mb-4">
-                <h3 class="text-lg font-semibold text-white">
-                  🔧 External Tool Integrations
+              <div>
+                <h3 class="text-gray-400 text-sm font-medium">
+                  Active Agents
                 </h3>
-                <p class="text-gray-400 text-sm">
-                  Integrated with Recon Agent & Web App Agent
+                <p class="text-2xl font-bold text-white" id="active-agents">
+                  7
                 </p>
               </div>
-              <div class="space-y-3">
-                <div
-                  class="flex items-center justify-between p-3 bg-gray-800 rounded-lg"
-                >
-                  <div class="flex items-center gap-3">
-                    <div
-                      class="w-8 h-8 bg-orange-500 bg-opacity-20 rounded-lg flex items-center justify-center"
-                    >
-                      <span class="text-orange-400 text-sm">💉</span>
-                    </div>
-                    <div>
-                      <div class="text-white text-sm font-medium">SQLMap</div>
-                      <div class="text-gray-400 text-xs">
-                        Web App Agent • SQL Injection Detection
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                </div>
-                <div
-                  class="flex items-center justify-between p-3 bg-gray-800 rounded-lg"
-                >
-                  <div class="flex items-center gap-3">
-                    <div
-                      class="w-8 h-8 bg-indigo-500 bg-opacity-20 rounded-lg flex items-center justify-center"
-                    >
-                      <span class="text-indigo-400 text-sm">🛡️</span>
-                    </div>
-                    <div>
-                      <div class="text-white text-sm font-medium">
-                        OWASP ZAP
-                      </div>
-                      <div class="text-gray-400 text-xs">
-                        Recon Agent • Web Application Scanning
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                </div>
-                <div
-                  class="flex items-center justify-between p-3 bg-gray-800 rounded-lg"
-                >
-                  <div class="flex items-center gap-3">
-                    <div
-                      class="w-8 h-8 bg-teal-500 bg-opacity-20 rounded-lg flex items-center justify-center"
-                    >
-                      <span class="text-teal-400 text-sm">🌐</span>
-                    </div>
-                    <div>
-                      <div class="text-white text-sm font-medium">
-                        Subfinder
-                      </div>
-                      <div class="text-gray-400 text-xs">
-                        Recon Agent • Subdomain Discovery
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                </div>
-                <div
-                  class="flex items-center justify-between p-3 bg-gray-800 rounded-lg"
-                >
-                  <div class="flex items-center gap-3">
-                    <div
-                      class="w-8 h-8 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center"
-                    >
-                      <span class="text-blue-400 text-sm">📡</span>
-                    </div>
-                    <div>
-                      <div class="text-white text-sm font-medium">Nmap</div>
-                      <div class="text-gray-400 text-xs">
-                        Network Agent • Port Scanning & Service Discovery
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Enhanced Features Overview -->
-            <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
-              <div class="mb-4">
-                <h3 class="text-lg font-semibold text-white">
-                  ⚡ Enhanced Features
-                </h3>
-              </div>
-              <div class="space-y-3">
-                <div class="flex items-center gap-3 text-sm">
-                  <div class="w-2 h-2 bg-primary rounded-full"></div>
-                  <span class="text-gray-300"
-                    >15+ Advanced XSS/SQLi Payloads</span
-                  >
-                </div>
-                <div class="flex items-center gap-3 text-sm">
-                  <div class="w-2 h-2 bg-success rounded-full"></div>
-                  <span class="text-gray-300"
-                    >Real-time CVE Database Integration</span
-                  >
-                </div>
-                <div class="flex items-center gap-3 text-sm">
-                  <div class="w-2 h-2 bg-warning rounded-full"></div>
-                  <span class="text-gray-300">SSL/TLS Security Analysis</span>
-                </div>
-                <div class="flex items-center gap-3 text-sm">
-                  <div class="w-2 h-2 bg-purple-500 rounded-full"></div>
-                  <span class="text-gray-300">WAF Detection & Evasion</span>
-                </div>
-                <div class="flex items-center gap-3 text-sm">
-                  <div class="w-2 h-2 bg-cyan-500 rounded-full"></div>
-                  <span class="text-gray-300">Infrastructure Discovery</span>
-                </div>
-                <div class="flex items-center gap-3 text-sm">
-                  <div class="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <span class="text-gray-300">Threat Actor Attribution</span>
-                </div>
-                <div class="flex items-center gap-3 text-sm">
-                  <div class="w-2 h-2 bg-orange-500 rounded-full"></div>
-                  <span class="text-gray-300"
-                    >SQLMap Integration (Web App Agent)</span
-                  >
-                </div>
-                <div class="flex items-center gap-3 text-sm">
-                  <div class="w-2 h-2 bg-indigo-500 rounded-full"></div>
-                  <span class="text-gray-300"
-                    >OWASP ZAP Integration (Recon Agent)</span
-                  >
-                </div>
-                <div class="flex items-center gap-3 text-sm">
-                  <div class="w-2 h-2 bg-teal-500 rounded-full"></div>
-                  <span class="text-gray-300"
-                    >Subfinder Integration (Recon Agent)</span
-                  >
-                </div>
-              </div>
-              <div
-                class="mt-4 p-3 bg-gradient-to-r from-primary to-secondary bg-opacity-10 border border-primary border-opacity-30 rounded-lg"
-              >
-                <div class="text-xs text-primary font-medium">
-                  75%+ Detection Improvement
-                </div>
-                <div class="text-xs text-gray-400">
-                  vs. standard scanning methods (with external tool
-                  integrations)
-                </div>
-              </div>
             </div>
           </div>
-
-          <!-- Recent Activity -->
-          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
-            <div class="mb-4">
-              <h3 class="text-lg font-semibold text-white">Recent Activity</h3>
-            </div>
-            <div class="text-gray-300">
-              <div class="activity-feed" id="activity-feed">
-                <p class="text-gray-400">No Recent Activity</p>
-                <p class="text-sm text-gray-500">
-                  Start a scan to see real-time activity updates
-                </p>
-                <button class="mt-2 text-primary hover:text-blue-400 text-sm">
-                  View All Activity →
-                </button>
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-warning transition-colors">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 bg-warning bg-opacity-20 rounded-lg flex items-center justify-center text-2xl">
+                🔍
               </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Scan Manager View -->
-        <div id="scan-manager-view" class="view p-6">
-          <div class="space-y-6">
-            <!-- New Scan Form -->
-            <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
-              <div class="mb-6">
-                <h3 class="text-xl font-semibold text-white">
-                  Configure New Scan
+              <div>
+                <h3 class="text-gray-400 text-sm font-medium">
+                  Vulnerabilities Found
                 </h3>
-              </div>
-              <form id="new-scan-form" class="space-y-6">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-2"
-                      >Target URL/Domain</label
-                    >
-                    <input
-                      type="url"
-                      class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-primary focus:outline-none"
-                      placeholder="https://example.com"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-2"
-                      >Scan Mode</label
-                    >
-                    <select
-                      id="scan-mode"
-                      class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none"
-                    >
-                      <option value="Quick Scan" selected>
-                        ⚡ Quick Scan - Fast web security assessment (30 min)
-                      </option>
-                      <option value="Full Scan">
-                        🔍 Full Scan - Comprehensive security testing (1-2
-                        hours)
-                      </option>
-                      <option value="Enhanced Scan">
-                        🚀 Enhanced Scan - Advanced AI-powered analysis (2-3
-                        hours)
-                      </option>
-                      <option value="Custom Scan">
-                        🎯 Custom Scan - Choose your own agents
-                      </option>
-                    </select>
-                    <p
-                      id="scan-mode-description"
-                      class="text-xs text-gray-400 mt-1"
-                    >
-                      Fast vulnerability assessment focusing on web application
-                      security • 30 minutes • 5-15 web vulnerabilities
-                    </p>
-                  </div>
-                </div>
-
-                <!-- Scan Information -->
-                <div id="scan-info-display" class="bg-gray-800 p-4 rounded-lg">
-                  <label class="block text-sm font-medium text-gray-300 mb-3"
-                    >📋 Scan Information</label
-                  >
-                  <div class="space-y-2">
-                    <div class="flex justify-between text-sm">
-                      <span class="text-gray-400">Duration:</span>
-                      <span id="scan-duration" class="text-white"
-                        >30 minutes</span
-                      >
-                    </div>
-                    <div class="flex justify-between text-sm">
-                      <span class="text-gray-400">Agents:</span>
-                      <span id="scan-agents-count" class="text-white"
-                        >2 agents</span
-                      >
-                    </div>
-                    <div class="flex justify-between text-sm">
-                      <span class="text-gray-400">Expected findings:</span>
-                      <span id="scan-findings" class="text-white"
-                        >5-15 vulnerabilities</span
-                      >
-                    </div>
-                  </div>
-                  <div class="mt-3 p-3 bg-dark-lighter rounded-lg">
-                    <div class="text-xs text-primary font-medium mb-1">
-                      Focus Areas
-                    </div>
-                    <div id="scan-focus-info" class="text-xs text-gray-400">
-                      Web application security vulnerabilities
-                    </div>
-                  </div>
-                </div>
-
-                <div id="ai-agents-group">
-                  <label class="block text-sm font-medium text-gray-300 mb-3"
-                    >AI Security Agents</label
-                  >
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <!-- Core Agents -->
-                    <div class="bg-gray-800 p-3 rounded-lg">
-                      <div class="text-xs text-gray-400 mb-2 font-medium">
-                        Core Security Agents
-                      </div>
-                      <div class="space-y-2">
-                        <label
-                          class="flex items-center gap-2 text-gray-300 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked
-                            class="text-primary focus:ring-primary"
-                          />
-                          <span class="text-sm">🔍 Recon Agent</span>
-                        </label>
-                        <label
-                          class="flex items-center gap-2 text-gray-300 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked
-                            class="text-primary focus:ring-primary"
-                          />
-                          <span class="text-sm">🌐 Web App Agent</span>
-                        </label>
-                        <label
-                          class="flex items-center gap-2 text-gray-300 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            class="text-primary focus:ring-primary"
-                          />
-                          <span class="text-sm">🔒 Network Agent</span>
-                        </label>
-                        <label
-                          class="flex items-center gap-2 text-gray-300 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            class="text-primary focus:ring-primary"
-                          />
-                          <span class="text-sm">⚡ API Agent</span>
-                        </label>
-                        <label
-                          class="flex items-center gap-2 text-gray-300 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            class="text-primary focus:ring-primary"
-                          />
-                          <span class="text-sm">📋 Report Agent</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <!-- Enhanced Agents -->
-                    <div
-                      class="bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/30 p-3 rounded-lg"
-                    >
-                      <div class="text-xs text-primary mb-2 font-medium">
-                        🚀 Enhanced Agents
-                      </div>
-                      <div class="space-y-2">
-                        <label
-                          class="flex items-center gap-2 text-gray-300 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            class="text-primary focus:ring-primary"
-                          />
-                          <span class="text-sm text-primary"
-                            >🔬 Enhanced Security Agent</span
-                          >
-                        </label>
-                        <div class="text-xs text-gray-400 ml-6 mb-2">
-                          15+ advanced payloads, WAF evasion, SSL analysis
-                        </div>
-                        <label
-                          class="flex items-center gap-2 text-gray-300 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            class="text-primary focus:ring-primary"
-                          />
-                          <span class="text-sm text-primary"
-                            >🛡️ Threat Intelligence Agent</span
-                          >
-                        </label>
-                        <div class="text-xs text-gray-400 ml-6">
-                          AbuseIPDB + Shodan + VirusTotal integration
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  class="w-full px-4 py-3 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
-                >
-                  Start Scan
-                </button>
-              </form>
-            </div>
-
-            <!-- Active Scans -->
-            <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
-              <div class="mb-4">
-                <h3 class="text-xl font-semibold text-white">Active Scans</h3>
-              </div>
-              <div id="active-scans" class="space-y-4">
-                <p class="text-gray-400">No active scans</p>
-              </div>
-            </div>
-
-            <!-- Vulnerability Chart Section -->
-            <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
-              <div class="mb-4">
-                <h3 class="text-lg font-semibold text-white">
-                  📊 Vulnerability Analytics
-                </h3>
-                <p class="text-gray-400">
-                  Real-time security metrics and vulnerability distribution
+                <p class="text-2xl font-bold text-white" id="total-vulnerabilities">
+                  156
                 </p>
               </div>
-              <div class="relative h-64">
-                <canvas id="vulnerabilityChart" class="w-full h-full"></canvas>
+            </div>
+          </div>
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-error transition-colors">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 bg-error bg-opacity-20 rounded-lg flex items-center justify-center text-2xl">
+                ⚠️
+              </div>
+              <div>
+                <h3 class="text-gray-400 text-sm font-medium">
+                  Critical Issues
+                </h3>
+                <p class="text-2xl font-bold text-white" id="critical-issues">
+                  23
+                </p>
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- AI Agents View -->
-        <div id="ai-agents-view" class="view p-6">
-          <div class="mb-6">
-            <h3 class="text-2xl font-bold text-white">AI Security Agents</h3>
-            <p class="text-gray-400">
-              Enhanced security scanning with 7 specialized AI agents
-            </p>
-          </div>
-
-          <!-- Enhanced Threat Intelligence Section -->
-          <div
-            class="bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/30 rounded-xl p-6 mb-6"
-          >
-            <div class="flex items-center gap-3 mb-4">
-              <div
-                class="w-10 h-10 bg-primary bg-opacity-20 rounded-lg flex items-center justify-center text-2xl"
-              >
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 hover:border-purple-500 transition-colors">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 bg-purple-500 bg-opacity-20 rounded-lg flex items-center justify-center text-2xl">
                 🛡️
               </div>
               <div>
-                <h4 class="text-lg font-semibold text-white">
-                  Triple Threat Intelligence
-                </h4>
-                <p class="text-sm text-gray-300">
-                  Real-time intelligence from multiple security APIs
-                </p>
-              </div>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div
-                class="bg-dark-lighter p-4 rounded-lg border border-gray-700"
-              >
-                <div class="flex items-center gap-3 mb-2">
-                  <div
-                    class="w-6 h-6 bg-blue-500 bg-opacity-20 rounded flex items-center justify-center"
-                  >
-                    <span class="text-blue-400 text-xs">🛡️</span>
-                  </div>
-                  <span class="text-white font-medium">AbuseIPDB</span>
-                  <div class="w-2 h-2 bg-green-400 rounded-full ml-auto"></div>
-                </div>
-                <p class="text-xs text-gray-400">
-                  IP reputation scoring and abuse confidence detection
-                </p>
-              </div>
-              <div
-                class="bg-dark-lighter p-4 rounded-lg border border-gray-700"
-              >
-                <div class="flex items-center gap-3 mb-2">
-                  <div
-                    class="w-6 h-6 bg-cyan-500 bg-opacity-20 rounded flex items-center justify-center"
-                  >
-                    <span class="text-cyan-400 text-xs">🌐</span>
-                  </div>
-                  <span class="text-white font-medium">Shodan</span>
-                  <div class="w-2 h-2 bg-green-400 rounded-full ml-auto"></div>
-                </div>
-                <p class="text-xs text-gray-400">
-                  Internet device discovery and service enumeration
-                </p>
-              </div>
-              <div
-                class="bg-dark-lighter p-4 rounded-lg border border-gray-700"
-              >
-                <div class="flex items-center gap-3 mb-2">
-                  <div
-                    class="w-6 h-6 bg-purple-500 bg-opacity-20 rounded flex items-center justify-center"
-                  >
-                    <span class="text-purple-400 text-xs">🦠</span>
-                  </div>
-                  <span class="text-white font-medium">VirusTotal</span>
-                  <div class="w-2 h-2 bg-green-400 rounded-full ml-auto"></div>
-                </div>
-                <p class="text-xs text-gray-400">
-                  Domain and URL malware detection analysis
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div
-            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-            id="agents-grid"
-          >
-            <!-- Agent cards will be populated by JavaScript -->
-          </div>
-        </div>
-
-        <!-- Reports View -->
-        <div id="reports-view" class="view p-6">
-          <div class="space-y-6">
-            <div class="flex justify-between items-center">
-              <h3 class="text-2xl font-bold text-white">Security Reports</h3>
-              <div class="flex gap-3">
-                <button
-                  onclick="checkReportingCapabilities()"
-                  class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Check Capabilities
-                </button>
-                <button
-                  onclick="refreshReports()"
-                  class="px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary hover:text-white transition-colors"
-                >
-                  Refresh
-                </button>
-              </div>
-            </div>
-
-            <!-- Reporting Capabilities Status -->
-            <div
-              id="reporting-capabilities"
-              class="bg-gray-800 border border-gray-700 rounded-lg p-4 hidden"
-            >
-              <h4 class="text-lg font-semibold text-white mb-3">
-                Available Reporting Features
-              </h4>
-              <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                <div class="flex items-center gap-2">
-                  <span
-                    id="basic-reports-status"
-                    class="w-3 h-3 rounded-full bg-gray-500"
-                  ></span>
-                  <span>Basic Reports</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span
-                    id="executive-dashboard-status"
-                    class="w-3 h-3 rounded-full bg-gray-500"
-                  ></span>
-                  <span>Executive Dashboard</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span
-                    id="technical-reports-status"
-                    class="w-3 h-3 rounded-full bg-gray-500"
-                  ></span>
-                  <span>Technical Reports</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span
-                    id="compliance-reports-status"
-                    class="w-3 h-3 rounded-full bg-gray-500"
-                  ></span>
-                  <span>Compliance Reports</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span
-                    id="pdf-export-status"
-                    class="w-3 h-3 rounded-full bg-gray-500"
-                  ></span>
-                  <span>PDF Export</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span
-                    id="excel-export-status"
-                    class="w-3 h-3 rounded-full bg-gray-500"
-                  ></span>
-                  <span>Excel Export</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Enhanced Report Generation -->
-            <div
-              class="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-700/50 rounded-lg p-6"
-            >
-              <h4 class="text-lg font-semibold text-white mb-4">
-                🚀 Generate Enhanced Reports
-              </h4>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- Scan Selection -->
-                <div>
-                  <label class="block text-sm font-medium text-gray-300 mb-2"
-                    >Select Scan</label
-                  >
-                  <select
-                    id="scan-select"
-                    class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none"
-                  >
-                    <option value="">Choose a scan...</option>
-                  </select>
-                </div>
-
-                <!-- Report Type -->
-                <div>
-                  <label class="block text-sm font-medium text-gray-300 mb-2"
-                    >Report Type</label
-                  >
-                  <select
-                    id="report-type-select"
-                    class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none"
-                  >
-                    <option value="executive">Executive Dashboard</option>
-                    <option value="technical">Technical Report</option>
-                    <option value="compliance">Compliance Report</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Compliance Framework (for compliance reports) -->
-              <div id="compliance-framework-section" class="mt-4 hidden">
-                <label class="block text-sm font-medium text-gray-300 mb-2"
-                  >Compliance Framework</label
-                >
-                <select
-                  id="compliance-framework"
-                  class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none"
-                >
-                  <option value="OWASP">OWASP Top 10</option>
-                  <option value="NIST">NIST Cybersecurity Framework</option>
-                  <option value="ISO27001">ISO 27001</option>
-                </select>
-              </div>
-
-              <!-- Action Buttons -->
-              <div class="flex gap-3 mt-6">
-                <button
-                  onclick="generateEnhancedReport()"
-                  class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-                >
-                  Generate Report
-                </button>
-                <button
-                  onclick="exportReportPDF()"
-                  class="px-6 py-2 border border-green-600 text-green-400 rounded-lg hover:bg-green-600 hover:text-white transition-colors"
-                >
-                  Export PDF
-                </button>
-                <button
-                  onclick="exportVulnerabilitiesExcel()"
-                  class="px-6 py-2 border border-yellow-600 text-yellow-400 rounded-lg hover:bg-yellow-600 hover:text-white transition-colors"
-                >
-                  Export Excel
-                </button>
-              </div>
-            </div>
-
-            <!-- Enhanced Report Display -->
-            <div
-              id="enhanced-report-display"
-              class="bg-gray-800 border border-gray-700 rounded-lg p-6 hidden"
-            >
-              <div class="flex justify-between items-center mb-4">
-                <h4 class="text-lg font-semibold text-white">
-                  Generated Report
-                </h4>
-                <button
-                  onclick="closeEnhancedReport()"
-                  class="text-gray-400 hover:text-white"
-                >
-                  <svg
-                    class="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M6 18L18 6M6 6l12 12"
-                    ></path>
-                  </svg>
-                </button>
-              </div>
-              <div id="enhanced-report-content" class="text-gray-300">
-                <!-- Report content will be populated here -->
-              </div>
-            </div>
-
-            <!-- Traditional Reports Grid -->
-            <div>
-              <h4 class="text-lg font-semibold text-white mb-4">
-                📋 Traditional Reports
-              </h4>
-              <div class="flex gap-3 mb-4">
-                <select
-                  class="px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none"
-                >
-                  <option>All Severities</option>
-                  <option>Critical</option>
-                  <option>High</option>
-                  <option>Medium</option>
-                </select>
-                <button
-                  class="px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary hover:text-white transition-colors"
-                >
-                  Export All
-                </button>
-              </div>
-              <div
-                class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-                id="reports-grid"
-              >
-                <p class="text-gray-400 col-span-full">
-                  No traditional reports generated yet
+                <h3 class="text-gray-400 text-sm font-medium">
+                  Threat Intel APIs
+                </h3>
+                <p class="text-2xl font-bold text-white" id="threat-intel-apis">
+                  3/3
                 </p>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Scan Results View -->
-        <div id="scan-results-view" class="view p-6">
-          <div class="space-y-6">
-            <div class="flex justify-between items-center">
-              <h3 class="text-2xl font-bold text-white">
-                Vulnerability Results
-              </h3>
-              <div>
-                <select
-                  class="px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none"
-                  id="severity-filter"
-                >
-                  <option value="">All Severities</option>
-                  <option value="Critical">Critical</option>
-                  <option value="High">High</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Low">Low</option>
-                </select>
-              </div>
-            </div>
-            <div class="space-y-4" id="vulnerabilities-list">
-              <p class="text-gray-400">No vulnerabilities found yet</p>
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
-
-    <!-- Modal for Vulnerability Details -->
-    <div
-      id="vulnerability-modal"
-      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 hidden"
-    >
-      <div
-        class="bg-dark-lighter border border-gray-700 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
-      >
+        <!-- Enhancement Status Banner -->
         <div
-          class="flex justify-between items-center p-6 border-b border-gray-700"
-        >
-          <h3 id="modal-title" class="text-xl font-bold text-white">
-            Vulnerability Details
-          </h3>
-          <button
-            class="text-gray-400 hover:text-white text-2xl"
-            onclick="document.getElementById('vulnerability-modal').classList.add('hidden')"
-          >
-            &times;
-          </button>
-        </div>
-        <div class="p-6" id="modal-body">
-          <!-- Content will be populated by JavaScript -->
-        </div>
-      </div>
-    </div>
-
-    <!-- Scan Progress Modal -->
-    <div
-      id="scan-progress-modal"
-      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden"
-    >
-      <div
-        class="bg-dark-lighter border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4"
-        id="progress-modal-content"
-      >
-        <!-- Modal Header with Controls -->
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-xl font-bold text-white">
-            🔍 Security Scan in Progress
-          </h3>
-          <div class="flex items-center gap-2">
-            <button
-              id="minimize-scan-btn"
-              class="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-              title="Minimize"
-            >
-              <svg
-                class="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M20 12H4"
-                ></path>
-              </svg>
-            </button>
-            <button
-              id="quit-scan-btn"
-              class="p-2 text-red-400 hover:text-red-300 hover:bg-red-900 hover:bg-opacity-30 rounded transition-colors"
-              title="Stop Scan"
-            >
-              <svg
-                class="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M6 18L18 6M6 6l12 12"
-                ></path>
-              </svg>
-            </button>
+          class="bg-gradient-to-r from-primary to-secondary border border-primary border-opacity-30 rounded-xl p-4 mb-6">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 bg-white bg-opacity-20 rounded-lg flex items-center justify-center text-xl">
+                �️
+              </div>
+              <div>
+                <h3 class="text-white font-medium">
+                  Triple Threat Intelligence Active
+                </h3>
+                <p class="text-blue-100 text-sm">
+                  AbuseIPDB + Shodan + VirusTotal APIs integrated for enhanced
+                  detection
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center gap-4 text-white">
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span class="text-xs">AbuseIPDB</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span class="text-xs">Shodan</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span class="text-xs">VirusTotal</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="space-y-4">
-          <div class="text-sm text-gray-400" id="scan-target-display"></div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <!-- Quick Scan Form -->
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
+            <div class="mb-4">
+              <h3 class="text-lg font-semibold text-white">
+                🚀 Quick Focused Scan
+              </h3>
+              <p class="text-sm text-gray-400">
+                High-impact vulnerabilities in 1 hour
+              </p>
+            </div>
+            <form id="quick-scan-form" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-300 mb-2">Target URL</label>
+                <input type="url" id="quick-target-url"
+                  class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-colors"
+                  placeholder="https://testphp.vulnweb.com" required />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-300 mb-2">Quick Mode</label>
+                <select id="quick-scan-mode"
+                  class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none">
+                  <option value="focused" selected>
+                    🎯 Focused (1hr) - Top 4 Categories
+                  </option>
+                  <option value="critical_only">
+                    ⚡ Critical Only (30min) - RCE + Access Control
+                  </option>
+                </select>
+              </div>
+              <div class="flex items-center gap-2 text-sm text-gray-400">
+                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                <span>Enhanced scanning with priority-based filtering</span>
+              </div>
+              <button type="submit"
+                class="w-full px-4 py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all font-medium">
+                🛡️ Start Focused Scan
+              </button>
+            </form>
+          </div>
 
-          <div class="space-y-2">
+          <!-- Threat Intelligence Status -->
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
+            <div class="mb-4">
+              <h3 class="text-lg font-semibold text-white">
+                🛡️ Threat Intelligence Status
+              </h3>
+            </div>
+            <div class="space-y-4">
+              <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                    <span class="text-blue-400 text-sm">�️</span>
+                  </div>
+                  <div>
+                    <div class="text-white text-sm font-medium">
+                      AbuseIPDB
+                    </div>
+                    <div class="text-gray-400 text-xs">
+                      IP Reputation & Abuse Detection
+                    </div>
+                  </div>
+                </div>
+                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+              </div>
+              <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 bg-cyan-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                    <span class="text-cyan-400 text-sm">🌐</span>
+                  </div>
+                  <div>
+                    <div class="text-white text-sm font-medium">Shodan</div>
+                    <div class="text-gray-400 text-xs">
+                      Internet Device Intelligence
+                    </div>
+                  </div>
+                </div>
+                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+              </div>
+              <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 bg-purple-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                    <span class="text-purple-400 text-sm">🦠</span>
+                  </div>
+                  <div>
+                    <div class="text-white text-sm font-medium">
+                      VirusTotal
+                    </div>
+                    <div class="text-gray-400 text-xs">
+                      Malware & Domain Analysis
+                    </div>
+                  </div>
+                </div>
+                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- External Tool Integrations Status -->
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
+            <div class="mb-4">
+              <h3 class="text-lg font-semibold text-white">
+                🔧 External Tool Integrations
+              </h3>
+              <p class="text-gray-400 text-sm">
+                Integrated with Recon Agent & Web App Agent
+              </p>
+            </div>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 bg-orange-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                    <span class="text-orange-400 text-sm">💉</span>
+                  </div>
+                  <div>
+                    <div class="text-white text-sm font-medium">SQLMap</div>
+                    <div class="text-gray-400 text-xs">
+                      Web App Agent • SQL Injection Detection
+                    </div>
+                  </div>
+                </div>
+                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+              </div>
+              <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 bg-indigo-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                    <span class="text-indigo-400 text-sm">🛡️</span>
+                  </div>
+                  <div>
+                    <div class="text-white text-sm font-medium">
+                      OWASP ZAP
+                    </div>
+                    <div class="text-gray-400 text-xs">
+                      Recon Agent • Web Application Scanning
+                    </div>
+                  </div>
+                </div>
+                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+              </div>
+              <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 bg-teal-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                    <span class="text-teal-400 text-sm">🌐</span>
+                  </div>
+                  <div>
+                    <div class="text-white text-sm font-medium">
+                      Subfinder
+                    </div>
+                    <div class="text-gray-400 text-xs">
+                      Recon Agent • Subdomain Discovery
+                    </div>
+                  </div>
+                </div>
+                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+              </div>
+              <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                    <span class="text-blue-400 text-sm">📡</span>
+                  </div>
+                  <div>
+                    <div class="text-white text-sm font-medium">Nmap</div>
+                    <div class="text-gray-400 text-xs">
+                      Network Agent • Port Scanning & Service Discovery
+                    </div>
+                  </div>
+                </div>
+                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Enhanced Features Overview -->
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
+            <div class="mb-4">
+              <h3 class="text-lg font-semibold text-white">
+                ⚡ Enhanced Features
+              </h3>
+            </div>
+            <div class="space-y-3">
+              <div class="flex items-center gap-3 text-sm">
+                <div class="w-2 h-2 bg-primary rounded-full"></div>
+                <span class="text-gray-300">15+ Advanced XSS/SQLi Payloads</span>
+              </div>
+              <div class="flex items-center gap-3 text-sm">
+                <div class="w-2 h-2 bg-success rounded-full"></div>
+                <span class="text-gray-300">Real-time CVE Database Integration</span>
+              </div>
+              <div class="flex items-center gap-3 text-sm">
+                <div class="w-2 h-2 bg-warning rounded-full"></div>
+                <span class="text-gray-300">SSL/TLS Security Analysis</span>
+              </div>
+              <div class="flex items-center gap-3 text-sm">
+                <div class="w-2 h-2 bg-purple-500 rounded-full"></div>
+                <span class="text-gray-300">WAF Detection & Evasion</span>
+              </div>
+              <div class="flex items-center gap-3 text-sm">
+                <div class="w-2 h-2 bg-cyan-500 rounded-full"></div>
+                <span class="text-gray-300">Infrastructure Discovery</span>
+              </div>
+              <div class="flex items-center gap-3 text-sm">
+                <div class="w-2 h-2 bg-red-500 rounded-full"></div>
+                <span class="text-gray-300">Threat Actor Attribution</span>
+              </div>
+              <div class="flex items-center gap-3 text-sm">
+                <div class="w-2 h-2 bg-orange-500 rounded-full"></div>
+                <span class="text-gray-300">SQLMap Integration (Web App Agent)</span>
+              </div>
+              <div class="flex items-center gap-3 text-sm">
+                <div class="w-2 h-2 bg-indigo-500 rounded-full"></div>
+                <span class="text-gray-300">OWASP ZAP Integration (Recon Agent)</span>
+              </div>
+              <div class="flex items-center gap-3 text-sm">
+                <div class="w-2 h-2 bg-teal-500 rounded-full"></div>
+                <span class="text-gray-300">Subfinder Integration (Recon Agent)</span>
+              </div>
+            </div>
             <div
-              class="w-full bg-gray-700 rounded-full h-3 overflow-hidden relative"
-            >
-              <div
-                class="h-full bg-gradient-to-r from-primary to-accent transition-all duration-500 ease-out absolute left-0 top-0"
-                id="progress-fill"
-                style="width: 0%"
-              ></div>
-            </div>
-            <div class="flex justify-between items-center">
-              <div
-                class="text-right text-sm font-medium text-white"
-                id="progress-percentage"
-              >
-                0%
+              class="mt-4 p-3 bg-gradient-to-r from-primary to-secondary bg-opacity-10 border border-primary border-opacity-30 rounded-lg">
+              <div class="text-xs text-primary font-medium">
+                75%+ Detection Improvement
               </div>
-              <div class="text-xs text-gray-400" id="scan-elapsed-time">
-                00:00
+              <div class="text-xs text-gray-400">
+                vs. standard scanning methods (with external tool
+                integrations)
               </div>
             </div>
           </div>
+        </div>
 
-          <div
-            class="text-sm text-gray-300 p-3 bg-gray-800 rounded-lg min-h-[3rem] flex items-center"
-            id="current-test"
-          >
-            <div class="flex items-center gap-2">
-              <div
-                class="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full"
-              ></div>
-              <span>Initializing scan...</span>
-            </div>
+        <!-- Recent Activity -->
+        <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
+          <div class="mb-4">
+            <h3 class="text-lg font-semibold text-white">Recent Activity</h3>
           </div>
-
-          <div class="flex justify-between text-xs text-gray-400">
-            <span id="scan-type-display"></span>
-            <span id="scan-agents-display"></span>
+          <div class="text-gray-300">
+            <div class="activity-feed" id="activity-feed">
+              <p class="text-gray-400">No Recent Activity</p>
+              <p class="text-sm text-gray-500">
+                Start a scan to see real-time activity updates
+              </p>
+              <button class="mt-2 text-primary hover:text-blue-400 text-sm">
+                View All Activity →
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Minimized Scan Indicator -->
-    <div
-      id="minimized-scan-indicator"
-      class="fixed bottom-4 right-4 bg-dark-lighter border border-primary rounded-lg p-3 z-40 hidden cursor-pointer hover:bg-gray-700 transition-colors"
-    >
-      <div class="flex items-center gap-3">
-        <div class="w-3 h-3 bg-primary rounded-full animate-pulse"></div>
-        <div>
-          <div class="text-sm font-medium text-white">Scan Running</div>
-          <div class="text-xs text-gray-400" id="minimized-progress">0%</div>
+      <!-- Scan Manager View -->
+      <div id="scan-manager-view" class="view p-6">
+        <div class="space-y-6">
+          <!-- New Scan Form -->
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
+            <div class="mb-6">
+              <h3 class="text-xl font-semibold text-white">
+                Configure New Scan
+              </h3>
+            </div>
+            <form id="new-scan-form" class="space-y-6">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Target URL/Domain</label>
+                  <input type="url"
+                    class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-primary focus:outline-none"
+                    placeholder="https://example.com" required />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Scan Mode</label>
+                  <select id="scan-mode"
+                    class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none">
+                    <option value="Quick Scan" selected>
+                      ⚡ Quick Scan - Fast web security assessment (30 min)
+                    </option>
+                    <option value="Full Scan">
+                      🔍 Full Scan - Comprehensive security testing (1-2
+                      hours)
+                    </option>
+                    <option value="Enhanced Scan">
+                      🚀 Enhanced Scan - Advanced AI-powered analysis (2-3
+                      hours)
+                    </option>
+                    <option value="Custom Scan">
+                      🎯 Custom Scan - Choose your own agents
+                    </option>
+                  </select>
+                  <p id="scan-mode-description" class="text-xs text-gray-400 mt-1">
+                    Fast vulnerability assessment focusing on web application
+                    security • 30 minutes • 5-15 web vulnerabilities
+                  </p>
+                </div>
+              </div>
+
+              <!-- Scan Information -->
+              <div id="scan-info-display" class="bg-gray-800 p-4 rounded-lg">
+                <label class="block text-sm font-medium text-gray-300 mb-3">📋 Scan Information</label>
+                <div class="space-y-2">
+                  <div class="flex justify-between text-sm">
+                    <span class="text-gray-400">Duration:</span>
+                    <span id="scan-duration" class="text-white">30 minutes</span>
+                  </div>
+                  <div class="flex justify-between text-sm">
+                    <span class="text-gray-400">Agents:</span>
+                    <span id="scan-agents-count" class="text-white">2 agents</span>
+                  </div>
+                  <div class="flex justify-between text-sm">
+                    <span class="text-gray-400">Expected findings:</span>
+                    <span id="scan-findings" class="text-white">5-15 vulnerabilities</span>
+                  </div>
+                </div>
+                <div class="mt-3 p-3 bg-dark-lighter rounded-lg">
+                  <div class="text-xs text-primary font-medium mb-1">
+                    Focus Areas
+                  </div>
+                  <div id="scan-focus-info" class="text-xs text-gray-400">
+                    Web application security vulnerabilities
+                  </div>
+                </div>
+              </div>
+
+              <div id="ai-agents-group">
+                <label class="block text-sm font-medium text-gray-300 mb-3">AI Security Agents</label>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <!-- Core Agents -->
+                  <div class="bg-gray-800 p-3 rounded-lg">
+                    <div class="text-xs text-gray-400 mb-2 font-medium">
+                      Core Security Agents
+                    </div>
+                    <div class="space-y-2">
+                      <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                        <input type="checkbox" checked class="text-primary focus:ring-primary" />
+                        <span class="text-sm">🔍 Discovery Agent</span>
+                      </label>
+                      <div class="text-xs text-gray-400 ml-6 mb-2">
+                        Intelligence gathering & application mapping (runs first)
+                      </div>
+                      <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                        <input type="checkbox" checked class="text-primary focus:ring-primary" />
+                        <span class="text-sm">🔍 Recon Agent</span>
+                      </label>
+                      <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                        <input type="checkbox" checked class="text-primary focus:ring-primary" />
+                        <span class="text-sm">🌐 Web App Agent</span>
+                      </label>
+                      <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                        <input type="checkbox" class="text-primary focus:ring-primary" />
+                        <span class="text-sm">🔒 Network Agent</span>
+                      </label>
+                      <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                        <input type="checkbox" class="text-primary focus:ring-primary" />
+                        <span class="text-sm">⚡ API Agent</span>
+                      </label>
+                      <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                        <input type="checkbox" class="text-primary focus:ring-primary" />
+                        <span class="text-sm">📋 Report Agent</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <!-- Enhanced Agents -->
+                  <div
+                    class="bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/30 p-3 rounded-lg">
+                    <div class="text-xs text-primary mb-2 font-medium">
+                      🚀 Enhanced Agents
+                    </div>
+                    <div class="space-y-2">
+                      <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                        <input type="checkbox" class="text-primary focus:ring-primary" />
+                        <span class="text-sm text-primary">🔬 Enhanced Security Agent</span>
+                      </label>
+                      <div class="text-xs text-gray-400 ml-6 mb-2">
+                        15+ advanced payloads, WAF evasion, SSL analysis
+                      </div>
+                      <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                        <input type="checkbox" class="text-primary focus:ring-primary" />
+                        <span class="text-sm text-primary">🛡️ Threat Intelligence Agent</span>
+                      </label>
+                      <div class="text-xs text-gray-400 ml-6">
+                        AbuseIPDB + Shodan + VirusTotal integration
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button type="submit"
+                class="w-full px-4 py-3 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors font-medium">
+                Start Scan
+              </button>
+            </form>
+          </div>
+
+          <!-- Active Scans -->
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
+            <div class="mb-4">
+              <h3 class="text-xl font-semibold text-white">Active Scans</h3>
+            </div>
+            <div id="active-scans" class="space-y-4">
+              <p class="text-gray-400">No active scans</p>
+            </div>
+          </div>
+
+          <!-- Vulnerability Chart Section -->
+          <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6">
+            <div class="mb-4">
+              <h3 class="text-lg font-semibold text-white">
+                📊 Vulnerability Analytics
+              </h3>
+              <p class="text-gray-400">
+                Real-time security metrics and vulnerability distribution
+              </p>
+            </div>
+            <div class="relative h-64">
+              <canvas id="vulnerabilityChart" class="w-full h-full"></canvas>
+            </div>
+          </div>
         </div>
-        <button class="text-gray-400 hover:text-white ml-2">
-          <svg
-            class="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M5 15l7-7 7 7"
-            ></path>
-          </svg>
+      </div>
+
+      <!-- AI Agents View -->
+      <div id="ai-agents-view" class="view p-6">
+        <div class="mb-6">
+          <h3 class="text-2xl font-bold text-white">AI Security Agents</h3>
+          <p class="text-gray-400">
+            Enhanced security scanning with 7 specialized AI agents
+          </p>
+        </div>
+
+        <!-- Enhanced Threat Intelligence Section -->
+        <div class="bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/30 rounded-xl p-6 mb-6">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 bg-primary bg-opacity-20 rounded-lg flex items-center justify-center text-2xl">
+              🛡️
+            </div>
+            <div>
+              <h4 class="text-lg font-semibold text-white">
+                Triple Threat Intelligence
+              </h4>
+              <p class="text-sm text-gray-300">
+                Real-time intelligence from multiple security APIs
+              </p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-dark-lighter p-4 rounded-lg border border-gray-700">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="w-6 h-6 bg-blue-500 bg-opacity-20 rounded flex items-center justify-center">
+                  <span class="text-blue-400 text-xs">🛡️</span>
+                </div>
+                <span class="text-white font-medium">AbuseIPDB</span>
+                <div class="w-2 h-2 bg-green-400 rounded-full ml-auto"></div>
+              </div>
+              <p class="text-xs text-gray-400">
+                IP reputation scoring and abuse confidence detection
+              </p>
+            </div>
+            <div class="bg-dark-lighter p-4 rounded-lg border border-gray-700">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="w-6 h-6 bg-cyan-500 bg-opacity-20 rounded flex items-center justify-center">
+                  <span class="text-cyan-400 text-xs">🌐</span>
+                </div>
+                <span class="text-white font-medium">Shodan</span>
+                <div class="w-2 h-2 bg-green-400 rounded-full ml-auto"></div>
+              </div>
+              <p class="text-xs text-gray-400">
+                Internet device discovery and service enumeration
+              </p>
+            </div>
+            <div class="bg-dark-lighter p-4 rounded-lg border border-gray-700">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="w-6 h-6 bg-purple-500 bg-opacity-20 rounded flex items-center justify-center">
+                  <span class="text-purple-400 text-xs">🦠</span>
+                </div>
+                <span class="text-white font-medium">VirusTotal</span>
+                <div class="w-2 h-2 bg-green-400 rounded-full ml-auto"></div>
+              </div>
+              <p class="text-xs text-gray-400">
+                Domain and URL malware detection analysis
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="agents-grid">
+          <!-- Agent cards will be populated by JavaScript -->
+        </div>
+      </div>
+
+      <!-- Reports View -->
+      <div id="reports-view" class="view p-6">
+        <div class="space-y-6">
+          <div class="flex justify-between items-center">
+            <h3 class="text-2xl font-bold text-white">Security Reports</h3>
+            <div class="flex gap-3">
+              <button onclick="checkReportingCapabilities()"
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                Check Capabilities
+              </button>
+              <button onclick="refreshReports()"
+                class="px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary hover:text-white transition-colors">
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- Reporting Capabilities Status -->
+          <div id="reporting-capabilities" class="bg-gray-800 border border-gray-700 rounded-lg p-4 hidden">
+            <h4 class="text-lg font-semibold text-white mb-3">
+              Available Reporting Features
+            </h4>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div class="flex items-center gap-2">
+                <span id="basic-reports-status" class="w-3 h-3 rounded-full bg-gray-500"></span>
+                <span>Basic Reports</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="executive-dashboard-status" class="w-3 h-3 rounded-full bg-gray-500"></span>
+                <span>Executive Dashboard</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="technical-reports-status" class="w-3 h-3 rounded-full bg-gray-500"></span>
+                <span>Technical Reports</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="compliance-reports-status" class="w-3 h-3 rounded-full bg-gray-500"></span>
+                <span>Compliance Reports</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="pdf-export-status" class="w-3 h-3 rounded-full bg-gray-500"></span>
+                <span>PDF Export</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="excel-export-status" class="w-3 h-3 rounded-full bg-gray-500"></span>
+                <span>Excel Export</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Enhanced Report Generation -->
+          <div class="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-700/50 rounded-lg p-6">
+            <h4 class="text-lg font-semibold text-white mb-4">
+              🚀 Generate Enhanced Reports
+            </h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Scan Selection -->
+              <div>
+                <label class="block text-sm font-medium text-gray-300 mb-2">Select Scan</label>
+                <select id="scan-select"
+                  class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none">
+                  <option value="">Choose a scan...</option>
+                </select>
+              </div>
+
+              <!-- Report Type -->
+              <div>
+                <label class="block text-sm font-medium text-gray-300 mb-2">Report Type</label>
+                <select id="report-type-select"
+                  class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none">
+                  <option value="executive">Executive Dashboard</option>
+                  <option value="technical">Technical Report</option>
+                  <option value="compliance">Compliance Report</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Compliance Framework (for compliance reports) -->
+            <div id="compliance-framework-section" class="mt-4 hidden">
+              <label class="block text-sm font-medium text-gray-300 mb-2">Compliance Framework</label>
+              <select id="compliance-framework"
+                class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none">
+                <option value="OWASP">OWASP Top 10</option>
+                <option value="NIST">NIST Cybersecurity Framework</option>
+                <option value="ISO27001">ISO 27001</option>
+              </select>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-3 mt-6">
+              <button onclick="generateEnhancedReport()"
+                class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors">
+                Generate Report
+              </button>
+              <button onclick="exportReportPDF()"
+                class="px-6 py-2 border border-green-600 text-green-400 rounded-lg hover:bg-green-600 hover:text-white transition-colors">
+                Export PDF
+              </button>
+              <button onclick="exportVulnerabilitiesExcel()"
+                class="px-6 py-2 border border-yellow-600 text-yellow-400 rounded-lg hover:bg-yellow-600 hover:text-white transition-colors">
+                Export Excel
+              </button>
+            </div>
+          </div>
+
+          <!-- Enhanced Report Display -->
+          <div id="enhanced-report-display" class="bg-gray-800 border border-gray-700 rounded-lg p-6 hidden">
+            <div class="flex justify-between items-center mb-4">
+              <h4 class="text-lg font-semibold text-white">
+                Generated Report
+              </h4>
+              <button onclick="closeEnhancedReport()" class="text-gray-400 hover:text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div id="enhanced-report-content" class="text-gray-300">
+              <!-- Report content will be populated here -->
+            </div>
+          </div>
+
+          <!-- Traditional Reports Grid -->
+          <div>
+            <h4 class="text-lg font-semibold text-white mb-4">
+              📋 Traditional Reports
+            </h4>
+            <div class="flex gap-3 mb-4">
+              <select
+                class="px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none">
+                <option>All Severities</option>
+                <option>Critical</option>
+                <option>High</option>
+                <option>Medium</option>
+              </select>
+              <button
+                class="px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary hover:text-white transition-colors">
+                Export All
+              </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="reports-grid">
+              <p class="text-gray-400 col-span-full">
+                No traditional reports generated yet
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scan Results View -->
+      <div id="scan-results-view" class="view p-6">
+        <div class="space-y-6">
+          <div class="flex justify-between items-center">
+            <h3 class="text-2xl font-bold text-white">
+              Vulnerability Results
+            </h3>
+            <div>
+              <select
+                class="px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-primary focus:outline-none"
+                id="severity-filter">
+                <option value="">All Severities</option>
+                <option value="Critical">Critical</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+          </div>
+          <div class="space-y-4" id="vulnerabilities-list">
+            <p class="text-gray-400">No vulnerabilities found yet</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal for Vulnerability Details -->
+  <div id="vulnerability-modal"
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-dark-lighter border border-gray-700 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center p-6 border-b border-gray-700">
+        <h3 id="modal-title" class="text-xl font-bold text-white">
+          Vulnerability Details
+        </h3>
+        <button class="text-gray-400 hover:text-white text-2xl"
+          onclick="document.getElementById('vulnerability-modal').classList.add('hidden')">
+          &times;
         </button>
       </div>
+      <div class="p-6" id="modal-body">
+        <!-- Content will be populated by JavaScript -->
+      </div>
     </div>
+  </div>
 
-    <!-- Agent Configuration Modal -->
-    <div
-      id="agent-config-modal"
-      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 hidden"
-    >
-      <div
-        class="bg-dark-lighter border border-gray-700 rounded-xl max-w-2xl w-full max-h-screen overflow-y-auto"
-      >
-        <div
-          class="flex items-center justify-between p-6 border-b border-gray-700"
-        >
-          <h3 id="config-modal-title" class="text-xl font-bold text-white">
-            Configure Agent
-          </h3>
-          <button
-            class="text-gray-400 hover:text-white text-2xl"
-            onclick="closeAgentConfigModal()"
-          >
-            &times;
+  <!-- Scan Progress Modal -->
+  <div id="scan-progress-modal"
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-dark-lighter border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4" id="progress-modal-content">
+      <!-- Modal Header with Controls -->
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-xl font-bold text-white">
+          🔍 Security Scan in Progress
+        </h3>
+        <div class="flex items-center gap-2">
+          <button id="minimize-scan-btn"
+            class="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors" title="Minimize">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path>
+            </svg>
+          </button>
+          <button id="quit-scan-btn"
+            class="p-2 text-red-400 hover:text-red-300 hover:bg-red-900 hover:bg-opacity-30 rounded transition-colors"
+            title="Stop Scan">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
           </button>
         </div>
-        <div class="p-6">
-          <div class="mb-4">
-            <p class="text-gray-400 text-sm mb-4">
-              Enable or disable specific vulnerability tests for this agent
-            </p>
+      </div>
+
+      <div class="space-y-4">
+        <div class="text-sm text-gray-400" id="scan-target-display"></div>
+
+        <div class="space-y-2">
+          <div class="w-full bg-gray-700 rounded-full h-3 overflow-hidden relative">
             <div
-              class="mb-4 p-3 bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg"
-            >
-              <div class="text-blue-300 text-sm">
-                <strong>💡 Tip:</strong> Disable tests you don't need to focus
-                on specific vulnerabilities and reduce scan time.
-              </div>
+              class="h-full bg-gradient-to-r from-primary to-accent transition-all duration-500 ease-out absolute left-0 top-0"
+              id="progress-fill" style="width: 0%"></div>
+          </div>
+          <div class="flex justify-between items-center">
+            <div class="text-right text-sm font-medium text-white" id="progress-percentage">
+              0%
+            </div>
+            <div class="text-xs text-gray-400" id="scan-elapsed-time">
+              00:00
             </div>
           </div>
+        </div>
 
-          <!-- Loading State -->
-          <div id="config-loading" class="text-center py-8">
-            <div
-              class="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"
-            ></div>
-            <p class="text-gray-400">Loading configuration...</p>
+        <div class="text-sm text-gray-300 p-3 bg-gray-800 rounded-lg min-h-[3rem] flex items-center" id="current-test">
+          <div class="flex items-center gap-2">
+            <div class="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full"></div>
+            <span>Initializing scan...</span>
           </div>
+        </div>
 
-          <!-- Configuration Content -->
-          <div id="config-content" class="hidden">
-            <div class="space-y-4" id="config-tests-container">
-              <!-- Test toggles will be dynamically inserted here -->
-            </div>
-
-            <div
-              class="flex justify-between items-center mt-6 pt-4 border-t border-gray-700"
-            >
-              <div class="text-sm text-gray-400">
-                <span id="enabled-count">0</span> tests enabled
-              </div>
-              <div class="flex gap-3">
-                <button
-                  onclick="closeAgentConfigModal()"
-                  class="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onclick="saveAgentConfiguration()"
-                  class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-                >
-                  Save Configuration
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Error State -->
-          <div id="config-error" class="hidden text-center py-8">
-            <div class="text-red-400 text-4xl mb-4">⚠️</div>
-            <p class="text-red-400 mb-4">Failed to load configuration</p>
-            <button
-              onclick="loadAgentConfiguration(currentConfigAgent)"
-              class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Retry
-            </button>
-          </div>
+        <div class="flex justify-between text-xs text-gray-400">
+          <span id="scan-type-display"></span>
+          <span id="scan-agents-display"></span>
         </div>
       </div>
     </div>
+  </div>
 
-    <script src="app.js"></script>
-  </body>
+  <!-- Minimized Scan Indicator -->
+  <div id="minimized-scan-indicator"
+    class="fixed bottom-4 right-4 bg-dark-lighter border border-primary rounded-lg p-3 z-40 hidden cursor-pointer hover:bg-gray-700 transition-colors">
+    <div class="flex items-center gap-3">
+      <div class="w-3 h-3 bg-primary rounded-full animate-pulse"></div>
+      <div>
+        <div class="text-sm font-medium text-white">Scan Running</div>
+        <div class="text-xs text-gray-400" id="minimized-progress">0%</div>
+      </div>
+      <button class="text-gray-400 hover:text-white ml-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Agent Configuration Modal -->
+  <div id="agent-config-modal"
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-dark-lighter border border-gray-700 rounded-xl max-w-2xl w-full max-h-screen overflow-y-auto">
+      <div class="flex items-center justify-between p-6 border-b border-gray-700">
+        <h3 id="config-modal-title" class="text-xl font-bold text-white">
+          Configure Agent
+        </h3>
+        <button class="text-gray-400 hover:text-white text-2xl" onclick="closeAgentConfigModal()">
+          &times;
+        </button>
+      </div>
+      <div class="p-6">
+        <div class="mb-4">
+          <p class="text-gray-400 text-sm mb-4">
+            Enable or disable specific vulnerability tests for this agent
+          </p>
+          <div class="mb-4 p-3 bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg">
+            <div class="text-blue-300 text-sm">
+              <strong>💡 Tip:</strong> Disable tests you don't need to focus
+              on specific vulnerabilities and reduce scan time.
+            </div>
+          </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="config-loading" class="text-center py-8">
+          <div class="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4">
+          </div>
+          <p class="text-gray-400">Loading configuration...</p>
+        </div>
+
+        <!-- Configuration Content -->
+        <div id="config-content" class="hidden">
+          <div class="space-y-4" id="config-tests-container">
+            <!-- Test toggles will be dynamically inserted here -->
+          </div>
+
+          <div class="flex justify-between items-center mt-6 pt-4 border-t border-gray-700">
+            <div class="text-sm text-gray-400">
+              <span id="enabled-count">0</span> tests enabled
+            </div>
+            <div class="flex gap-3">
+              <button onclick="closeAgentConfigModal()"
+                class="px-4 py-2 text-gray-400 hover:text-white transition-colors">
+                Cancel
+              </button>
+              <button onclick="saveAgentConfiguration()"
+                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors">
+                Save Configuration
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="config-error" class="hidden text-center py-8">
+          <div class="text-red-400 text-4xl mb-4">⚠️</div>
+          <p class="text-red-400 mb-4">Failed to load configuration</p>
+          <button onclick="loadAgentConfiguration(currentConfigAgent)"
+            class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+            Retry
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
 </html>
