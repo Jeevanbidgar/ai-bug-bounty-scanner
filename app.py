@@ -1296,9 +1296,10 @@ def start_real_scan(scan_id):
                             session.add(vulnerability)
                             vulnerabilities_found.append(vulnerability)
                             
-                            # Commit vulnerabilities immediately
-                            session.commit()
-                            logging.info(f"💾 Stored {len(recon_results.get('vulnerabilities', []))} vulnerabilities from Recon Agent")
+                            # Batch commit all vulnerabilities from this agent
+                            if recon_results.get('vulnerabilities'):
+                                session.commit()
+                                logging.info(f"💾 Stored {len(recon_results.get('vulnerabilities', []))} vulnerabilities from Recon Agent")
 
                         except Exception as e:
                             logging.error(f"❌ Recon Agent failed: {e}")
@@ -1334,9 +1335,10 @@ def start_real_scan(scan_id):
                                 session.add(vulnerability)
                                 vulnerabilities_found.append(vulnerability)
                                 
-                            # Commit vulnerabilities immediately
-                            session.commit()
-                            logging.info(f"💾 Stored {len(webapp_results.get('vulnerabilities', []))} vulnerabilities from Web App Agent")
+                            # Batch commit all vulnerabilities from this agent
+                            if webapp_results.get('vulnerabilities'):
+                                session.commit()
+                                logging.info(f"💾 Stored {len(webapp_results.get('vulnerabilities', []))} vulnerabilities from Web App Agent")
 
                         except Exception as e:
                             logging.error(f"❌ Web App Agent failed: {e}")
@@ -1372,9 +1374,10 @@ def start_real_scan(scan_id):
                                 session.add(vulnerability)
                                 vulnerabilities_found.append(vulnerability)
                                 
-                            # Commit vulnerabilities immediately
-                            session.commit()
-                            logging.info(f"💾 Stored {len(network_results.get('vulnerabilities', []))} vulnerabilities from Network Agent")
+                            # Batch commit all vulnerabilities from this agent
+                            if network_results.get('vulnerabilities'):
+                                session.commit()
+                                logging.info(f"💾 Stored {len(network_results.get('vulnerabilities', []))} vulnerabilities from Network Agent")
 
                         except Exception as e:
                             logging.error(f"❌ Network Agent failed: {e}")
@@ -1410,9 +1413,10 @@ def start_real_scan(scan_id):
                                 session.add(vulnerability)
                                 vulnerabilities_found.append(vulnerability)
                                 
-                            # Commit vulnerabilities immediately
-                            session.commit()
-                            logging.info(f"💾 Stored {len(api_results.get('vulnerabilities', []))} vulnerabilities from API Agent")
+                            # Batch commit all vulnerabilities from this agent
+                            if api_results.get('vulnerabilities'):
+                                session.commit()
+                                logging.info(f"💾 Stored {len(api_results.get('vulnerabilities', []))} vulnerabilities from API Agent")
 
                         except Exception as e:
                             logging.error(f"❌ API Agent failed: {e}")
@@ -1456,9 +1460,10 @@ def start_real_scan(scan_id):
                                 session.add(vulnerability)
                                 vulnerabilities_found.append(vulnerability)
                                 
-                            # Commit vulnerabilities immediately
-                            session.commit()
-                            logging.info(f"💾 Stored {len(enhanced_results)} vulnerabilities from Enhanced Security Agent")
+                            # Batch commit all vulnerabilities from this agent
+                            if enhanced_results:
+                                session.commit()
+                                logging.info(f"💾 Stored {len(enhanced_results)} vulnerabilities from Enhanced Security Agent")
 
                         except Exception as e:
                             logging.error(f"❌ Enhanced Security Agent failed: {e}")
@@ -1815,4 +1820,4 @@ if __name__ == '__main__':
     logger.info(f"📊 Database: {app.config['SQLALCHEMY_DATABASE_URI']}")
     logger.info(f"🔐 CORS origins: {Config.CORS_ORIGINS}")
     
-    socketio.run(app, debug=Config.DEBUG, host=Config.HOST, port=Config.PORT)
+    socketio.run(app, debug=Config.DEBUG, host=Config.HOST, port=Config.PORT, use_reloader=False, log_output=True)
