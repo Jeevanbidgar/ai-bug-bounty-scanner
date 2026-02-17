@@ -1,0 +1,110 @@
+id: web-app-scan
+name: Web Application Scan
+description: Comprehensive web application security assessment
+category: web-application
+version: 1.0.0
+author: AI Bug Bounty Scanner
+tags:
+  - web
+  - application
+  - security
+
+steps:
+  - id: subfinder-web
+    name: Web Subdomain Discovery
+    description: Discover web-accessible subdomains
+    tool: subfinder
+    argv:
+      - "-d"
+      - "{{input.target}}"
+      - "-o"
+      - "{{output.subdomains}}"
+    needs: []
+    outputs:
+      - subdomains
+    timeout_ms: 180000  # 3 minutes
+    retry_count: 2
+    retry_delay_ms: 5000
+    environment: {}
+    cwd: null
+    continue_on_error: false
+    condition: null
+
+  - id: httpx-web-probe
+    name: Web Service Probing
+    description: Probe web services and gather metadata
+    tool: httpx
+    argv:
+      - "-l"
+      - "{{output.subdomains}}"
+      - "-o"
+      - "{{output.web-info}}"
+      - "-title"
+      - "-status-code"
+      - "-content-length"
+      - "-web-server"
+      - "-tech-detect"
+    needs:
+      - subfinder-web
+    outputs:
+      - web-info
+    timeout_ms: 300000  # 5 minutes
+    retry_count: 2
+    retry_delay_ms: 5000
+    environment: {}
+    cwd: null
+    continue_on_error: false
+    condition: null
+
+  - id: nuclei-web-scan
+    name: Web Vulnerability Assessment
+    description: Run web-focused nuclei templates
+    tool: nuclei
+    argv:
+      - "-l"
+      - "{{output.web-info}}"
+      - "-o"
+      - "{{output.web-vulnerabilities}}"
+      - "-json"
+      - "-severity"
+      - "critical,high,medium,low"
+      - "-tags"
+      - "xss,sqli,lfi,rfi,ssrf,xxe,ssti,idor,misconfig,headers"
+    needs:
+      - httpx-web-probe
+    outputs:
+      - web-vulnerabilities
+    timeout_ms: 600000  # 10 minutes
+    retry_count: 1
+    retry_delay_ms: 30000
+    environment: {}
+    cwd: null
+    continue_on_error: false
+    condition: null
+
+inputs:
+  target:
+    description: Target domain to scan
+    required: true
+    default: null
+    validation:
+      pattern: "^([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$"
+      min_length: 1
+      max_length: 253
+      allowed_values: null
+
+outputs:
+  subdomains:
+    description: File containing discovered subdomains
+    format: txt
+    required: true
+
+  web-info:
+    description: File containing web service information
+    format: txt
+    required: true
+
+  web-vulnerabilities:
+    description: File containing web vulnerability findings in JSON format
+    format: json
+    required: true

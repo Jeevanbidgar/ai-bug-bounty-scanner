@@ -1,0 +1,134 @@
+id: full-recon
+name: Full Reconnaissance
+description: Comprehensive reconnaissance workflow including subdomain enumeration, port scanning, and vulnerability assessment
+category: reconnaissance
+version: 1.0.0
+author: AI Bug Bounty Scanner
+tags:
+  - reconnaissance
+  - full-scan
+  - comprehensive
+
+steps:
+  - id: subfinder-enum
+    name: Subdomain Enumeration
+    description: Discover subdomains using subfinder
+    tool: subfinder
+    argv:
+      - "-d"
+      - "{{input.target}}"
+      - "-o"
+      - "{{output.subdomains}}"
+    needs: []
+    outputs:
+      - subdomains
+    timeout_ms: 300000  # 5 minutes
+    retry_count: 2
+    retry_delay_ms: 5000
+    environment: {}
+    cwd: null
+    continue_on_error: false
+    condition: null
+
+  - id: naabu-scan
+    name: Port Scanning
+    description: Scan for open ports using naabu
+    tool: naabu
+    argv:
+      - "-l"
+      - "{{output.subdomains}}"
+      - "-o"
+      - "{{output.ports}}"
+      - "-top-ports"
+      - "1000"
+    needs:
+      - subfinder-enum
+    outputs:
+      - ports
+    timeout_ms: 600000  # 10 minutes
+    retry_count: 1
+    retry_delay_ms: 10000
+    environment: {}
+    cwd: null
+    continue_on_error: false
+    condition: null
+
+  - id: httpx-probe
+    name: HTTP Service Probing
+    description: Probe HTTP services and extract information
+    tool: httpx
+    argv:
+      - "-l"
+      - "{{output.ports}}"
+      - "-o"
+      - "{{output.urls}}"
+      - "-title"
+      - "-status-code"
+      - "-tech-detect"
+    needs:
+      - naabu-scan
+    outputs:
+      - urls
+    timeout_ms: 300000  # 5 minutes
+    retry_count: 2
+    retry_delay_ms: 5000
+    environment: {}
+    cwd: null
+    continue_on_error: false
+    condition: null
+
+  - id: nuclei-scan
+    name: Vulnerability Assessment
+    description: Run nuclei templates against discovered URLs
+    tool: nuclei
+    argv:
+      - "-l"
+      - "{{output.urls}}"
+      - "-o"
+      - "{{output.vulnerabilities}}"
+      - "-json"
+      - "-severity"
+      - "critical,high,medium,low"
+    needs:
+      - httpx-probe
+    outputs:
+      - vulnerabilities
+    timeout_ms: 900000  # 15 minutes
+    retry_count: 1
+    retry_delay_ms: 30000
+    environment: {}
+    cwd: null
+    continue_on_error: false
+    condition: null
+
+inputs:
+  target:
+    description: Target domain or IP address to scan
+    required: true
+    default: null
+    validation:
+      pattern: "^([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$|^(\\d{1,3}\\.){3}\\d{1,3}$|^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\/\\d{1,2}$"
+      min_length: 1
+      max_length: 253
+      allowed_values: null
+
+outputs:
+  subdomains:
+    description: File containing discovered subdomains
+    format: txt
+    required: true
+
+  ports:
+    description: File containing open ports and services
+    format: txt
+    required: true
+
+  urls:
+    description: File containing alive URLs with metadata
+    format: txt
+    required: true
+
+  vulnerabilities:
+    description: File containing vulnerability findings in JSON format
+    format: json
+    required: true

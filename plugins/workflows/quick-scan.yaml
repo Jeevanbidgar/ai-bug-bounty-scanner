@@ -1,0 +1,53 @@
+id: quick-scan
+name: Quick Scan
+description: Fast vulnerability scan for quick assessment
+category: vulnerability
+version: 1.0.0
+author: AI Bug Bounty Scanner
+tags:
+  - quick
+  - vulnerability
+  - fast
+
+steps:
+  - id: nuclei-quick
+    name: Quick Vulnerability Scan
+    description: Run nuclei with fast templates
+    tool: nuclei
+    argv:
+      - "-u"
+      - "{{input.target}}"
+      - "-o"
+      - "{{output.vulnerabilities}}"
+      - "-json"
+      - "-severity"
+      - "critical,high"
+      - "-tags"
+      - "xss,sqli,lfi,rfi,ssrf"
+    needs: []
+    outputs:
+      - vulnerabilities
+    timeout_ms: 300000  # 5 minutes
+    retry_count: 1
+    retry_delay_ms: 10000
+    environment: {}
+    cwd: null
+    continue_on_error: false
+    condition: null
+
+inputs:
+  target:
+    description: Target URL to scan
+    required: true
+    default: null
+    validation:
+      pattern: "^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$"
+      min_length: 10
+      max_length: 2048
+      allowed_values: null
+
+outputs:
+  vulnerabilities:
+    description: File containing vulnerability findings in JSON format
+    format: json
+    required: true
