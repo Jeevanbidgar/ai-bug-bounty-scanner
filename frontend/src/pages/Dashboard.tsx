@@ -228,7 +228,7 @@ const Dashboard = () => {
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-3xl font-bold text-white">
-                AI Bug Bounty Scanner
+                UniHack
               </h1>
               <Badge className="bg-green-600 hover:bg-green-700 text-xs inline-flex items-center">
                 <Lightning className="h-3 w-3 mr-1" />

@@ -13,6 +13,7 @@ use tokio::time::timeout;
 use uuid::Uuid;
 
 use crate::adapters::AdapterRegistry;
+use crate::runtime::process::configure_tokio_command;
 use crate::tools::discovery::ToolDiscoveryService;
 use crate::workflow::artifacts::ArtifactManager;
 use crate::workflow::types::{WorkflowArtifact, WorkflowStep};
@@ -233,12 +234,14 @@ impl ProcessExecutor {
         };
 
         let timeout_duration = Duration::from_secs(step.timeout.unwrap_or(300));
-        let mut child = Command::new(&resolved_tool_path)
-            .args(&final_command_args[1..])
+        let mut cmd = Command::new(&resolved_tool_path);
+        cmd.args(&final_command_args[1..])
             .current_dir(working_directory)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped());
+        configure_tokio_command(&mut cmd);
+
+        let mut child = cmd.spawn()?;
 
         let stdout = child
             .stdout

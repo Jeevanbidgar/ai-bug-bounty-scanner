@@ -1,11 +1,11 @@
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
+use crate::runtime::process::hidden_tokio_command as hidden_command;
 use crate::tools::catalog::ToolDefinition;
 use crate::tools::package_managers::{detection::detect_manager, PackageManagerType};
 use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 
 #[cfg(target_os = "windows")]
 use crate::tools::package_managers::winget_manager::WingetManager;
@@ -42,7 +42,8 @@ impl NpmInstaller {
 
     /// Check if Node.js and npm are installed
     async fn check_node_installed(&self) -> Result<bool> {
-        let output = Command::new("node").arg("--version").output().await;
+        let mut cmd = hidden_command("node");
+        let output = cmd.arg("--version").output().await;
 
         match output {
             Ok(output) => Ok(output.status.success()),
@@ -133,7 +134,8 @@ impl NpmInstaller {
                 .elevate_command(&["apt", "install", "-y", "nodejs", "npm"])
                 .await;
 
-            let mut child = Command::new(elevation_cmd)
+            let mut install_cmd = hidden_command(elevation_cmd);
+            let mut child = install_cmd
                 .args(&elevation_args)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -160,7 +162,8 @@ impl NpmInstaller {
         {
             self.emit_output(tool_name, "Installing Node.js via Homebrew...\n");
 
-            let mut child = Command::new("brew")
+            let mut brew_cmd = hidden_command("brew");
+            let mut child = brew_cmd
                 .args(&["install", "node"])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -255,7 +258,8 @@ impl NpmInstaller {
         };
 
         // Run npm install with platform-specific args
-        let mut child = Command::new(&npm_path)
+        let mut install_cmd = hidden_command(&npm_path);
+        let mut child = install_cmd
             .args(&install_args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -402,7 +406,8 @@ impl NpmInstaller {
         };
 
         // Try to get version
-        let output = Command::new(command_name)
+        let mut verify_cmd = hidden_command(command_name);
+        let output = verify_cmd
             .arg("--version")
             .output()
             .await
@@ -442,7 +447,8 @@ impl NpmInstaller {
                 .elevate_command(&["npm", "update", "-g", package_name])
                 .await;
 
-            let mut child = Command::new(elevation_cmd)
+            let mut update_cmd = hidden_command(elevation_cmd);
+            let mut child = update_cmd
                 .args(&elevation_args)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -492,7 +498,8 @@ impl NpmInstaller {
         // Windows - no elevation needed, npm handles permissions
         #[cfg(not(target_os = "linux"))]
         {
-            let mut child = Command::new("npm")
+            let mut update_cmd = hidden_command("npm");
+            let mut child = update_cmd
                 .args(&["update", "-g", package_name])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -547,7 +554,8 @@ impl NpmInstaller {
             .as_ref()
             .ok_or_else(|| anyhow!("Tool {} does not have npm_package defined", tool.name))?;
 
-        let output = Command::new("npm")
+        let mut uninstall_cmd = hidden_command("npm");
+        let output = uninstall_cmd
             .args(&["uninstall", "-g", package_name])
             .output()
             .await

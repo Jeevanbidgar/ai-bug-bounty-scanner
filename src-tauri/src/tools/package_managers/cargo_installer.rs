@@ -1,11 +1,11 @@
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
+use crate::runtime::process::hidden_tokio_command as hidden_command;
 use crate::tools::catalog::ToolDefinition;
 use anyhow::{anyhow, Context, Result};
 use std::path::PathBuf;
 use std::process::Stdio;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 
 pub struct CargoInstaller {
     app_handle: tauri::AppHandle,
@@ -17,7 +17,8 @@ impl CargoInstaller {
     }
 
     async fn check_cargo_installed(&self) -> Result<bool> {
-        let output = Command::new("cargo").arg("--version").output().await;
+        let mut cmd = hidden_command("cargo");
+        let output = cmd.arg("--version").output().await;
         match output {
             Ok(output) => Ok(output.status.success()),
             Err(_) => Ok(false),
@@ -62,7 +63,8 @@ impl CargoInstaller {
             &format!("Installing {} via cargo...\n", package_name),
         );
 
-        let mut child = Command::new("cargo")
+        let mut install_cmd = hidden_command("cargo");
+        let mut child = install_cmd
             .args(&["install", package_name])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -152,7 +154,8 @@ impl CargoInstaller {
             .as_ref()
             .ok_or_else(|| anyhow!("Tool {} does not have cargo_package defined", tool.name))?;
 
-        let mut child = Command::new("cargo")
+        let mut update_cmd = hidden_command("cargo");
+        let mut child = update_cmd
             .args(&["install", "--force", package_name])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -257,7 +260,8 @@ impl CargoInstaller {
             .as_ref()
             .ok_or_else(|| anyhow!("Tool {} does not have cargo_package defined", tool.name))?;
 
-        let output = Command::new("cargo")
+        let mut uninstall_cmd = hidden_command("cargo");
+        let output = uninstall_cmd
             .args(&["uninstall", package_name])
             .output()
             .await

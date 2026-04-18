@@ -1,11 +1,11 @@
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
+use crate::runtime::process::hidden_tokio_command as hidden_command;
 use crate::tools::catalog::ToolDefinition;
 use crate::tools::package_managers::{detection::detect_manager, PackageManagerType};
 use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 
 #[cfg(target_os = "windows")]
 use crate::tools::package_managers::winget_manager::WingetManager;
@@ -42,7 +42,8 @@ impl GemInstaller {
 
     /// Check if Ruby and gem are installed
     async fn check_ruby_installed(&self) -> Result<bool> {
-        let output = Command::new("ruby").arg("--version").output().await;
+        let mut cmd = hidden_command("ruby");
+        let output = cmd.arg("--version").output().await;
 
         match output {
             Ok(output) => Ok(output.status.success()),
@@ -137,7 +138,8 @@ impl GemInstaller {
                 .elevate_command(&["apt", "install", "-y", "ruby", "ruby-dev"])
                 .await;
 
-            let mut child = Command::new(elevation_cmd)
+            let mut install_cmd = hidden_command(elevation_cmd);
+            let mut child = install_cmd
                 .args(&elevation_args)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -165,7 +167,8 @@ impl GemInstaller {
             // Try brew (macOS)
             self.emit_output(tool_name, "Installing Ruby via Homebrew...\n");
 
-            let mut child = Command::new("brew")
+            let mut brew_cmd = hidden_command("brew");
+            let mut child = brew_cmd
                 .args(&["install", "ruby"])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -226,7 +229,8 @@ impl GemInstaller {
         );
 
         // Run gem install with detected path
-        let mut child = Command::new(&gem_path)
+        let mut install_cmd = hidden_command(&gem_path);
+        let mut child = install_cmd
             .args(&["install", package_name])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -341,7 +345,8 @@ impl GemInstaller {
         // For wpscan, update the database
         if package_name == "wpscan" {
             self.emit_output(tool_name, "📡 Updating WPScan database...\n");
-            let _ = Command::new("wpscan").arg("--update").output().await;
+            let mut wpscan_cmd = hidden_command("wpscan");
+            let _ = wpscan_cmd.arg("--update").output().await;
             self.emit_output(tool_name, "✅ WPScan database updated\n");
         }
 
@@ -374,7 +379,8 @@ impl GemInstaller {
             .ok_or_else(|| anyhow!("Tool {} does not have gem_package defined", tool.name))?;
 
         // Try to get version
-        let output = Command::new(package_name)
+        let mut verify_cmd = hidden_command(package_name);
+        let output = verify_cmd
             .arg("--version")
             .output()
             .await
@@ -407,7 +413,8 @@ impl GemInstaller {
             use crate::tools::package_managers::elevation_helper::ElevationHelper;
 
             // First attempt without elevation (for user gems in ~/.local/share/gem)
-            let mut child = Command::new("gem")
+            let mut update_cmd = hidden_command("gem");
+            let mut child = update_cmd
                 .args(&["update", package_name])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -454,7 +461,8 @@ impl GemInstaller {
                     .elevate_command(&["gem", "update", package_name])
                     .await;
 
-                let mut child = Command::new(elevation_cmd)
+                let mut elevated_cmd = hidden_command(elevation_cmd);
+                let mut child = elevated_cmd
                     .args(&elevation_args)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
@@ -528,7 +536,8 @@ impl GemInstaller {
         // Windows - no elevation needed
         #[cfg(not(target_os = "linux"))]
         {
-            let mut child = Command::new("gem")
+            let mut update_cmd = hidden_command("gem");
+            let mut child = update_cmd
                 .args(&["update", package_name])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -583,7 +592,8 @@ impl GemInstaller {
             .as_ref()
             .ok_or_else(|| anyhow!("Tool {} does not have gem_package defined", tool.name))?;
 
-        let output = Command::new("gem")
+        let mut uninstall_cmd = hidden_command("gem");
+        let output = uninstall_cmd
             .args(&["uninstall", "-x", package_name])
             .output()
             .await

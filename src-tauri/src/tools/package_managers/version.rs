@@ -3,8 +3,8 @@
 // Utilities for detecting tool versions and comparing them
 
 use serde::{Deserialize, Serialize};
+use crate::runtime::process::hidden_std_command;
 use std::cmp::Ordering;
-use std::process::Command;
 use tokio::time::{timeout, Duration};
 
 /// Semantic version structure
@@ -118,9 +118,9 @@ async fn execute_version_command(command: &str, arg: &str) -> Result<String, Str
         let command = command.to_string();
         let arg = arg.to_string();
         move || {
-            Command::new(&command)
-                .arg(&arg)
-                .output()
+            let mut cmd = hidden_std_command(&command);
+            cmd.arg(&arg);
+            cmd.output()
                 .map_err(|e| format!("Failed to execute {}: {}", command, e))
         }
     });

@@ -9,6 +9,7 @@ use crate::events::{
     EventEmitter, SCAN_COMPLETED, SCAN_FAILED, SCAN_PROGRESS_UPDATE, SCAN_STARTED,
     TOOL_INSTALLATION_COMPLETED, TOOL_INSTALLATION_STARTED,
 };
+use crate::runtime::process::hidden_tokio_command;
 use crate::tools::catalog::get_tool_catalog;
 use crate::tools::discovery::ToolDiscoveryService;
 use crate::tools::package_managers::{GoInstallManager, InstallationResult, VersionCheckResult};
@@ -2734,11 +2735,8 @@ pub async fn check_pipx_path() -> Result<serde_json::Value, String> {
 /// Fix pipx PATH by running pipx ensurepath
 #[tauri::command]
 pub async fn fix_pipx_path() -> Result<String, String> {
-    match tokio::process::Command::new("pipx")
-        .arg("ensurepath")
-        .output()
-        .await
-    {
+    let mut pipx_cmd = hidden_tokio_command("pipx");
+    match pipx_cmd.arg("ensurepath").output().await {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2776,12 +2774,8 @@ pub async fn cleanup_old_pipx() -> Result<String, String> {
                 if entry.path().is_dir() {
                     if let Some(tool_name) = entry.file_name().to_str() {
                         eprintln!("Uninstalling old tool: {}", tool_name);
-                        match tokio::process::Command::new("pipx")
-                            .arg("uninstall")
-                            .arg(tool_name)
-                            .output()
-                            .await
-                        {
+                        let mut pipx_cmd = hidden_tokio_command("pipx");
+                        match pipx_cmd.arg("uninstall").arg(tool_name).output().await {
                             Ok(output) if output.status.success() => {
                                 cleanup_messages.push(format!("✅ Uninstalled {}", tool_name));
                             }

@@ -2,11 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 
 use crate::events::{
     EventEmitter, TOOL_INSTALLATION_COMPLETED, TOOL_INSTALLATION_OUTPUT, TOOL_INSTALLATION_STARTED,
 };
+use crate::runtime::process::hidden_tokio_command as hidden_command;
 use uuid::Uuid;
 
 // PipxManager: Handles pipx installations with retry logic for log file locking
@@ -28,7 +28,8 @@ impl PipxManager {
 
     /// Check if pipx is installed and available
     pub async fn is_pipx_available(&self) -> bool {
-        match Command::new("pipx").arg("--version").output().await {
+        let mut cmd = hidden_command("pipx");
+        match cmd.arg("--version").output().await {
             Ok(output) => output.status.success(),
             Err(_) => false,
         }
@@ -98,7 +99,8 @@ impl PipxManager {
         }
 
         // Spawn process with piped stdout/stderr for live streaming
-        let mut child = match Command::new("pipx")
+        let mut install_cmd = hidden_command("pipx");
+        let mut child = match install_cmd
             .arg("install")
             .arg(package_name)
             .env("PIPX_HOME", &pipx_home)
@@ -198,7 +200,8 @@ impl PipxManager {
                     eprintln!("   Verifying if {} was actually installed...", tool_name);
 
                     // Verify installation by checking pipx list
-                    match Command::new("pipx")
+                    let mut list_cmd = hidden_command("pipx");
+                    match list_cmd
                         .arg("list")
                         .arg("--short")
                         .output()
@@ -298,7 +301,8 @@ impl PipxManager {
             tool_name, package_name
         );
 
-        match Command::new("pipx")
+        let mut upgrade_cmd = hidden_command("pipx");
+        match upgrade_cmd
             .arg("upgrade")
             .arg(package_name)
             .output()
@@ -343,7 +347,8 @@ impl PipxManager {
             tool_name, package_name
         );
 
-        match Command::new("pipx")
+        let mut uninstall_cmd = hidden_command("pipx");
+        match uninstall_cmd
             .arg("uninstall")
             .arg(package_name)
             .output()

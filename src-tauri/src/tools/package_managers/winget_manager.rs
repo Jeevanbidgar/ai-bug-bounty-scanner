@@ -1,10 +1,10 @@
 use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
+use crate::runtime::process::hidden_tokio_command as hidden_command;
 use crate::tools::package_managers::{detect_manager, PackageManagerType};
 use anyhow::{anyhow, Context, Result};
 use std::process::Stdio;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 
 pub struct WingetManager {
     app_handle: tauri::AppHandle,
@@ -72,7 +72,8 @@ impl WingetManager {
         self.emit_output(tool_name, "⚠️  This may require UAC elevation\n");
 
         // Run winget install with --accept-* flags for non-interactive mode
-        let mut child = Command::new(&winget_path)
+        let mut install_cmd = hidden_command(&winget_path);
+        let mut child = install_cmd
             .args(&[
                 "install",
                 "--id",
@@ -156,7 +157,8 @@ impl WingetManager {
             .await
             .ok_or_else(|| anyhow!("winget is not available."))?;
 
-        let mut child = Command::new(&winget_path)
+        let mut upgrade_cmd = hidden_command(&winget_path);
+        let mut child = upgrade_cmd
             .args(&[
                 "upgrade",
                 "--id",
@@ -229,7 +231,8 @@ impl WingetManager {
             .await
             .ok_or_else(|| anyhow!("winget is not available."))?;
 
-        let output = Command::new(&winget_path)
+        let mut uninstall_cmd = hidden_command(&winget_path);
+        let output = uninstall_cmd
             .args(&["uninstall", "--id", winget_id, "--silent"])
             .output()
             .await

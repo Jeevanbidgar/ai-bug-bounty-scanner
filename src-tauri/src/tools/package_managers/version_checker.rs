@@ -3,9 +3,9 @@
 // This module provides unified version checking for Go, APT, WinGet, and pipx tools
 
 use super::version::Version;
+use crate::runtime::process::hidden_tokio_command as hidden_command;
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
-use tokio::process::Command;
 
 /// Normalize version string by removing 'v' prefix and trimming whitespace
 /// This ensures consistent version comparison across different sources
@@ -150,7 +150,8 @@ pub async fn check_go_update(
 
 /// Get version from Go binary using `go version -m <binary>`
 async fn get_go_binary_version(tool_binary: &str) -> Result<String, String> {
-    let output = Command::new("go")
+    let mut go_cmd = hidden_command("go");
+    let output = go_cmd
         .arg("version")
         .arg("-m")
         .arg(tool_binary)
@@ -186,7 +187,8 @@ async fn get_go_binary_version(tool_binary: &str) -> Result<String, String> {
 
 /// Get latest version from Go module using `go list -m -versions <module>`
 async fn get_go_latest_version(module_path: &str) -> Result<String, String> {
-    let output = Command::new("go")
+    let mut go_cmd = hidden_command("go");
+    let output = go_cmd
         .arg("list")
         .arg("-m")
         .arg("-versions")
@@ -219,7 +221,8 @@ async fn get_go_latest_version(module_path: &str) -> Result<String, String> {
 
 /// Check for updates for an APT package using `apt-cache policy`
 pub async fn check_apt_update(package_name: &str) -> Result<VersionCheckResult, String> {
-    let output = Command::new("apt-cache")
+    let mut apt_cmd = hidden_command("apt-cache");
+    let output = apt_cmd
         .arg("policy")
         .arg(package_name)
         .stdout(Stdio::piped())
@@ -279,7 +282,8 @@ pub async fn check_apt_update(package_name: &str) -> Result<VersionCheckResult, 
 /// Check for updates for a WinGet package using `winget upgrade`
 #[allow(dead_code)]
 pub async fn check_winget_update(package_id: &str) -> Result<VersionCheckResult, String> {
-    let output = Command::new("winget")
+    let mut winget_cmd = hidden_command("winget");
+    let output = winget_cmd
         .arg("upgrade")
         .arg("--id")
         .arg(package_id)
@@ -341,7 +345,8 @@ pub async fn check_winget_update(package_id: &str) -> Result<VersionCheckResult,
 /// Check for updates for a pipx package using `pipx runpip <pkg> pip list --outdated`
 pub async fn check_pipx_update(package_name: &str) -> Result<VersionCheckResult, String> {
     // Use pipx runpip to check for outdated packages
-    let output = Command::new("pipx")
+    let mut pipx_cmd = hidden_command("pipx");
+    let output = pipx_cmd
         .arg("runpip")
         .arg(package_name)
         .arg("list")
@@ -407,7 +412,7 @@ pub async fn check_npm_update(package_name: &str) -> Result<VersionCheckResult, 
         "npm"
     };
 
-    let check_install = Command::new(npm_cmd).arg("--version").output().await;
+    let check_install = hidden_command(npm_cmd).arg("--version").output().await;
 
     if check_install.is_err() || !check_install.unwrap().status.success() {
         return Ok(VersionCheckResult::error(
@@ -417,8 +422,8 @@ pub async fn check_npm_update(package_name: &str) -> Result<VersionCheckResult, 
     }
 
     // Get the current version using `npm list -g <package> --depth=0 --json`
-    let list_output = Command::new(npm_cmd)
-        .args(&["list", "-g", package_name, "--depth=0", "--json"])
+    let list_output = hidden_command(npm_cmd)
+        .args(["list", "-g", package_name, "--depth=0", "--json"])
         .output()
         .await
         .map_err(|e| format!("Failed to execute npm list: {}", e))?;
@@ -448,8 +453,8 @@ pub async fn check_npm_update(package_name: &str) -> Result<VersionCheckResult, 
     let current = current_version.unwrap();
 
     // Check for updates using `npm outdated -g <package> --json`
-    let outdated_output = Command::new(npm_cmd)
-        .args(&["outdated", "-g", package_name, "--json"])
+    let outdated_output = hidden_command(npm_cmd)
+        .args(["outdated", "-g", package_name, "--json"])
         .output()
         .await
         .map_err(|e| format!("Failed to execute npm outdated: {}", e))?;
@@ -510,7 +515,7 @@ pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, 
         "gem"
     };
 
-    let check_install = Command::new(gem_cmd).arg("--version").output().await;
+    let check_install = hidden_command(gem_cmd).arg("--version").output().await;
 
     if check_install.is_err() || !check_install.unwrap().status.success() {
         return Ok(VersionCheckResult::error(
@@ -520,8 +525,8 @@ pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, 
     }
 
     // Get the current version using `gem list <package> --exact --local`
-    let list_output = Command::new(gem_cmd)
-        .args(&["list", package_name, "--exact", "--local"])
+    let list_output = hidden_command(gem_cmd)
+        .args(["list", package_name, "--exact", "--local"])
         .output()
         .await
         .map_err(|e| format!("Failed to execute gem list: {}", e))?;
@@ -559,8 +564,8 @@ pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, 
     let current = current_version.unwrap();
 
     // Check for the latest version using `gem search ^<package>$ --remote`
-    let search_output = Command::new(gem_cmd)
-        .args(&["search", &format!("^{}$", package_name), "--remote"])
+    let search_output = hidden_command(gem_cmd)
+        .args(["search", &format!("^{}$", package_name), "--remote"])
         .output()
         .await
         .map_err(|e| format!("Failed to execute gem search: {}", e))?;
@@ -628,7 +633,7 @@ pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, 
 #[allow(dead_code)]
 pub async fn check_cargo_update(package_name: &str) -> Result<VersionCheckResult, String> {
     // First check if cargo is installed
-    let check_install = Command::new("cargo").arg("--version").output().await;
+    let check_install = hidden_command("cargo").arg("--version").output().await;
 
     if check_install.is_err() || !check_install.unwrap().status.success() {
         return Ok(VersionCheckResult::error(
@@ -638,8 +643,8 @@ pub async fn check_cargo_update(package_name: &str) -> Result<VersionCheckResult
     }
 
     // Get the current version using `cargo install --list`
-    let list_output = Command::new("cargo")
-        .args(&["install", "--list"])
+    let list_output = hidden_command("cargo")
+        .args(["install", "--list"])
         .output()
         .await
         .map_err(|e| format!("Failed to execute cargo install --list: {}", e))?;
@@ -674,8 +679,8 @@ pub async fn check_cargo_update(package_name: &str) -> Result<VersionCheckResult
     let current = current_version.unwrap();
 
     // Check crates.io for the latest version using cargo search
-    let search_output = Command::new("cargo")
-        .args(&["search", package_name, "--limit", "1"])
+    let search_output = hidden_command("cargo")
+        .args(["search", package_name, "--limit", "1"])
         .output()
         .await
         .map_err(|e| format!("Failed to execute cargo search: {}", e))?;
@@ -747,7 +752,7 @@ mod tests {
     async fn test_go_version_parsing() {
         // This test requires a Go binary to be available
         // Skip if go not available
-        if let Ok(output) = Command::new("go").arg("version").output().await {
+        if let Ok(output) = hidden_command("go").arg("version").output().await {
             if output.status.success() {
                 println!("Go is available, testing version parsing");
                 // Add more specific tests here

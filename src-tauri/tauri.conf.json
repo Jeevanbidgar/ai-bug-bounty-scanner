@@ -43,8 +43,8 @@
       }
     }
   },
-  "productName": "AI Bug Bounty Scanner",
-  "mainBinaryName": "AI Bug Bounty Scanner",
+  "productName": "UniHack",
+  "mainBinaryName": "UniHack",
   "version": "2.0.0",
   "identifier": "com.aibugbountyscanner.app",
   "app": {
@@ -53,7 +53,7 @@
       {
         "fullscreen": false,
         "resizable": true,
-        "title": "AI Bug Bounty Scanner",
+  "title": "UniHack",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

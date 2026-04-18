@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 use uuid::Uuid;
+
+use crate::runtime::process::hidden_tokio_command as hidden_command;
 
 pub struct GoInstallManager {
     _go_path: Option<PathBuf>,
@@ -82,7 +83,8 @@ impl GoInstallManager {
 
     /// Check if Go is installed and available
     pub async fn is_go_available(&self) -> bool {
-        match Command::new("go")
+        let mut cmd = hidden_command("go");
+        match cmd
             .arg("version")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -138,7 +140,8 @@ impl GoInstallManager {
             ),
         );
 
-        match Command::new("go")
+        let mut install_cmd = hidden_command("go");
+        match install_cmd
             .arg("install")
             .arg(&module_with_version)
             .stdout(Stdio::piped())
@@ -340,7 +343,8 @@ impl GoInstallManager {
         let version_flags = vec!["--version", "-version", "-v", "version"];
 
         for flag in version_flags {
-            match Command::new(tool_name)
+            let mut version_cmd = hidden_command(tool_name);
+            match version_cmd
                 .arg(flag)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -379,7 +383,8 @@ impl GoInstallManager {
     /// Get version from Go binary using 'go version -m'
     /// This method is consistent with update checking logic
     async fn get_version_from_binary(&self, tool_path: &str) -> Result<String, String> {
-        let output = Command::new("go")
+        let mut version_cmd = hidden_command("go");
+        let output = version_cmd
             .arg("version")
             .arg("-m")
             .arg(tool_path)

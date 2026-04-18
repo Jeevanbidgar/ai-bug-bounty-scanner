@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use super::catalog::{get_tool_catalog, ToolDefinition as CatalogToolDefinition};
+use crate::runtime::process::configure_tokio_command;
 use crate::tools::registry::ToolRegistry;
 use crate::workflow::types::WorkflowTemplate;
 use anyhow::Result;
@@ -921,6 +922,7 @@ impl ToolDiscoveryService {
     ) -> Result<String> {
         let mut cmd = tokio::process::Command::new(tool_path);
         cmd.args(version_args);
+        configure_tokio_command(&mut cmd);
 
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(VERSION_TIMEOUT),
@@ -1057,11 +1059,11 @@ impl ToolDiscoveryService {
         eprintln!("🔍 Getting npm-specific paths...");
 
         // Try to get npm prefix
-        if let Ok(output) = tokio::process::Command::new("npm")
-            .args(&["prefix", "-g"])
-            .output()
-            .await
-        {
+        let mut npm_cmd = tokio::process::Command::new("npm");
+        npm_cmd.args(["prefix", "-g"]);
+        configure_tokio_command(&mut npm_cmd);
+
+        if let Ok(output) = npm_cmd.output().await {
             if output.status.success() {
                 let prefix = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 eprintln!("   npm prefix: {}", prefix);

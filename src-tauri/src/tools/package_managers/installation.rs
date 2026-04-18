@@ -4,6 +4,8 @@ use tokio::io::{AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 
+use crate::runtime::process::configure_tokio_command;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallationProgress {
     pub step: String,
@@ -301,11 +303,14 @@ async fn execute_command_with_output(
     args: &[&str],
     timeout_secs: u64,
 ) -> Result<String, String> {
-    let cmd = Command::new(command)
+    let mut command_builder = Command::new(command);
+    command_builder
         .args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+        .stderr(Stdio::piped());
+    configure_tokio_command(&mut command_builder);
+
+    let cmd = command_builder.spawn();
 
     match cmd {
         Ok(mut child) => {

@@ -3,8 +3,8 @@
 // Detects which package managers are available on the system
 
 use super::PackageManagerType;
+use crate::runtime::process::hidden_std_command;
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use tokio::time::{timeout, Duration};
 
 /// Information about a detected package manager
@@ -443,9 +443,9 @@ pub async fn execute_detection_command(
         let command = command.to_string();
         let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         move || {
-            Command::new(&command)
-                .args(&args)
-                .output()
+            let mut cmd = hidden_std_command(&command);
+            cmd.args(&args);
+            cmd.output()
                 .map_err(|e| format!("Failed to execute {}: {}", command, e))
         }
     });

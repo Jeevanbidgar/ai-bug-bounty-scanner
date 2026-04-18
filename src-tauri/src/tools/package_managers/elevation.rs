@@ -4,6 +4,8 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 
+use crate::runtime::process::configure_tokio_command;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ElevationMethod {
     /// No elevation required (user-scope operation)
@@ -135,11 +137,14 @@ async fn execute_elevated_windows(
 
     eprintln!("   → PowerShell script: {}", ps_script);
 
-    let result = Command::new("powershell")
+    let mut elevated_cmd = Command::new("powershell");
+    elevated_cmd
         .args(&["-Command", &ps_script])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+        .stderr(Stdio::piped());
+    configure_tokio_command(&mut elevated_cmd);
+
+    let result = elevated_cmd.spawn();
 
     match result {
         Ok(mut child) => {
@@ -513,11 +518,13 @@ async fn execute_command_internal(
     args: &[&str],
     timeout_secs: u64,
 ) -> Result<String, String> {
-    let result = Command::new(command)
-        .args(args)
+    let mut cmd = Command::new(command);
+    cmd.args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+        .stderr(Stdio::piped());
+    configure_tokio_command(&mut cmd);
+
+    let result = cmd.spawn();
 
     match result {
         Ok(mut child) => {

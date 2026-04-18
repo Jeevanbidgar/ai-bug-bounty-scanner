@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 
 use crate::events::{
     EventEmitter, TOOL_INSTALLATION_COMPLETED, TOOL_INSTALLATION_OUTPUT, TOOL_INSTALLATION_STARTED,
 };
+use crate::runtime::process::hidden_tokio_command as hidden_command;
 
 /// GitPipInstaller: Handles Python tool installations via git clone + pip install
 /// This method is more reliable than pipx for Python CLI tools
@@ -51,7 +51,8 @@ impl GitPipInstaller {
 
     /// Check if git is installed
     pub async fn is_git_available(&self) -> bool {
-        match Command::new("git").arg("--version").output().await {
+        let mut cmd = hidden_command("git");
+        match cmd.arg("--version").output().await {
             Ok(output) => output.status.success(),
             Err(_) => false,
         }
@@ -61,7 +62,8 @@ impl GitPipInstaller {
     pub async fn is_python_available(&self) -> bool {
         // Try python3 first, then python
         for python_cmd in &["python3", "python"] {
-            if let Ok(output) = Command::new(python_cmd).arg("--version").output().await {
+            let mut cmd = hidden_command(python_cmd);
+            if let Ok(output) = cmd.arg("--version").output().await {
                 if output.status.success() {
                     return true;
                 }
@@ -72,7 +74,8 @@ impl GitPipInstaller {
 
     /// Check if pipx is installed (preferred for Linux)
     pub async fn is_pipx_available(&self) -> bool {
-        match Command::new("pipx").arg("--version").output().await {
+        let mut cmd = hidden_command("pipx");
+        match cmd.arg("--version").output().await {
             Ok(output) => output.status.success(),
             Err(_) => false,
         }
@@ -103,7 +106,8 @@ impl GitPipInstaller {
 
         // Run pipx install
         let install_arg = format!("git+{}", git_repo);
-        let mut child = Command::new("pipx")
+        let mut pipx_cmd = hidden_command("pipx");
+        let mut child = pipx_cmd
             .arg("install")
             .arg(&install_arg)
             .stdout(Stdio::piped())
@@ -216,7 +220,8 @@ impl GitPipInstaller {
     /// Get the python command (python3 or python)
     async fn get_python_command(&self) -> Result<String, String> {
         for python_cmd in &["python3", "python"] {
-            if let Ok(output) = Command::new(python_cmd).arg("--version").output().await {
+            let mut cmd = hidden_command(python_cmd);
+            if let Ok(output) = cmd.arg("--version").output().await {
                 if output.status.success() {
                     return Ok(python_cmd.to_string());
                 }
@@ -546,7 +551,8 @@ impl GitPipInstaller {
     ) -> Result<bool, String> {
         eprintln!("🔧 Running: {} {}", command, args.join(" "));
 
-        let mut child = match Command::new(command)
+        let mut base_cmd = hidden_command(command);
+        let mut child = match base_cmd
             .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -639,7 +645,8 @@ impl GitPipInstaller {
 
         eprintln!("🗑️  Uninstalling {} via pip", tool_name);
 
-        match Command::new(&python_cmd)
+        let mut uninstall_cmd = hidden_command(&python_cmd);
+        match uninstall_cmd
             .args(&["-m", "pip", "uninstall", "-y", tool_name])
             .output()
             .await

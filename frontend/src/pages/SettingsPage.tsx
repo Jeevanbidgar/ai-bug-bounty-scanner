@@ -367,7 +367,7 @@ const SettingsPage = () => {
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-400">AI Bug Bounty Scanner:</span>
+                <span className="text-gray-400">UniHack:</span>
                 <span className="text-white">v2.0.0</span>
               </div>
               <div className="flex items-center justify-between text-sm">

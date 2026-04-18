@@ -8,6 +8,7 @@ use tokio::process::Command;
 use crate::events::{
     EventEmitter, TOOL_INSTALLATION_COMPLETED, TOOL_INSTALLATION_OUTPUT, TOOL_INSTALLATION_STARTED,
 };
+use crate::runtime::process::configure_tokio_command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(dead_code)]
@@ -750,11 +751,14 @@ impl ManualInstaller {
         tool_name: &str,
         app_handle: Option<&tauri::AppHandle>,
     ) -> Result<(), String> {
-        let mut child = Command::new(command)
-            .args(args)
+        let mut cmd = Command::new(command);
+        cmd.args(args)
             .current_dir(working_dir)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        configure_tokio_command(&mut cmd);
+
+        let mut child = cmd
             .spawn()
             .map_err(|e| format!("Failed to spawn {}: {}", command, e))?;
 
