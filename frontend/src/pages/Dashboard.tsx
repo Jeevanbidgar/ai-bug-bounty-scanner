@@ -9,11 +9,9 @@ import {
   Zap,
   Play,
   RefreshCw,
-  Settings,
   Zap as Lightning,
   Target,
   Database,
-  Cpu,
   HardDrive,
   Workflow,
   AlertCircle,
@@ -26,39 +24,14 @@ import { Progress } from '../components/ui/Progress'
 import { Badge } from '../components/ui/Badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/Select'
 import { WorkflowDetailsModal } from '../components/WorkflowDetailsModal'
-import { useState, useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import apiService, { WorkflowTemplate } from '../services/api'
-import { useWorkflowEvents } from '../hooks/useWorkflowEvents'
+import apiService, { type SystemInfo, type WorkflowTemplate } from '../services/api'
+import { useScanEvents } from '../hooks/useScanEvents'
+import { ResourceSavingsPanel } from '../components/ResourceSavingsPanel'
+import { getTargetPlaceholder, getWorkflowCatalogEntry } from '../data/workflowCatalog'
 
-// Types for Rust integration
-interface SystemInfo {
-  os: string;
-  arch: string;
-  total_memory_mb: string;
-  available_memory_mb: string;
-  cpu_cores: string;
-}
-
-interface SystemMetrics {
-  total_scans: number;
-  active_scans: number;
-  completed_scans: number;
-  total_vulnerabilities: number;
-  critical_issues: number;
-  tools_available: number;
-  tools_total: number;
-  tools_unavailable: number;
-  system_health: string;
-  health_details: {
-    scan_capacity: string;
-    tool_availability: string;
-    database: string;
-  };
-}
-
-// ToolInfo interface removed - using the one from Rust backend
+const MissionTopology = lazy(() => import('../components/mission/MissionTopology'))
 
 const Dashboard = () => {
   const queryClient = useQueryClient()
@@ -68,6 +41,7 @@ const Dashboard = () => {
   const [selectedWorkflowDetails, setSelectedWorkflowDetails] = useState<WorkflowTemplate | null>(null)
   const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false)
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
+  const [authorizationConfirmed, setAuthorizationConfirmed] = useState(false)
 
   // Fetch data using our API service and Rust backend
   const { data: health, error: healthError } = useQuery({
@@ -109,6 +83,8 @@ const Dashboard = () => {
   })
 
   const workflowTemplates: WorkflowTemplate[] = Array.isArray(workflowTemplatesResponse) ? workflowTemplatesResponse : []
+  const selectedWorkflowTemplate = workflowTemplates.find((workflow) => workflow.id === selectedWorkflow)
+  const selectedWorkflowMetadata = selectedWorkflowTemplate ? getWorkflowCatalogEntry(selectedWorkflowTemplate) : null
 
   // Fetch system metrics
   const { data: systemMetrics } = useQuery({
@@ -123,7 +99,9 @@ const Dashboard = () => {
   // Workflow execution mutation
   const workflowMutation = useMutation({
     mutationFn: async ({ workflowId, inputs }: { workflowId: string, inputs: Record<string, string> }) => {
-      const response = await apiService.executeWorkflow(workflowId, inputs)
+      const response = await apiService.executeWorkflow(workflowId, inputs, {
+        authorizationConfirmed,
+      })
       return (response as any).data
     },
     onSuccess: () => {
@@ -140,7 +118,7 @@ const Dashboard = () => {
   useEffect(() => {
     const loadSystemInfo = async () => {
       try {
-        const info = await invoke<SystemInfo>('get_system_info')
+        const info = await apiService.getSystemInfo()
         setSystemInfo(info)
       } catch (error) {
         console.error('Failed to load system info:', error)
@@ -157,45 +135,37 @@ const Dashboard = () => {
     return () => clearInterval(interval)
   }, [])
 
-  // Listen to workflow events for real-time updates
-  useWorkflowEvents(null, {
-    onExecutionStarted: (event) => {
-      console.log('📡 Workflow started:', event.execution_id)
+  // Scan IDs and workflow execution IDs are distinct. Use scan events when
+  // updating scan records in the dashboard cache.
+  useScanEvents({
+    onScanStarted: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
     },
-    onStatusUpdate: (event) => {
-      console.log('📊 Workflow progress:', event.execution_id, `${event.progress}%`)
-      // Update scan progress in cache
+    onProgressUpdate: (event) => {
       queryClient.setQueryData(['scans'], (oldData: any) => {
         if (!Array.isArray(oldData)) return oldData
         return oldData.map((scan: any) =>
-          scan.id === event.execution_id
+          scan.id === event.scan_id
             ? { ...scan, progress: event.progress, status: event.status }
             : scan
         )
       })
     },
-    onExecutionCompleted: (event) => {
-      console.log('✅ Workflow completed:', event.execution_id)
+    onScanCompleted: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
     },
-    onExecutionFailed: (event) => {
-      console.log('❌ Workflow failed:', event.execution_id)
+    onScanFailed: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
     },
-    onStepStarted: (event) => {
-      console.log('🔧 Step started:', event.step_name)
-    },
-    onStepCompleted: (event) => {
-      console.log('✓ Step completed:', event.step_name)
+    onScanCancelled: () => {
+      queryClient.invalidateQueries({ queryKey: ['scans'] })
     }
   })
 
   const handleWorkflowExecution = () => {
-    if (targetUrl.trim() && selectedWorkflow) {
+    if (targetUrl.trim() && selectedWorkflow && authorizationConfirmed) {
       const inputs = {
         target: targetUrl.trim(),
-        workdir: `./results/${targetUrl.trim().replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`
       }
       workflowMutation.mutate({ workflowId: selectedWorkflow, inputs })
     }
@@ -218,95 +188,20 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
-      {/* Enhanced Header - Fixed Layout */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div className="relative flex-shrink-0">
-            <Shield className="h-10 w-10 text-blue-500" />
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+        <div className="max-w-3xl">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="status-dot" />
+            <span className="console-label text-emerald-300">Native operations online</span>
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-3xl font-bold text-white">
-                UniHack
-              </h1>
-              <Badge className="bg-green-600 hover:bg-green-700 text-xs inline-flex items-center">
-                <Lightning className="h-3 w-3 mr-1" />
-                Online
-              </Badge>
-            </div>
-            <p className="text-gray-400 mt-1 text-sm">
-              Intelligent security tool orchestration platform
-            </p>
-          </div>
+          <h1 className="console-heading text-balance text-3xl sm:text-4xl">Your security toolchain, without the guest OS.</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-400">Orchestrate audited tools directly on this host, preserve deterministic evidence, and keep control of every command boundary.</p>
         </div>
-
-        {/* System Status */}
-        <div className="flex items-center gap-4 lg:gap-6">
-          <div className="flex flex-col items-center px-3 py-2 bg-gray-800 rounded-lg border border-gray-700">
-            <div className="text-xs text-gray-400 mb-1">Health</div>
-            <div className="flex items-center gap-1.5">
-              <div className={`w-2 h-2 rounded-full ${health?.data ? 'bg-green-500' : 'bg-red-500'}`} />
-              <span className="text-white font-medium text-sm">
-                {health?.data ? 'Online' : 'Offline'}
-              </span>
-            </div>
-          </div>
-
-          {systemMetrics && (
-            <div className="flex flex-col items-center px-3 py-2 bg-gray-800 rounded-lg border border-gray-700">
-              <div className="text-xs text-gray-400 mb-1">Active Scans</div>
-              <div className="text-white font-medium text-sm flex items-center gap-1">
-                <Activity className="h-3.5 w-3.5" />
-                {systemMetrics.active_scans}
-              </div>
-            </div>
-          )}
-
-          {systemMetrics && (
-            <div className="flex flex-col items-center px-3 py-2 bg-gray-800 rounded-lg border border-gray-700">
-              <div className="text-xs text-gray-400 mb-1">Available Tools</div>
-              <div className="text-white font-medium text-sm flex items-center gap-1">
-                <Zap className="h-3.5 w-3.5" />
-                {systemMetrics.tools_available}/{systemMetrics.tools_total}
-              </div>
-            </div>
-          )}
-
-          {systemInfo && (
-            <div className="flex flex-col items-center px-3 py-2 bg-gray-800 rounded-lg border border-gray-700">
-              <div className="text-xs text-gray-400 mb-1">CPU</div>
-              <div className="text-white font-medium text-sm flex items-center gap-1">
-                <Cpu className="h-3.5 w-3.5" />
-                {systemInfo.cpu_cores} cores
-              </div>
-            </div>
-          )}
-
-          {systemInfo && (
-            <div className="flex flex-col items-center px-3 py-2 bg-gray-800 rounded-lg border border-gray-700">
-              <div className="text-xs text-gray-400 mb-1">Memory</div>
-              <div className="text-white font-medium text-sm flex items-center gap-1">
-                <HardDrive className="h-3.5 w-3.5" />
-                {Math.round(parseInt(systemInfo.available_memory_mb) / 1024)}GB free
-              </div>
-            </div>
-          )}
-
-          {systemMetrics && (
-            <div className="flex flex-col items-center px-3 py-2 bg-gray-800 rounded-lg border border-gray-700">
-              <div className="text-xs text-gray-400 mb-1">System Health</div>
-              <div className="flex items-center gap-1.5">
-                <div className={`w-2 h-2 rounded-full ${
-                  systemMetrics.system_health === 'healthy' ? 'bg-green-500' :
-                  systemMetrics.system_health === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
-                }`} />
-                <span className="text-white font-medium text-sm capitalize">
-                  {systemMetrics.system_health}
-                </span>
-              </div>
-            </div>
-          )}
+        <div className="grid grid-cols-4 gap-2">
+          <HeaderMetric label="Health" value={health?.data ? 'Ready' : 'Offline'} icon={<Activity className="h-3.5 w-3.5" />} />
+          <HeaderMetric label="Active" value={String(systemMetrics?.active_scans ?? 0)} icon={<Zap className="h-3.5 w-3.5" />} />
+          <HeaderMetric label="Tools" value={`${systemMetrics?.tools_available ?? tools.filter((tool) => tool.installed).length}/${systemMetrics?.tools_total ?? tools.length}`} icon={<Shield className="h-3.5 w-3.5" />} />
+          <HeaderMetric label="RAM free" value={systemInfo ? `${Math.round(systemInfo.available_memory_mb / 1024)} GB` : '—'} icon={<HardDrive className="h-3.5 w-3.5" />} />
         </div>
       </div>
 
@@ -344,6 +239,12 @@ const Dashboard = () => {
         </Card>
       )}
 
+      <Suspense fallback={<div className="surface-panel grid min-h-[480px] place-items-center rounded-2xl text-sm text-slate-500">Loading immersive mission topology…</div>}>
+        <MissionTopology systemInfo={systemInfo} tools={tools} workflows={workflowTemplates} scans={scans} />
+      </Suspense>
+
+      <ResourceSavingsPanel systemInfo={systemInfo} />
+
       <Card className="border-blue-500/30 bg-gradient-to-br from-gray-800 to-gray-900 shadow-xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-blue-400 text-lg">
@@ -359,7 +260,7 @@ const Dashboard = () => {
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-300">Workflow Template</label>
                      <Select value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
-                      <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                      <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white" aria-label="Workflow template">
                         <SelectValue placeholder="Select a workflow template" />
                       </SelectTrigger>
                       <SelectContent>
@@ -401,18 +302,19 @@ const Dashboard = () => {
 
           {/* Target Input */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-300">Target Domain</label>
+            <label className="text-sm font-medium text-gray-300">Authorized {selectedWorkflowMetadata?.targetKind ?? 'target'}</label>
             <div className="flex gap-3">
               <Input
-                placeholder="example.com"
+                aria-label={`Authorized ${selectedWorkflowMetadata?.targetKind ?? 'target'}`}
+                placeholder={selectedWorkflowMetadata ? getTargetPlaceholder(selectedWorkflowMetadata.targetKind) : 'Select a workflow first'}
                 value={targetUrl}
                 onChange={(e) => setTargetUrl(e.target.value)}
                 className="h-11 bg-gray-900 border-gray-700 focus:border-blue-500 text-white placeholder-gray-500 flex-1"
-                onKeyPress={(e) => e.key === 'Enter' && handleWorkflowExecution()}
+                onKeyDown={(e) => e.key === 'Enter' && handleWorkflowExecution()}
               />
               <Button
                 onClick={handleWorkflowExecution}
-                disabled={!targetUrl.trim() || !selectedWorkflow || workflowMutation.isPending}
+                disabled={!targetUrl.trim() || !selectedWorkflow || !authorizationConfirmed || workflowMutation.isPending}
                 className="h-11 px-6 bg-blue-600 hover:bg-blue-700 text-white font-medium whitespace-nowrap"
               >
                 {workflowMutation.isPending ? (
@@ -430,16 +332,24 @@ const Dashboard = () => {
             </div>
           </div>
 
+          <label className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3 text-sm text-gray-200">
+            <input
+              type="checkbox"
+              checked={authorizationConfirmed}
+              onChange={(event) => setAuthorizationConfirmed(event.target.checked)}
+              className="mt-1 h-4 w-4 accent-blue-600"
+            />
+            <span>I confirm I own this target or have explicit permission to test it.</span>
+          </label>
+
                    {/* Workflow Preview */}
                   {selectedWorkflow && workflowTemplates && (
                     <div className="p-3 bg-gray-900 rounded-lg border border-gray-700">
                       <div className="text-xs text-gray-400 mb-2">Workflow Steps:</div>
                       <div className="flex gap-2 flex-wrap">
-                        {workflowTemplates.find((t: WorkflowTemplate) => t.id === selectedWorkflow)?.steps.map((step) => (
-                          <Badge key={step.id} className="bg-green-600 text-xs">
-                            {step.name}
-                          </Badge>
-                        ))}
+                        <Badge className="bg-green-600 text-xs">
+                          {workflowTemplates.find((template: WorkflowTemplate) => template.id === selectedWorkflow)?.steps_count || 0} configured steps
+                        </Badge>
                       </div>
                       
                       {/* Tool Requirements */}
@@ -476,14 +386,14 @@ const Dashboard = () => {
                       })()}
                       
                       <div className="text-xs text-gray-500 mt-2">
-                        Target: {targetUrl || 'example.com'} | Workdir: ./results/{targetUrl?.replace(/[^a-zA-Z0-9]/g, '_') || 'example_com'}_{Date.now()}
+                        Target: {targetUrl || 'example.com'} | Results: managed per-scan directory
                       </div>
                     </div>
                   )}
 
           {/* Error Display */}
           {workflowMutation.error && (
-            <div className="p-3 bg-red-900/20 border border-red-500 rounded-lg">
+            <div className="p-3 bg-red-900/20 border border-red-500 rounded-lg" role="alert">
               <div className="flex items-center gap-2 text-red-400">
                 <AlertCircle className="h-4 w-4" />
                 <span className="text-sm">
@@ -608,7 +518,7 @@ const Dashboard = () => {
                       <Progress value={scan.progress} className="h-1.5" />
 
                       <div className="flex justify-between text-xs text-gray-400 pt-1">
-                        <span>{formatDate(scan.started_at)}</span>
+                        <span>{formatDate(scan.started ?? scan.started_at)}</span>
                         {scan.findings_count && (
                           <span className="text-blue-400">{scan.findings_count} findings</span>
                         )}
@@ -652,9 +562,10 @@ const Dashboard = () => {
                   const availableToolsCount = hasCompatibility ? workflow.compatibility.available_tools.length : 0
 
                   return (
-                    <div 
+                    <button
+                      type="button"
                       key={workflow.id} 
-                      className={`flex items-center justify-between p-2.5 bg-gray-900 rounded-lg border transition-colors cursor-pointer ${
+                      className={`flex w-full items-center justify-between rounded-lg border bg-gray-900 p-2.5 text-left transition-colors ${
                         isCompatible 
                           ? 'border-green-700 hover:border-green-600 hover:bg-gray-850' 
                           : 'border-gray-700 hover:border-gray-600 hover:bg-gray-850'
@@ -692,7 +603,7 @@ const Dashboard = () => {
                           <Play className="h-4 w-4 text-green-400" />
                         )}
                       </div>
-                    </div>
+                    </button>
                   )
                 })
               ) : (
@@ -720,10 +631,10 @@ const Dashboard = () => {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Lightning className="h-5 w-5 text-yellow-400" />
-            Agent-Based Security Scanning
+            Workflow-Based Security Scanning
           </CardTitle>
           <CardDescription className="text-sm">
-            Intelligent workflows that orchestrate security tools automatically
+            Deterministic workflows that orchestrate verified local tools and preserve evidence
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -781,5 +692,12 @@ const Dashboard = () => {
     </div>
   )
 }
+
+const HeaderMetric = ({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) => (
+  <div className="surface-panel min-w-[112px] rounded-xl px-3 py-2.5">
+    <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{icon}{label}</div>
+    <div className="metric-value mt-1 text-sm font-semibold text-white">{value}</div>
+  </div>
+)
 
 export default Dashboard

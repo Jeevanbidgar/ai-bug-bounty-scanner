@@ -15,7 +15,7 @@ steps:
     run:
       - subfinder
       - -d
-      - "{{target}}"
+      - "{{domain}}"
       - -o
       - "{{workdir}}/subdomains.txt"
       - -all
@@ -59,10 +59,6 @@ steps:
       - "{{workdir}}/ports.txt"
       - -o
       - "{{workdir}}/live-urls.txt"
-      - -title
-      - -status-code
-      - -tech-detect
-      - -content-length
       - -follow-redirects
       - -random-agent
       - -threads

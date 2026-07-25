@@ -25,6 +25,7 @@ impl Default for NmapConfig {
     }
 }
 
+#[derive(Default)]
 pub struct NmapAdapter;
 
 impl NmapAdapter {

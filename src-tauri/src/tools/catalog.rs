@@ -7,6 +7,37 @@ use crate::tools::package_managers::get_homebrew_mapping;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallPlatform {
+    Macos,
+    Windows,
+    Linux,
+    Other,
+}
+
+impl InstallPlatform {
+    pub fn current() -> Self {
+        if cfg!(target_os = "macos") {
+            Self::Macos
+        } else if cfg!(target_os = "windows") {
+            Self::Windows
+        } else if cfg!(target_os = "linux") {
+            Self::Linux
+        } else {
+            Self::Other
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Macos => "macos",
+            Self::Windows => "windows",
+            Self::Linux => "linux",
+            Self::Other => "other",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
     pub name: String,
@@ -130,7 +161,6 @@ impl ToolDefinition {
     #[allow(dead_code)]
     pub fn with_manual_install(mut self) -> Self {
         self.install_method = "manual".to_string();
-        self.install_method = "winget".to_string();
         self
     }
 
@@ -142,6 +172,92 @@ impl ToolDefinition {
     pub fn with_alternative_methods(mut self, methods: Vec<&str>) -> Self {
         self.alternative_install_methods = methods.iter().map(|s| s.to_string()).collect();
         self
+    }
+
+    pub fn install_methods_for(&self, tool_name: &str, platform: InstallPlatform) -> Vec<String> {
+        let mut methods = Vec::new();
+        let mut add = |method: &str| {
+            if !methods.iter().any(|value| value == method) {
+                methods.push(method.to_string());
+            }
+        };
+
+        if platform == InstallPlatform::Macos {
+            if let Some(mapping) = get_homebrew_mapping(tool_name) {
+                if mapping.verified
+                    && (mapping.brew_formula.is_some() || mapping.brew_cask.is_some())
+                {
+                    add("homebrew");
+                }
+            }
+        }
+        if platform == InstallPlatform::Linux && self.apt_package.is_some() {
+            add("apt");
+        }
+        if platform == InstallPlatform::Windows && self.winget_id.is_some() {
+            add("winget");
+        }
+        if self.go_module.is_some() {
+            add("go");
+        }
+        if self.cargo_package.is_some() {
+            add("cargo");
+        }
+        if self.gem_package.is_some() {
+            add("gem");
+        }
+        if self.npm_package.is_some() {
+            add("npm");
+        }
+        if self.git_repo.is_some() {
+            add("git-pip");
+        }
+        if self.pipx_package.is_some()
+            || (self.git_repo.is_some()
+                && self
+                    .alternative_install_methods
+                    .iter()
+                    .any(|method| method == "pipx"))
+        {
+            add("pipx");
+        }
+        if self.install_method == "manual"
+            || self
+                .alternative_install_methods
+                .iter()
+                .any(|method| method == "manual")
+        {
+            add("manual");
+        }
+        if self.install_method == "runtime" {
+            add("runtime");
+        }
+
+        methods
+    }
+
+    pub fn recommended_install_method(
+        &self,
+        tool_name: &str,
+        platform: InstallPlatform,
+    ) -> Option<String> {
+        let methods = self.install_methods_for(tool_name, platform);
+        let platform_preference = match platform {
+            InstallPlatform::Macos => Some("homebrew"),
+            InstallPlatform::Windows => Some("winget"),
+            InstallPlatform::Linux => Some("apt"),
+            InstallPlatform::Other => None,
+        };
+        platform_preference
+            .filter(|preferred| methods.iter().any(|method| method == preferred))
+            .or_else(|| {
+                methods
+                    .iter()
+                    .find(|method| method.as_str() == self.install_method)
+                    .map(String::as_str)
+            })
+            .or_else(|| methods.first().map(String::as_str))
+            .map(str::to_string)
     }
 }
 
@@ -159,7 +275,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             vec!["subfinder"],
         )
         .with_output_format("json")
-        .with_go_module("github.com/projectdiscovery/subfinder/v2/cmd/subfinder"),
+        .with_go_module("github.com/projectdiscovery/subfinder/v2/cmd/subfinder")
+        .with_version_args(vec!["-version"]),
     );
 
     catalog.insert(
@@ -171,7 +288,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             vec!["amass"],
         )
         .with_output_format("json")
-        .with_go_module("github.com/owasp-amass/amass/v4/..."),
+        .with_go_module("github.com/owasp-amass/amass/v4/...")
+        .with_version_args(vec!["version"]),
     );
 
     catalog.insert(
@@ -247,7 +365,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
         "naabu".to_string(),
         ToolDefinition::new("naabu", "Fast port scanner", "network", vec!["naabu"])
             .with_os_dependencies(vec!["libpcap"])
-            .with_go_module("github.com/projectdiscovery/naabu/v2/cmd/naabu"),
+            .with_go_module("github.com/projectdiscovery/naabu/v2/cmd/naabu")
+            .with_version_args(vec!["-version"]),
     );
 
     catalog.insert(
@@ -279,7 +398,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             vec!["httpx", "httpx.exe"],
         )
         .with_output_format("json")
-        .with_go_module("github.com/projectdiscovery/httpx/cmd/httpx"),
+        .with_go_module("github.com/projectdiscovery/httpx/cmd/httpx")
+        .with_version_args(vec!["-version"]),
     );
 
     catalog.insert(
@@ -333,7 +453,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["gau"],
         )
-        .with_go_module("github.com/lc/gau/v2/cmd/gau"),
+        .with_go_module("github.com/lc/gau/v2/cmd/gau")
+        .with_version_args(vec!["--version"]),
     );
 
     catalog.insert(
@@ -344,7 +465,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "recon",
             vec!["waybackurls"],
         )
-        .with_go_module("github.com/tomnomnom/waybackurls"),
+        .with_go_module("github.com/tomnomnom/waybackurls")
+        .with_version_args(vec!["-h"]),
     );
 
     catalog.insert(
@@ -368,7 +490,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             vec!["nuclei"],
         )
         .with_output_format("jsonl")
-        .with_go_module("github.com/projectdiscovery/nuclei/v3/cmd/nuclei"),
+        .with_go_module("github.com/projectdiscovery/nuclei/v3/cmd/nuclei")
+        .with_version_args(vec!["-version"]),
     );
 
     catalog.insert(
@@ -381,7 +504,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
         )
         .with_os_dependencies(vec!["perl"])
         .with_apt_package("nikto")
-        .with_install_method("manual"),
+        .with_install_method("manual")
+        .with_version_args(vec!["-Version"]),
     );
 
     catalog.insert(
@@ -394,7 +518,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
         )
         .with_apt_package("wpscan") // Set apt package (for metadata)
         .with_gem_package("wpscan") // Set gem as primary method (last call wins)
-        .with_alternative_methods(vec!["apt"]), // Explicitly add apt as alternative
+        .with_alternative_methods(vec!["apt"])
+        .with_version_args(vec!["--version"]), // Explicitly add apt as alternative
     );
 
     catalog.insert(
@@ -415,7 +540,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
         "ffuf".to_string(),
         ToolDefinition::new("ffuf", "Fast web fuzzer", "web", vec!["ffuf"])
             .with_output_format("json")
-            .with_go_module("github.com/ffuf/ffuf/v2"),
+            .with_go_module("github.com/ffuf/ffuf/v2")
+            .with_version_args(vec!["-V"]),
     );
 
     catalog.insert(
@@ -426,7 +552,8 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["gobuster"],
         )
-        .with_go_module("github.com/OJ/gobuster/v3"),
+        .with_go_module("github.com/OJ/gobuster/v3")
+        .with_version_args(vec!["version"]),
     );
 
     catalog.insert(
@@ -450,7 +577,10 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["feroxbuster"],
         )
-        .with_cargo_package("feroxbuster"),
+        .with_winget_id("epi052.feroxbuster")
+        .with_cargo_package("feroxbuster")
+        .with_output_format("jsonl")
+        .with_version_args(vec!["--version"]),
     );
 
     catalog.insert(
@@ -484,14 +614,16 @@ pub fn get_tool_catalog() -> HashMap<String, ToolDefinition> {
             "web",
             vec!["sqlmap"],
         )
-        .with_git_repo_no_pipx("https://github.com/sqlmapproject/sqlmap.git"),
+        .with_manual_install(),
     );
 
     // === XSS Detection ===
     catalog.insert(
         "dalfox".to_string(),
         ToolDefinition::new("dalfox", "Fast XSS scanner", "web", vec!["dalfox"])
-            .with_go_module("github.com/hahwul/dalfox/v2"),
+            .with_cargo_package("dalfox")
+            .with_output_format("json")
+            .with_version_args(vec!["--version"]),
     );
 
     catalog.insert(
@@ -866,5 +998,43 @@ mod tests {
                 .any(|m| m == "homebrew"),
             "Homebrew should be listed as an alternative installation method for subfinder"
         );
+    }
+
+    #[test]
+    fn core_tools_have_install_paths_on_each_desktop_platform() {
+        let catalog = get_tool_catalog();
+        let core_tools = [
+            "nmap",
+            "subfinder",
+            "nuclei",
+            "naabu",
+            "amass",
+            "httpx",
+            "ffuf",
+            "gobuster",
+            "gau",
+            "waybackurls",
+            "sqlmap",
+            "nikto",
+            "wpscan",
+            "feroxbuster",
+            "dalfox",
+        ];
+
+        for name in core_tools {
+            let tool = catalog.get(name).unwrap();
+            for platform in [
+                InstallPlatform::Macos,
+                InstallPlatform::Windows,
+                InstallPlatform::Linux,
+            ] {
+                assert!(
+                    !tool.install_methods_for(name, platform).is_empty(),
+                    "{name} has no installation path for {}",
+                    platform.as_str()
+                );
+                assert!(tool.recommended_install_method(name, platform).is_some());
+            }
+        }
     }
 }

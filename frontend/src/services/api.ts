@@ -2,31 +2,7 @@
  * API service for Tauri commands to the Rust backend
  */
 
-// Check if we're running in Tauri
-const isTauriEnvironment = () => {
-  // More robust Tauri detection for Tauri 2.0
-  if (typeof window === 'undefined') return false
-
-  // Check for Tauri global object (Tauri 2.0)
-  if ('__TAURI_INTERNALS__' in window) return true
-
-  // Check for Tauri global object (Tauri 1.x fallback)
-  if ('__TAURI__' in window) return true
-
-  // Check for Tauri protocol
-  try {
-    const loc = (window as any).location
-    if (loc?.protocol === 'tauri:') return true
-
-    // Check for Tauri origin (including http://tauri.localhost in dev mode)
-    if (loc?.origin.startsWith('tauri://')) return true
-    if (loc?.origin.includes('tauri.localhost')) return true
-  } catch (e) {
-    // window.location might not be available in some contexts
-  }
-
-  return false
-}
+import { appBridge } from '../bridge/appBridge'
 
 export interface ApiResponse<T = any> {
   data?: T
@@ -82,18 +58,62 @@ export interface Tool {
   last_error: string | null
   install_method?: string // Primary installation method
   alternative_install_methods?: string[] // Alternative methods (e.g., ["pipx", "git-pip"])
+  available_install_methods: string[]
+}
+
+export interface ToolInstallationInfo {
+  name: string
+  platform: string
+  install_method: string | null
+  recommended_install_method: string | null
+  available_install_methods: string[]
+  automated_install_methods: string[]
+  go_module: string | null
+  pipx_package: string | null
+  apt_package: string | null
+  winget_id: string | null
+  description: string
+  category: string
+}
+
+export interface ToolTestResult {
+  toolName: string
+  success: boolean
+  path: string
+  output: string
+  exitCode: number | null
+  durationMs: number
 }
 
 export interface Report {
   id: string
+  scanId: string
   title: string
-  generated: string
+  createdAt: string
   target: string
-  vulnerabilities: number
+  vulnerabilityCount: number
   format: string
-  filePath: string | null
-  summary: string | null
   severity: string
+  filePath?: string
+  sizeBytes?: number
+  sha256?: string
+  content?: string
+}
+
+export interface AppSettings {
+  maxParallelSteps: number
+  defaultStepTimeoutSeconds: number
+  maxOutputLinesPerStream: number
+}
+
+export interface SystemInfo {
+  os: string
+  arch: string
+  total_memory_mb: number
+  available_memory_mb: number
+  cpu_cores: number
+  process_memory_mb: number
+  process_cpu_percent: number
 }
 
 export interface SystemStats {
@@ -131,7 +151,9 @@ export interface WorkflowStep {
   description: string
   needs?: string[]
   run: string[]
+  stdin?: string
   timeout?: number
+  success_exit_codes?: number[]
   env?: Record<string, string>
   working_directory?: string
   outputs?: WorkflowOutput[]
@@ -172,6 +194,14 @@ export interface WorkflowExecution {
   error_message?: string
 }
 
+export interface WorkflowStatus {
+  execution_id: string
+  status: string
+  progress: number
+  current_step?: string
+  logs: string[]
+}
+
 export interface StepExecution {
   step_id: string
   status: string
@@ -195,6 +225,16 @@ export interface AdapterInfo {
   requires_authorization: boolean
   timeout: number
   expected_outputs: string[]
+  origin: 'specialized' | 'bundled_profile' | 'auto_detected'
+  status: 'ready' | 'review_required'
+  confidence: number
+  generated_at?: string | null
+  verified_version?: string | null
+}
+
+export interface CommandPreview {
+  argv: string[]
+  stdin?: string | null
 }
 
 export interface SubfinderConfig {
@@ -275,14 +315,6 @@ export interface ElevationMethod {
   None?: null
 }
 
-export interface ElevationResult {
-  success: boolean
-  stdout: string
-  stderr: string
-  exit_code: number
-  elevated: boolean
-}
-
 export interface VersionCheckResult {
   has_update: boolean
   current_version: string | null
@@ -319,7 +351,7 @@ export interface CoordinatedUpdateResult {
 // Event Payloads
 export interface ToolInstallationEvent {
   tool_name: string
-  install_method: string
+  installation_method: string
   timestamp: string
 }
 
@@ -358,11 +390,6 @@ export interface WorkflowStderrEvent {
   threads?: number | null
 }
 
-export interface WaybackURLsConfig {
-  target: string
-  output_file?: string | null
-}
-
 export type AdapterConfig =
   | { type: 'Subfinder'; config: SubfinderConfig }
   | { type: 'Amass'; config: AmassConfig }
@@ -374,16 +401,8 @@ export type AdapterConfig =
 
 class ApiService {
   private async invokeCommand<T>(command: string, args: any = {}): Promise<T> {
-    if (!isTauriEnvironment()) {
-      const errorMsg = `Tauri command ${command} called but not in Tauri environment`
-      console.error(errorMsg)
-      throw new Error(errorMsg)
-    }
-
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const result = await invoke(command, args)
-      return result as T
+      return await appBridge.invoke<T>(command, args)
     } catch (error) {
       // Only log errors that aren't expected/handled
       const errorMsg = String(error)
@@ -408,7 +427,7 @@ class ApiService {
   async getDetailedHealth() {
     try {
       // Get system stats from Tauri commands
-      const stats = await this.invokeCommand('get_stats')
+      const stats = await this.invokeCommand<SystemStats>('get_stats')
       return { data: stats }
     } catch (error) {
       console.error('Failed to get detailed health:', error)
@@ -436,23 +455,13 @@ class ApiService {
 
   // Scan endpoints - using Tauri commands
   async getScans() {
-    try {
-      const scans = await this.invokeCommand('list_scans')
-      return { data: scans }
-    } catch (error) {
-      console.error('Failed to get scans:', error)
-      return { data: [] }
-    }
+    const scans = await this.invokeCommand<Scan[]>('list_scans')
+    return { data: Array.isArray(scans) ? scans : [] }
   }
 
   async getScan(scanId: string) {
-    try {
-      const scan = await this.invokeCommand('get_scan', { scanId })
-      return { data: scan }
-    } catch (error) {
-      console.error('Failed to get scan:', error)
-      return { data: null }
-    }
+    const scan = await this.invokeCommand('get_scan', { scanId })
+    return { data: scan }
   }
 
   async createScan(scanData: {
@@ -481,9 +490,9 @@ class ApiService {
     }
   }
 
-  async startScan(_scanId: string) {
-    // For now, just return success - actual scan execution will be handled by workflows
-    return { data: { success: true, message: 'Scan started' } }
+  async startScan(scanId: string, authorizationConfirmed: boolean) {
+    const result = await this.invokeCommand('start_scan', { scanId, authorizationConfirmed })
+    return { data: result }
   }
 
   async deleteScan(scanId: string) {
@@ -573,13 +582,8 @@ class ApiService {
   }
 
   async getManualTools(): Promise<{ data: { manual_tools: string[] } }> {
-    try {
-      const manualTools = await this.invokeCommand('list_manual_tools')
-      return { data: { manual_tools: Array.isArray(manualTools) ? manualTools : [] } }
-    } catch (error) {
-      console.error('Failed to get manual tools:', error)
-      return { data: { manual_tools: [] } }
-    }
+    const manualTools = await this.invokeCommand('list_manual_tools')
+    return { data: { manual_tools: Array.isArray(manualTools) ? manualTools : [] } }
   }
 
   async getAvailableToolsCount(): Promise<{ data: number }> {
@@ -598,23 +602,12 @@ class ApiService {
     limit?: number
     scan_id?: string
   }) {
-    try {
-      const reports = await this.invokeCommand('list_reports')
-      return reports
-    } catch (error) {
-      console.error('Failed to get reports:', error)
-      return []
-    }
+    const reports = await this.invokeCommand<Report[]>('list_reports')
+    return Array.isArray(reports) ? reports : []
   }
 
   async getReport(reportId: string) {
-    try {
-      const report = await this.invokeCommand('get_report', { reportId })
-      return report
-    } catch (error) {
-      console.error('Failed to get report:', error)
-      return null
-    }
+    return this.invokeCommand<Report | null>('get_report', { reportId })
   }
 
   async createReport(reportData: {
@@ -623,15 +616,13 @@ class ApiService {
     format: string
   }) {
     try {
-      const reportId = await this.invokeCommand('create_report', {
+      return await this.invokeCommand<Report>('create_report', {
         reportData: {
           scan_id: reportData.scanId,
-          title: reportData.title || 'Scan Report',
-          format: reportData.format,
-          content: ''
+          title: reportData.title,
+          format: reportData.format
         }
       })
-      return { success: true, reportId }
     } catch (error) {
       console.error('Failed to create report:', error)
       throw error
@@ -651,6 +642,18 @@ class ApiService {
       console.error('Failed to delete report:', error)
       throw error
     }
+  }
+
+  async getSettings(): Promise<AppSettings> {
+    return this.invokeCommand<AppSettings>('get_settings')
+  }
+
+  async updateSettings(settings: AppSettings): Promise<AppSettings> {
+    return this.invokeCommand<AppSettings>('update_settings', { settings })
+  }
+
+  async getSystemInfo(): Promise<SystemInfo> {
+    return this.invokeCommand<SystemInfo>('get_system_info')
   }
 
   // Recon endpoints - using Tauri commands
@@ -681,13 +684,8 @@ class ApiService {
 
   // Workflow endpoints - using Tauri commands
   async getWorkflowTemplates(_checkCompatibility: boolean = true) {
-    try {
-      const templates = await this.invokeCommand('load_workflow_templates')
-      return { data: templates }
-    } catch (error) {
-      console.error('Failed to get workflow templates:', error)
-      return { data: [] }
-    }
+    const templates = await this.invokeCommand<WorkflowTemplate[]>('load_workflow_templates')
+    return { data: Array.isArray(templates) ? templates : [] }
   }
 
   async getWorkflowDetails(workflowId: string) {
@@ -700,57 +698,75 @@ class ApiService {
     }
   }
 
-  async executeWorkflow(workflowTemplateId: string, inputs: Record<string, string>) {
+  async executeWorkflow(
+    workflowTemplateId: string,
+    inputs: Record<string, string>,
+    options: {
+      workingDirectory?: string
+      scanId?: string
+      scanName?: string
+      description?: string
+      authorizationConfirmed?: boolean
+    } = {}
+  ) {
     try {
       const result = await this.invokeCommand('execute_workflow', {
-        workflowId: workflowTemplateId,
-        inputs
+        request: {
+          workflowId: workflowTemplateId,
+          inputs,
+          workingDirectory: options.workingDirectory,
+          scanId: options.scanId,
+          scanName: options.scanName,
+          description: options.description,
+          authorizationConfirmed: options.authorizationConfirmed ?? false,
+        }
       })
-      return result
+      return { data: result }
     } catch (error) {
       console.error('Failed to execute workflow:', error)
       throw error
     }
   }
 
-  async getWorkflowStatus(executionId: string) {
-    try {
-      const status = await this.invokeCommand('get_workflow_status', { executionId })
-      return status
-    } catch (error) {
-      console.error('Failed to get workflow status:', error)
-      return null
-    }
+  async getWorkflowStatus(executionId: string): Promise<WorkflowStatus> {
+    return this.invokeCommand<WorkflowStatus>('get_workflow_status', { executionId })
   }
 
   async stopWorkflow(executionId: string) {
     try {
       const result = await this.invokeCommand('stop_workflow_execution', { executionId })
-      return result
+      return { data: result }
     } catch (error) {
       console.error('Failed to stop workflow:', error)
-      return { success: true, message: 'Workflow stopped' }
+      throw error
     }
+  }
+
+  async stopScan(scanId: string) {
+    const result = await this.invokeCommand('stop_scan', { scanId })
+    return { data: result }
   }
 
   async getExecutionArtifacts(executionId: string): Promise<WorkflowArtifact[]> {
-    try {
-      const artifacts = await this.invokeCommand('get_workflow_artifacts', { executionId })
-      return Array.isArray(artifacts) ? artifacts : []
-    } catch (error) {
-      console.error('Failed to get execution artifacts:', error)
-      return []
-    }
+    const artifacts = await this.invokeCommand('get_workflow_artifacts', { executionId })
+    return Array.isArray(artifacts) ? artifacts : []
+  }
+
+  async revealWorkflowArtifact(executionId: string, artifactId: string): Promise<void> {
+    await this.invokeCommand('reveal_workflow_artifact', { executionId, artifactId })
+  }
+
+  async revealScanResults(scanId: string): Promise<void> {
+    await this.invokeCommand('reveal_scan_results', { scanId })
+  }
+
+  async revealReport(reportId: string): Promise<void> {
+    await this.invokeCommand('reveal_report', { reportId })
   }
 
   async getExecutionFindings(executionId: string): Promise<any[]> {
-    try {
-      const findings = await this.invokeCommand('get_workflow_findings', { executionId })
-      return Array.isArray(findings) ? findings : []
-    } catch (error) {
-      console.error('Failed to get execution findings:', error)
-      return []
-    }
+    const findings = await this.invokeCommand('get_workflow_findings', { executionId })
+    return Array.isArray(findings) ? findings : []
   }
 
   async loadWorkflowTemplatesTauri() {
@@ -829,6 +845,14 @@ class ApiService {
     }
   }
 
+  async testTool(toolName: string): Promise<ToolTestResult> {
+    return this.invokeCommand<ToolTestResult>('test_tool', { toolName })
+  }
+
+  async recheckTool(toolName: string): Promise<Tool> {
+    return this.invokeCommand<Tool>('recheck_tool', { toolName })
+  }
+
   async checkToolUpdate(toolName: string): Promise<{
     has_update: boolean
     current_version: string | null
@@ -876,27 +900,9 @@ class ApiService {
     return await this.invokeCommand('clear_update_checker_telemetry', {})
   }
 
-  async getToolInstallationInfo(toolName: string): Promise<{
-    name: string
-    install_method: string
-    go_module: string | null
-    pipx_package: string | null
-    apt_package: string | null
-    winget_id: string | null
-    description: string
-    category: string
-  }> {
+  async getToolInstallationInfo(toolName: string): Promise<ToolInstallationInfo> {
     try {
-      const info = await this.invokeCommand('get_tool_installation_info', { toolName }) as {
-        name: string
-        install_method: string
-        go_module: string | null
-        pipx_package: string | null
-        apt_package: string | null
-        winget_id: string | null
-        description: string
-        category: string
-      }
+      const info = await this.invokeCommand<ToolInstallationInfo>('get_tool_installation_info', { toolName })
       return info
     } catch (error) {
       console.error('Failed to get tool installation info:', error)
@@ -906,9 +912,9 @@ class ApiService {
 
   // Adapter Commands - Tool Command Builders
 
-  async buildToolCommand(adapterConfig: AdapterConfig): Promise<string[]> {
+  async buildToolCommand(adapterConfig: AdapterConfig): Promise<CommandPreview> {
     try {
-      const command = await this.invokeCommand('build_tool_command', { adapterType: adapterConfig }) as string[]
+      const command = await this.invokeCommand('build_tool_command', { adapterType: adapterConfig }) as CommandPreview
       return command
     } catch (error) {
       console.error('Failed to build tool command:', error)
@@ -920,13 +926,13 @@ class ApiService {
     toolName: string,
     target: string,
     outputFile?: string | null
-  ): Promise<string[]> {
+  ): Promise<CommandPreview> {
     try {
       const command = await this.invokeCommand('build_tool_command_with_defaults', {
         toolName,
         target,
         outputFile: outputFile || null
-      }) as string[]
+      }) as CommandPreview
       return command
     } catch (error) {
       console.error('Failed to build tool command with defaults:', error)
@@ -945,13 +951,7 @@ class ApiService {
   }
 
   async listAdapters(): Promise<AdapterInfo[]> {
-    try {
-      const adapters = await this.invokeCommand('list_adapters') as AdapterInfo[]
-      return adapters
-    } catch (error) {
-      console.error('Failed to list adapters:', error)
-      return []
-    }
+    return await this.invokeCommand('list_adapters') as AdapterInfo[]
   }
 
   async getAdaptersByCategory(category: string): Promise<AdapterInfo[]> {
@@ -997,13 +997,7 @@ class ApiService {
   // Package Manager Commands
 
   async detectPackageManagers(): Promise<PackageManagerInfo[]> {
-    try {
-      const managers = await this.invokeCommand('detect_package_managers') as PackageManagerInfo[]
-      return managers
-    } catch (error) {
-      console.error('Failed to detect package managers:', error)
-      return []
-    }
+    return await this.invokeCommand('detect_package_managers') as PackageManagerInfo[]
   }
 
   async checkPackageManager(managerName: string): Promise<PackageManagerInfo> {
@@ -1036,16 +1030,6 @@ class ApiService {
     }
   }
 
-  async installPackageManagerApt(packageName: string): Promise<InstallationResult> {
-    try {
-      const result = await this.invokeCommand('install_package_manager_apt', { packageName }) as InstallationResult
-      return result
-    } catch (error) {
-      console.error(`Failed to install APT package ${packageName}:`, error)
-      throw error
-    }
-  }
-
   async installPackageManagerWinget(): Promise<InstallationResult> {
     try {
       const result = await this.invokeCommand('install_package_manager_winget') as InstallationResult
@@ -1064,44 +1048,6 @@ class ApiService {
       return method
     } catch (error) {
       console.error('Failed to check elevation support:', error)
-      throw error
-    }
-  }
-
-  async executeElevatedCommand(
-    command: string,
-    args: string[],
-    timeoutSecs: number = 60
-  ): Promise<ElevationResult> {
-    try {
-      const result = await this.invokeCommand('execute_elevated_command', {
-        command,
-        args,
-        timeoutSecs
-      }) as ElevationResult
-      return result
-    } catch (error) {
-      console.error('Failed to execute elevated command:', error)
-      throw error
-    }
-  }
-
-  async tryCommandWithElevation(
-    command: string,
-    args: string[],
-    reason: string,
-    timeoutSecs: number = 60
-  ): Promise<ElevationResult> {
-    try {
-      const result = await this.invokeCommand('try_command_with_elevation', {
-        command,
-        args,
-        reason,
-        timeoutSecs
-      }) as ElevationResult
-      return result
-    } catch (error) {
-      console.error('Failed to try command with elevation:', error)
       throw error
     }
   }

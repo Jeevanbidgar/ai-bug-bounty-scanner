@@ -15,6 +15,7 @@ impl Default for WaybackURLsConfig {
     }
 }
 
+#[derive(Default)]
 pub struct WaybackURLsAdapter;
 
 impl WaybackURLsAdapter {
@@ -23,15 +24,11 @@ impl WaybackURLsAdapter {
     }
 
     pub fn build_command(&self, config: &WaybackURLsConfig) -> Vec<String> {
-        let mut command = vec!["waybackurls".to_string()];
-
-        // Add target domain
-        command.push(config.target.clone());
-
-        // Note: waybackurls outputs to stdout
-        // Output redirection is handled by the executor
-
-        command
+        let _ = config;
+        // Waybackurls reads line-delimited domains from standard input. The
+        // registry returns stdin separately so callers never invent a shell
+        // pipeline or pass an unsupported positional argument.
+        vec!["waybackurls".to_string()]
     }
 
     pub fn build_command_with_defaults(

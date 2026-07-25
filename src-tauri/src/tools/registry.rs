@@ -14,7 +14,7 @@ pub struct ToolInfo {
     pub category: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ToolRegistry {
     tools: Arc<RwLock<HashMap<String, ToolInfo>>>,
 }

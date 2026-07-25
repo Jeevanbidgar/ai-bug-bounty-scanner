@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use uuid::Uuid;
 
+use crate::events::{EventEmitter, TOOL_INSTALLATION_OUTPUT};
 use crate::runtime::process::hidden_tokio_command as hidden_command;
 
 pub struct GoInstallManager {
@@ -32,14 +32,9 @@ impl GoInstallManager {
     }
 
     /// Emit installation output to frontend
-    fn emit_output(&self, event_id: &str, output: &str) {
-        let _ = self.app_handle.emit(
-            "tool:installation_output",
-            serde_json::json!({
-                "event_id": event_id,
-                "output": output
-            }),
-        );
+    fn emit_output(&self, tool_name: &str, output_type: &str, output: &str) {
+        let event = EventEmitter::tool_installation_output(tool_name, output_type, output);
+        let _ = self.app_handle.emit(TOOL_INSTALLATION_OUTPUT, event);
     }
 
     /// Detect GOPATH from environment or use default
@@ -113,12 +108,11 @@ impl GoInstallManager {
         module_path: &str,
         tool_name: &str,
     ) -> Result<InstallationResult, String> {
-        let event_id = Uuid::new_v4().to_string();
-
         // Check if Go is available
         if !self.is_go_available().await {
             self.emit_output(
-                &event_id,
+                tool_name,
+                "stderr",
                 "❌ Go is not installed or not in PATH. Please install Go first.\n",
             );
             return Ok(InstallationResult {
@@ -133,7 +127,8 @@ impl GoInstallManager {
         let module_with_version = format!("{}@latest", module_path);
 
         self.emit_output(
-            &event_id,
+            tool_name,
+            "stdout",
             &format!(
                 "🚀 Installing {} via go install {}\n",
                 tool_name, module_with_version
@@ -153,7 +148,7 @@ impl GoInstallManager {
                 let stdout = child.stdout.take();
                 let stderr = child.stderr.take();
 
-                let event_id_clone = event_id.clone();
+                let tool_name_clone = tool_name.to_string();
                 let app_handle_clone = self.app_handle.clone();
 
                 let stdout_task = tokio::spawn(async move {
@@ -162,18 +157,17 @@ impl GoInstallManager {
                         let mut lines = reader.lines();
 
                         while let Ok(Some(line)) = lines.next_line().await {
-                            let _ = app_handle_clone.emit(
-                                "tool:installation_output",
-                                serde_json::json!({
-                                    "event_id": event_id_clone,
-                                    "output": format!("{}\n", line)
-                                }),
+                            let event = EventEmitter::tool_installation_output(
+                                &tool_name_clone,
+                                "stdout",
+                                &line,
                             );
+                            let _ = app_handle_clone.emit(TOOL_INSTALLATION_OUTPUT, event);
                         }
                     }
                 });
 
-                let event_id_clone2 = event_id.clone();
+                let tool_name_clone = tool_name.to_string();
                 let app_handle_clone2 = self.app_handle.clone();
                 let stderr_task = tokio::spawn(async move {
                     if let Some(stderr) = stderr {
@@ -181,13 +175,12 @@ impl GoInstallManager {
                         let mut lines = reader.lines();
 
                         while let Ok(Some(line)) = lines.next_line().await {
-                            let _ = app_handle_clone2.emit(
-                                "tool:installation_output",
-                                serde_json::json!({
-                                    "event_id": event_id_clone2,
-                                    "output": format!("{}\n", line)
-                                }),
+                            let event = EventEmitter::tool_installation_output(
+                                &tool_name_clone,
+                                "stderr",
+                                &line,
                             );
+                            let _ = app_handle_clone2.emit(TOOL_INSTALLATION_OUTPUT, event);
                         }
                     }
                 });
@@ -201,7 +194,8 @@ impl GoInstallManager {
                             // Check if the binary was installed successfully
                             if let Some(installed_path) = self.get_tool_path(tool_name) {
                                 self.emit_output(
-                                    &event_id,
+                                    tool_name,
+                                    "stdout",
                                     &format!(
                                         "✅ Successfully installed {} to {}\n",
                                         tool_name, installed_path
@@ -217,7 +211,11 @@ impl GoInstallManager {
                                     installed_path: Some(installed_path),
                                 })
                             } else {
-                                self.emit_output(&event_id, &format!("⚠️ Installation completed but {} binary not found in GOPATH/bin\n", tool_name));
+                                self.emit_output(
+                                    tool_name,
+                                    "stderr",
+                                    &format!("⚠️ Installation completed but {} binary not found in GOPATH/bin\n", tool_name),
+                                );
                                 Ok(InstallationResult {
                                     success: false,
                                     message: format!("Installation completed but {} binary not found in GOPATH/bin", tool_name),
@@ -227,7 +225,8 @@ impl GoInstallManager {
                             }
                         } else {
                             self.emit_output(
-                                &event_id,
+                                tool_name,
+                                "stderr",
                                 &format!("❌ Failed to install {}\n", tool_name),
                             );
                             Ok(InstallationResult {
@@ -512,14 +511,6 @@ impl GoInstallManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tauri::AppHandle;
-
-    fn mock_app_handle() -> AppHandle {
-        // Create a minimal mock AppHandle for testing
-        // In a real implementation, this would need proper Tauri setup
-        // For now, we'll skip these tests that require AppHandle
-        panic!("Mock AppHandle needed for testing")
-    }
 
     #[tokio::test]
     async fn test_go_install_manager_creation() {

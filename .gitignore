@@ -26,6 +26,9 @@ ENV/
 env/
 .venv
 *.md
+!README.md
+!docs/
+!docs/**/*.md
 # IDEs
 .vscode/
 .idea/
@@ -70,10 +73,12 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/.cache/
+frontend/test-results/
+frontend/playwright-report/
 
 # Rust/Tauri
 src-tauri/target/
-src-tauri/Cargo.lock
+!src-tauri/Cargo.lock
 
 # Build outputs
 *.msi
@@ -116,7 +121,8 @@ htmlcov/
 *~
 
 # Node
-package-lock.json
+!package-lock.json
+!frontend/package-lock.json
 yarn.lock
 # Phase documentation files
 *_COMPLETE.md
@@ -135,4 +141,11 @@ MACOS_IMPLEMENTATION_EXECUTION.md
 MACOS_IMPLEMENTATION_FINAL_STATUS.md
 MACOS_IMPLEMENTATION_PLAN.md
 node_modules/.package-lock.json
-node_modules/.package-lock.json
+# Target-specific Tauri sidecars are generated from locked Rust sources.
+src-tauri/binaries/*
+
+# Local development and historical scratch data
+/.cursor/
+/.playwright-mcp/
+/info/
+/ex

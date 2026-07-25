@@ -1,6 +1,6 @@
 import React from 'react'
 import { Badge } from './ui/Badge'
-import { ArrowUpCircle, CheckCircle, XCircle, AlertTriangle, Clock } from 'lucide-react'
+import { ArrowUpCircle, CheckCircle, XCircle, Clock } from 'lucide-react'
 import type { EnhancedVersionCheckResult, CoordinatedUpdateResult } from '../services/api'
 
 interface UpdateStatusBadgeProps {

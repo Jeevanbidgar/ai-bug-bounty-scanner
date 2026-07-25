@@ -1,0 +1,27 @@
+name: WordPress Assessment
+description: Inspect an authorized WordPress target for exposed components and security findings. Vulnerability enrichment requires the user's own WPScan API token configuration.
+category: web
+inputs: {}
+steps:
+  - id: wpscan
+    name: WPScan assessment
+    needs: []
+    run:
+      - wpscan
+      - --url
+      - "{{url}}"
+      - --format
+      - json
+      - --output
+      - "{{workdir}}/wpscan.json"
+      - --no-banner
+      - --max-scan-duration
+      - "1200"
+    timeout: 1500
+    success_exit_codes:
+      - 0
+      - 5
+    outputs:
+      - name: wpscan_results
+        path: "{{workdir}}/wpscan.json"
+        type: json

@@ -15,10 +15,9 @@ steps:
     run:
       - naabu
       - -host
-      - "{{target}}"
+      - "{{host}}"
       - -o
       - "{{workdir}}/ports.txt"
-      - -json
       - -Pn
       - -rate
       - "1000"
@@ -38,11 +37,12 @@ steps:
       - naabu
     run:
       - nmap
-      - -iL
-      - "{{workdir}}/ports.txt"
+      - "{{host}}"
       - -sV
       - -sC
       - -T4
+      - --top-ports
+      - "1000"
       - -oX
       - "{{workdir}}/nmap-scan.xml"
       - -oN
@@ -70,18 +70,14 @@ steps:
       - "{{workdir}}/ports.txt"
       - -o
       - "{{workdir}}/http-services.txt"
-      - -title
-      - -status-code
-      - -tech-detect
       - -follow-redirects
-      - -web-server
       - -silent
     timeout: 900
     outputs:
       - name: http_services
         type: file
         path: "{{workdir}}/http-services.txt"
-        description: Discovered HTTP/HTTPS services
+        description: Plain live URL list for downstream Nuclei steps
   - id: nuclei-network
     name: Network Vulnerability Scan
     description: Scan for network service vulnerabilities

@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react'
-import { X, RefreshCw, ExternalLink, Clock, CheckCircle, XCircle, AlertTriangle, ArrowUpCircle } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { X, RefreshCw, Clock, CheckCircle, XCircle, ArrowUpCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/Card'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
-import type { CoordinatedUpdateResult, EnhancedVersionCheckResult } from '../services/api'
+import type { CoordinatedUpdateResult } from '../services/api'
 import apiService from '../services/api'
 import { useToast } from '../hooks/useToast'
 import Toast from './ui/Toast'
@@ -19,7 +19,7 @@ const UpdateDetailsModal: React.FC<UpdateDetailsModalProps> = ({ toolName, onClo
   const [isRefreshing, setIsRefreshing] = useState(false)
   const { toasts, success, error: showError, info, removeToast } = useToast()
 
-  const fetchUpdateDetails = async (showProgress = false) => {
+  const fetchUpdateDetails = useCallback(async (showProgress = false) => {
     try {
       if (showProgress) {
         setIsRefreshing(true)
@@ -43,11 +43,11 @@ const UpdateDetailsModal: React.FC<UpdateDetailsModalProps> = ({ toolName, onClo
       setIsLoading(false)
       setIsRefreshing(false)
     }
-  }
+  }, [info, showError, success, toolName])
 
   useEffect(() => {
     fetchUpdateDetails()
-  }, [toolName])
+  }, [fetchUpdateDetails])
 
   const handleRefresh = () => {
     fetchUpdateDetails(true)

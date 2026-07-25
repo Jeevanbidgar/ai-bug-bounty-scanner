@@ -23,6 +23,7 @@ impl Default for NucleiConfig {
     }
 }
 
+#[derive(Default)]
 pub struct NucleiAdapter;
 
 impl NucleiAdapter {

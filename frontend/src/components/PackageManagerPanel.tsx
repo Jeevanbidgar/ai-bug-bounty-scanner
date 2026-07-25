@@ -224,7 +224,7 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <div className="flex-1 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
+          <button type="button" className="flex-1 text-left" onClick={() => setIsExpanded(!isExpanded)} aria-expanded={isExpanded}>
             <div className="flex items-center gap-2">
               <CardTitle>Package Managers</CardTitle>
               {isExpanded ? (
@@ -236,7 +236,7 @@ export const PackageManagerPanel: React.FC<PackageManagerPanelProps> = ({
             <CardDescription>
               {availableCount} of {managers.length} package managers available
             </CardDescription>
-          </div>
+          </button>
           <Button onClick={loadPackageManagers} variant="outline" size="sm">
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh

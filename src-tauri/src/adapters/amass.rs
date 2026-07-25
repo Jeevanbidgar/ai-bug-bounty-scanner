@@ -21,6 +21,7 @@ impl Default for AmassConfig {
     }
 }
 
+#[derive(Default)]
 pub struct AmassAdapter;
 
 impl AmassAdapter {

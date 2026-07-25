@@ -1,6 +1,13 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown } from 'lucide-react';
 
+const textContent = (node: React.ReactNode): string => {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(textContent).join(' ').replace(/\s+/g, ' ').trim();
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) return textContent(node.props.children);
+  return '';
+};
+
 interface SelectProps {
   children: React.ReactNode;
   value?: string;
@@ -32,12 +39,12 @@ export const Select = ({ children, value, onValueChange }: SelectProps) => {
   useEffect(() => {
     let foundLabel = '';
     React.Children.forEach(children, (child) => {
-      if (React.isValidElement(child) && child.type === SelectContent) {
-        React.Children.forEach(child.props.children, (item: any) => {
+      if (React.isValidElement<{ children?: React.ReactNode }>(child) && child.type === SelectContent) {
+        React.Children.forEach(child.props.children, (item) => {
           if (React.isValidElement(item)) {
             const itemProps = item.props as { value?: string; children?: React.ReactNode };
             if (itemProps.value === selectedValue) {
-              foundLabel = String(itemProps.children || '');
+              foundLabel = textContent(itemProps.children);
             }
           }
         });
@@ -59,12 +66,10 @@ export const Select = ({ children, value, onValueChange }: SelectProps) => {
   }, [isOpen]);
 
   const handleSelect = (value: string, label: string) => {
-    console.log('Select handleSelect:', { value, label });
     setSelectedValue(value);
     setSelectedLabel(label);
     setIsOpen(false);
     if (onValueChange) {
-      console.log('Calling onValueChange:', value);
       onValueChange(value);
     }
   };
@@ -86,14 +91,21 @@ export const Select = ({ children, value, onValueChange }: SelectProps) => {
   );
 };
 
-export const SelectTrigger = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => {
+interface SelectTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  children: React.ReactNode;
+}
+
+export const SelectTrigger = ({ children, className = '', ...props }: SelectTriggerProps) => {
   const context = React.useContext(SelectContext);
   if (!context) throw new Error('SelectTrigger must be used within Select');
   return (
     <button
       type="button"
+      {...props}
       onClick={() => context.setIsOpen(!context.isOpen)}
-      className={`flex h-10 w-full items-center justify-between rounded-md border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${className}`}
+      aria-haspopup="listbox"
+      aria-expanded={context.isOpen}
+      className={`flex h-11 w-full items-center justify-between rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-cyan-400/50 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 ${className}`}
     >
       {children}
       <ChevronDown className={`h-4 w-4 opacity-50 transition-transform ${context.isOpen ? 'rotate-180' : ''}`} />
@@ -105,7 +117,7 @@ export const SelectValue = ({ placeholder }: { placeholder?: string }) => {
   const context = React.useContext(SelectContext);
   if (!context) throw new Error('SelectValue must be used within Select');
   return (
-    <span className={context.selectedLabel ? "text-white" : "text-gray-400"}>
+    <span className={context.selectedLabel ? "text-white" : "text-slate-500"}>
       {context.selectedLabel || placeholder}
     </span>
   );
@@ -116,7 +128,7 @@ export const SelectContent = ({ children, className = '' }: { children: React.Re
   if (!context) throw new Error('SelectContent must be used within Select');
   if (!context.isOpen) return null;
   return (
-    <div className={`absolute top-full left-0 right-0 z-50 mt-1 max-h-60 overflow-auto rounded-md border border-gray-600 bg-gray-700 shadow-lg ${className}`}>
+    <div role="listbox" className={`absolute left-0 right-0 top-full z-50 mt-2 max-h-60 overflow-auto rounded-xl border border-white/10 bg-slate-900/95 p-1 shadow-2xl shadow-black/40 backdrop-blur-xl ${className}`}>
       {children}
     </div>
   );
@@ -127,18 +139,28 @@ export const SelectItem = ({ value, children, className = '', disabled = false }
   if (!context) throw new Error('SelectItem must be used within Select');
   const handleClick = () => {
     if (disabled) return;
-    const label = typeof children === 'string' ? children : String(children);
+    const label = textContent(children) || value;
     context.onSelect(value, label);
   };
   const isSelected = context.selectedValue === value;
   return (
     <div
+      role="option"
+      aria-selected={isSelected}
+      aria-disabled={disabled}
+      tabIndex={disabled ? -1 : 0}
       className={`px-3 py-2 text-sm transition-colors ${
         disabled 
-          ? 'text-gray-500 cursor-not-allowed opacity-50' 
-          : 'text-white cursor-pointer hover:bg-gray-600'
-      } ${isSelected && !disabled ? 'bg-gray-600' : ''} ${className}`}
+          ? 'cursor-not-allowed text-slate-600 opacity-50'
+          : 'cursor-pointer text-slate-200 hover:bg-cyan-400/10 hover:text-white'
+      } ${isSelected && !disabled ? 'bg-cyan-400/10 text-cyan-100' : ''} rounded-lg ${className}`}
       onClick={handleClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          handleClick();
+        }
+      }}
     >
       {children}
     </div>

@@ -1,7 +1,15 @@
 pub mod adapters;
 pub mod commands;
+pub mod daemon;
 pub mod database;
 pub mod events;
+pub mod governance;
+pub mod integrations;
+pub mod mcp;
+pub mod reports;
 pub mod runtime;
+pub mod security;
+pub mod service;
+pub mod settings;
 pub mod tools;
 pub mod workflow;

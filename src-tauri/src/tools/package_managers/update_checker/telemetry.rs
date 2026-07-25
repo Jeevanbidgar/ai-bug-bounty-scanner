@@ -2,10 +2,10 @@
 //
 // Provides structured logging and event tracing for update checking operations
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use chrono::{DateTime, Utc};
 
 /// Telemetry event types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,7 +16,7 @@ pub enum TelemetryEvent {
         managers: Vec<String>,
         timestamp: DateTime<Utc>,
     },
-    
+
     /// Update check completed
     UpdateCheckCompleted {
         package_name: String,
@@ -26,14 +26,14 @@ pub enum TelemetryEvent {
         errors: usize,
         timestamp: DateTime<Utc>,
     },
-    
+
     /// Manager check started
     ManagerCheckStarted {
         package_name: String,
         manager: String,
         timestamp: DateTime<Utc>,
     },
-    
+
     /// Manager check completed
     ManagerCheckCompleted {
         package_name: String,
@@ -44,7 +44,7 @@ pub enum TelemetryEvent {
         error: Option<String>,
         timestamp: DateTime<Utc>,
     },
-    
+
     /// Command executed
     CommandExecuted {
         manager: String,
@@ -56,7 +56,7 @@ pub enum TelemetryEvent {
         stderr_length: usize,
         timestamp: DateTime<Utc>,
     },
-    
+
     /// Cache hit
     CacheHit {
         package_name: String,
@@ -64,14 +64,14 @@ pub enum TelemetryEvent {
         cache_age: Duration,
         timestamp: DateTime<Utc>,
     },
-    
+
     /// Cache miss
     CacheMiss {
         package_name: String,
         manager: String,
         timestamp: DateTime<Utc>,
     },
-    
+
     /// Error occurred
     ErrorOccurred {
         package_name: String,
@@ -87,13 +87,13 @@ pub enum TelemetryEvent {
 pub struct TelemetryCollector {
     /// Events buffer
     events: Vec<TelemetryEvent>,
-    
+
     /// Maximum events to keep in memory
     max_events: usize,
-    
+
     /// Whether to enable debug logging
     debug_logging: bool,
-    
+
     /// Whether to enable metrics collection
     enable_metrics: bool,
 }
@@ -112,7 +112,7 @@ impl TelemetryCollector {
     pub fn record_event(&mut self, event: TelemetryEvent) {
         if self.enable_metrics {
             self.events.push(event.clone());
-            
+
             // Trim events if we exceed the limit
             if self.events.len() > self.max_events {
                 self.events.remove(0);
@@ -127,37 +127,103 @@ impl TelemetryCollector {
     /// Log an event to stdout/stderr
     fn log_event(&self, event: &TelemetryEvent) {
         match event {
-            TelemetryEvent::UpdateCheckStarted { package_name, managers, .. } => {
-                eprintln!("🔍 UPDATE_CHECK_STARTED: package={}, managers={:?}", package_name, managers);
+            TelemetryEvent::UpdateCheckStarted {
+                package_name,
+                managers,
+                ..
+            } => {
+                eprintln!(
+                    "🔍 UPDATE_CHECK_STARTED: package={}, managers={:?}",
+                    package_name, managers
+                );
             }
-            TelemetryEvent::UpdateCheckCompleted { package_name, duration, managers_checked, updates_found, errors, .. } => {
+            TelemetryEvent::UpdateCheckCompleted {
+                package_name,
+                duration,
+                managers_checked,
+                updates_found,
+                errors,
+                ..
+            } => {
                 eprintln!("✅ UPDATE_CHECK_COMPLETED: package={}, duration={:?}, managers={}, updates={}, errors={}", 
                     package_name, duration, managers_checked, updates_found, errors);
             }
-            TelemetryEvent::ManagerCheckStarted { package_name, manager, .. } => {
-                eprintln!("🔄 MANAGER_CHECK_STARTED: package={}, manager={}", package_name, manager);
+            TelemetryEvent::ManagerCheckStarted {
+                package_name,
+                manager,
+                ..
+            } => {
+                eprintln!(
+                    "🔄 MANAGER_CHECK_STARTED: package={}, manager={}",
+                    package_name, manager
+                );
             }
-            TelemetryEvent::ManagerCheckCompleted { package_name, manager, duration, success, has_update, error, .. } => {
+            TelemetryEvent::ManagerCheckCompleted {
+                package_name,
+                manager,
+                duration,
+                success,
+                has_update,
+                error,
+                ..
+            } => {
                 let status = if *success { "SUCCESS" } else { "FAILED" };
-                let update_status = if *has_update { "UPDATE_AVAILABLE" } else { "UP_TO_DATE" };
+                let update_status = if *has_update {
+                    "UPDATE_AVAILABLE"
+                } else {
+                    "UP_TO_DATE"
+                };
                 eprintln!("📊 MANAGER_CHECK_COMPLETED: package={}, manager={}, duration={:?}, status={}, update={}{}", 
                     package_name, manager, duration, status, update_status,
                     if let Some(err) = error { format!(", error={}", err) } else { String::new() });
             }
-            TelemetryEvent::CommandExecuted { manager, command, duration, success, exit_code, stdout_length, stderr_length, .. } => {
+            TelemetryEvent::CommandExecuted {
+                manager,
+                command,
+                duration,
+                success,
+                exit_code,
+                stdout_length,
+                stderr_length,
+                ..
+            } => {
                 let status = if *success { "SUCCESS" } else { "FAILED" };
                 eprintln!("⚡ COMMAND_EXECUTED: manager={}, command={}, duration={:?}, status={}, exit_code={:?}, stdout={}b, stderr={}b", 
                     manager, command, duration, status, exit_code, stdout_length, stderr_length);
             }
-            TelemetryEvent::CacheHit { package_name, manager, cache_age, .. } => {
-                eprintln!("💾 CACHE_HIT: package={}, manager={}, age={:?}", package_name, manager, cache_age);
+            TelemetryEvent::CacheHit {
+                package_name,
+                manager,
+                cache_age,
+                ..
+            } => {
+                eprintln!(
+                    "💾 CACHE_HIT: package={}, manager={}, age={:?}",
+                    package_name, manager, cache_age
+                );
             }
-            TelemetryEvent::CacheMiss { package_name, manager, .. } => {
-                eprintln!("❌ CACHE_MISS: package={}, manager={}", package_name, manager);
+            TelemetryEvent::CacheMiss {
+                package_name,
+                manager,
+                ..
+            } => {
+                eprintln!(
+                    "❌ CACHE_MISS: package={}, manager={}",
+                    package_name, manager
+                );
             }
-            TelemetryEvent::ErrorOccurred { package_name, manager, error_type, error_message, context, .. } => {
-                eprintln!("🚨 ERROR_OCCURRED: package={}, manager={}, type={}, message={}, context={:?}", 
-                    package_name, manager, error_type, error_message, context);
+            TelemetryEvent::ErrorOccurred {
+                package_name,
+                manager,
+                error_type,
+                error_message,
+                context,
+                ..
+            } => {
+                eprintln!(
+                    "🚨 ERROR_OCCURRED: package={}, manager={}, type={}, message={}, context={:?}",
+                    package_name, manager, error_type, error_message, context
+                );
             }
         }
     }
@@ -165,29 +231,24 @@ impl TelemetryCollector {
     /// Get recent events
     pub fn get_recent_events(&self, limit: Option<usize>) -> Vec<TelemetryEvent> {
         let limit = limit.unwrap_or(self.max_events);
-        self.events
-            .iter()
-            .rev()
-            .take(limit)
-            .cloned()
-            .collect()
+        self.events.iter().rev().take(limit).cloned().collect()
     }
 
     /// Get events by type
     pub fn get_events_by_type(&self, event_type: &str) -> Vec<TelemetryEvent> {
         self.events
             .iter()
-            .filter(|event| {
-                match event {
-                    TelemetryEvent::UpdateCheckStarted { .. } => event_type == "UpdateCheckStarted",
-                    TelemetryEvent::UpdateCheckCompleted { .. } => event_type == "UpdateCheckCompleted",
-                    TelemetryEvent::ManagerCheckStarted { .. } => event_type == "ManagerCheckStarted",
-                    TelemetryEvent::ManagerCheckCompleted { .. } => event_type == "ManagerCheckCompleted",
-                    TelemetryEvent::CommandExecuted { .. } => event_type == "CommandExecuted",
-                    TelemetryEvent::CacheHit { .. } => event_type == "CacheHit",
-                    TelemetryEvent::CacheMiss { .. } => event_type == "CacheMiss",
-                    TelemetryEvent::ErrorOccurred { .. } => event_type == "ErrorOccurred",
+            .filter(|event| match event {
+                TelemetryEvent::UpdateCheckStarted { .. } => event_type == "UpdateCheckStarted",
+                TelemetryEvent::UpdateCheckCompleted { .. } => event_type == "UpdateCheckCompleted",
+                TelemetryEvent::ManagerCheckStarted { .. } => event_type == "ManagerCheckStarted",
+                TelemetryEvent::ManagerCheckCompleted { .. } => {
+                    event_type == "ManagerCheckCompleted"
                 }
+                TelemetryEvent::CommandExecuted { .. } => event_type == "CommandExecuted",
+                TelemetryEvent::CacheHit { .. } => event_type == "CacheHit",
+                TelemetryEvent::CacheMiss { .. } => event_type == "CacheMiss",
+                TelemetryEvent::ErrorOccurred { .. } => event_type == "ErrorOccurred",
             })
             .cloned()
             .collect()
@@ -227,7 +288,7 @@ impl TelemetryCollector {
                 TelemetryEvent::ManagerCheckStarted { .. } => {
                     summary.manager_checks_started += 1;
                 }
-                TelemetryEvent::ManagerCheckCompleted { duration, success, .. } => {
+                TelemetryEvent::ManagerCheckCompleted { success, .. } => {
                     summary.manager_checks_completed += 1;
                     total_checks += 1;
                     if *success {
@@ -455,14 +516,14 @@ mod tests {
     #[test]
     fn test_telemetry_collector() {
         let mut collector = TelemetryCollector::new(10, true, true);
-        
+
         // Record some events
         collector.record_event(TelemetryEvent::UpdateCheckStarted {
             package_name: "test".to_string(),
             managers: vec!["go".to_string(), "npm".to_string()],
             timestamp: Utc::now(),
         });
-        
+
         collector.record_event(TelemetryEvent::UpdateCheckCompleted {
             package_name: "test".to_string(),
             duration: Duration::from_secs(1),
@@ -471,7 +532,7 @@ mod tests {
             errors: 0,
             timestamp: Utc::now(),
         });
-        
+
         // Check summary
         let summary = collector.get_summary();
         assert_eq!(summary.total_events, 2);
@@ -484,13 +545,13 @@ mod tests {
     fn test_telemetry_context() {
         let collector = Arc::new(Mutex::new(TelemetryCollector::new(10, false, true)));
         let context = TelemetryContext::new(collector.clone(), "test".to_string());
-        
+
         // Record events through context
         context.record_update_check_started(vec!["go".to_string()]);
         context.record_manager_check_started("go".to_string());
         context.record_manager_check_completed("go".to_string(), true, true, None);
         context.record_update_check_completed(1, 1, 0);
-        
+
         // Check that events were recorded
         let collector = collector.lock().unwrap();
         let summary = collector.get_summary();
@@ -503,13 +564,13 @@ mod tests {
     #[test]
     fn test_event_export() {
         let mut collector = TelemetryCollector::new(10, false, true);
-        
+
         collector.record_event(TelemetryEvent::UpdateCheckStarted {
             package_name: "test".to_string(),
             managers: vec!["go".to_string()],
             timestamp: Utc::now(),
         });
-        
+
         let json = collector.export_events();
         assert!(json.is_ok());
         let json_str = json.unwrap();

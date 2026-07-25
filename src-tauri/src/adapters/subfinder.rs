@@ -21,6 +21,7 @@ impl Default for SubfinderConfig {
     }
 }
 
+#[derive(Default)]
 pub struct SubfinderAdapter;
 
 impl SubfinderAdapter {

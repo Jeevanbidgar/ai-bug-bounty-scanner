@@ -2,9 +2,10 @@
 //
 // Utilities for detecting tool versions and comparing them
 
-use serde::{Deserialize, Serialize};
 use crate::runtime::process::hidden_std_command;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::fmt;
 use tokio::time::{timeout, Duration};
 
 /// Semantic version structure
@@ -47,15 +48,15 @@ impl Version {
             pre_release,
         })
     }
+}
 
-    /// Convert to string representation
-    #[allow(dead_code)]
-    pub fn to_string(&self) -> String {
+impl fmt::Display for Version {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let base = format!("{}.{}.{}", self.major, self.minor, self.patch);
         if let Some(ref pre) = self.pre_release {
-            format!("{}-{}", base, pre)
+            write!(formatter, "{}-{}", base, pre)
         } else {
-            base
+            formatter.write_str(&base)
         }
     }
 }
@@ -265,7 +266,7 @@ mod tests {
     #[tokio::test]
     async fn test_probe_version_go() {
         // Test with go (should be available on dev machines)
-        let version = probe_version("go", &vec!["version".to_string()]).await;
+        let version = probe_version("go", &["version".to_string()]).await;
         if version.is_some() {
             eprintln!("Detected go version: {:?}", version);
         }

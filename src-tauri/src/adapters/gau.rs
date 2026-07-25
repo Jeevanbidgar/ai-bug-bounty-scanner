@@ -19,6 +19,7 @@ impl Default for GAUConfig {
     }
 }
 
+#[derive(Default)]
 pub struct GAUAdapter;
 
 impl GAUAdapter {

@@ -20,7 +20,7 @@ steps:
     run:
       - subfinder
       - -d
-      - "{{target}}"
+      - "{{domain}}"
       - -o
       - "{{workdir}}/subdomains.txt"
     timeout: 300
@@ -59,9 +59,6 @@ steps:
       - "{{workdir}}/ports.txt"
       - -o
       - "{{workdir}}/urls.txt"
-      - -title
-      - -status-code
-      - -content-length
     timeout: 900
     outputs:
       - name: urls

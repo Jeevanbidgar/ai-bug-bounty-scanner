@@ -15,7 +15,7 @@ steps:
     run:
       - subfinder
       - -d
-      - "{{target}}"
+      - "{{domain}}"
       - -o
       - "{{workdir}}/subdomains.txt"
       - -all
@@ -28,7 +28,7 @@ steps:
         description: List of discovered subdomains
   - id: httpx
     name: HTTP Service Discovery
-    description: Probe for live web services and gather information
+    description: Probe for live web services and retain a clean URL list
     needs:
       - subfinder
     run:
@@ -37,9 +37,6 @@ steps:
       - "{{workdir}}/subdomains.txt"
       - -o
       - "{{workdir}}/live-urls.txt"
-      - -title
-      - -status-code
-      - -tech-detect
       - -follow-redirects
       - -random-agent
       - -silent
@@ -48,7 +45,7 @@ steps:
       - name: live_urls
         type: file
         path: "{{workdir}}/live-urls.txt"
-        description: Live HTTP/HTTPS URLs with metadata
+        description: Plain live HTTP/HTTPS URLs for downstream checks
   - id: ffuf
     name: Directory Fuzzing
     description: Discover hidden directories and files
@@ -57,9 +54,9 @@ steps:
     run:
       - ffuf
       - -u
-      - "{{target}}/FUZZ"
+      - "{{url}}/FUZZ"
       - -w
-      - /usr/share/wordlists/dirb/common.txt
+      - "{{wordlist}}"
       - -o
       - "{{workdir}}/ffuf-results.json"
       - -of

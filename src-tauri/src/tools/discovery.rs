@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -45,10 +45,20 @@ pub struct ToolRecord {
     pub last_error: Option<String>,
     pub install_method: Option<String>, // Installation method: "go", "pipx", "git-pip", etc.
     pub alternative_install_methods: Option<Vec<String>>, // Alternative installation methods (e.g., ["pipx"] for git-pip tools)
+    #[serde(default)]
+    pub available_install_methods: Vec<String>,
 }
 
 impl ToolRecord {
     pub fn from_catalog_definition(def: &CatalogToolDefinition) -> Self {
+        let platform = super::catalog::InstallPlatform::current();
+        let methods = def.install_methods_for(&def.name, platform);
+        let recommended = def.recommended_install_method(&def.name, platform);
+        let alternatives = methods
+            .iter()
+            .filter(|method| Some(method.as_str()) != recommended.as_deref())
+            .cloned()
+            .collect::<Vec<_>>();
         Self {
             name: def.name.clone(),
             description: def.description.clone(),
@@ -65,12 +75,13 @@ impl ToolRecord {
             last_checked: None,
             last_seen: None,
             last_error: None,
-            install_method: Some(def.install_method.clone()),
-            alternative_install_methods: if def.alternative_install_methods.is_empty() {
+            install_method: recommended,
+            alternative_install_methods: if alternatives.is_empty() {
                 None
             } else {
-                Some(def.alternative_install_methods.clone())
+                Some(alternatives)
             },
+            available_install_methods: methods,
         }
     }
 }
@@ -92,10 +103,9 @@ pub struct ToolDiscoveryService {
 }
 
 impl ToolDiscoveryService {
-    pub fn new() -> Self {
+    pub fn new(cache_file_path: PathBuf) -> Self {
         let catalog = get_tool_catalog();
         let additional_paths = Self::build_additional_search_paths();
-        let cache_path = Self::get_cache_file_path();
 
         let mut cache = ToolCache {
             tools: HashMap::new(),
@@ -116,46 +126,7 @@ impl ToolDiscoveryService {
             cache: Arc::new(RwLock::new(cache)),
             catalog,
             additional_search_paths: additional_paths,
-            cache_file_path: cache_path,
-        }
-    }
-
-    /// Get the cache file path (outside src-tauri to avoid rebuild triggers)
-    fn get_cache_file_path() -> PathBuf {
-        // In development: use workspace root/data
-        // In production: use app data directory
-        #[cfg(debug_assertions)]
-        {
-            // Development mode: use workspace root
-            let workspace_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-
-            // Go up from src-tauri to workspace root if needed
-            let workspace_root = if workspace_root.ends_with("src-tauri") {
-                workspace_root
-                    .parent()
-                    .unwrap_or(&workspace_root)
-                    .to_path_buf()
-            } else {
-                workspace_root
-            };
-
-            workspace_root
-                .join("data")
-                .join("tool_discovery_cache.json")
-        }
-
-        #[cfg(not(debug_assertions))]
-        {
-            // Production mode: use app data directory
-            if let Some(data_dir) = dirs::data_dir() {
-                data_dir
-                    .join("ai-bug-bounty-scanner")
-                    .join("data")
-                    .join("tool_discovery_cache.json")
-            } else {
-                // Fallback to current directory if data_dir fails
-                PathBuf::from("data").join("tool_discovery_cache.json")
-            }
+            cache_file_path,
         }
     }
 
@@ -188,6 +159,9 @@ impl ToolDiscoveryService {
 
                 // Add Go bin directory
                 paths.push(PathBuf::from(&home).join("go\\bin"));
+            }
+            if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+                paths.push(PathBuf::from(local_app_data).join("Programs\\SecurityTools"));
             }
         }
 
@@ -690,6 +664,7 @@ impl ToolDiscoveryService {
             last_error: None,
             install_method: Some("manual".to_string()),
             alternative_install_methods: None, // Manual tools don't have alternatives
+            available_install_methods: vec!["manual".to_string()],
         };
 
         cache.tools.insert(name.to_string(), record.clone());
@@ -772,19 +747,14 @@ impl ToolDiscoveryService {
             }
         }
 
-        // Windows: Try with .exe extension
+        // Windows: honor the common executable and script launcher extensions.
         #[cfg(target_os = "windows")]
         {
-            let exe_name = if !tool_name.to_lowercase().ends_with(".exe") {
-                format!("{}.exe", tool_name)
-            } else {
-                tool_name.to_string()
-            };
-
-            if exe_name != tool_name {
-                if let Ok(path) = which::which(&exe_name) {
+            for extension in ["exe", "cmd", "bat", "ps1"] {
+                let candidate = format!("{}.{}", tool_name, extension);
+                if let Ok(path) = which::which(&candidate) {
                     if let Some(path_str) = path.to_str() {
-                        eprintln!("✅ Found {} in PATH: {}", exe_name, path_str);
+                        eprintln!("✅ Found {} in PATH: {}", candidate, path_str);
                         return Some(path_str.to_string());
                     }
                 }
@@ -801,6 +771,9 @@ impl ToolDiscoveryService {
                 candidate.clone(),
                 candidate.with_extension("exe"),
                 candidate.with_extension("EXE"),
+                candidate.with_extension("cmd"),
+                candidate.with_extension("bat"),
+                candidate.with_extension("ps1"),
             ];
 
             #[cfg(not(target_os = "windows"))]
@@ -897,6 +870,7 @@ impl ToolDiscoveryService {
 
             if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
                 paths.push(format!("{}\\Programs", localappdata));
+                paths.push(format!("{}\\Programs\\SecurityTools", localappdata));
             }
 
             // Chocolatey
@@ -908,8 +882,12 @@ impl ToolDiscoveryService {
             }
         }
 
-        // Add any additional search paths provided at construction
-        // (self.additional_search_paths would go here if we expose it)
+        for path in &self.additional_search_paths {
+            let value = path.to_string_lossy().to_string();
+            if !paths.contains(&value) {
+                paths.push(value);
+            }
+        }
 
         paths
     }
@@ -1012,7 +990,7 @@ impl ToolDiscoveryService {
     async fn check_tool_at_path_direct(
         &self,
         tool_name: &str,
-        tool_path: &PathBuf,
+        tool_path: &Path,
     ) -> Option<ToolRecord> {
         let def = self.catalog.get(tool_name)?;
         let mut record = ToolRecord::from_catalog_definition(def);

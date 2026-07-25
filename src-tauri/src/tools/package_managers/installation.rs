@@ -247,14 +247,12 @@ pub async fn install_apt_package(package_name: &str) -> Result<InstallationResul
 /// Open Microsoft Store to App Installer page
 #[allow(dead_code)]
 pub async fn install_winget_windows() -> Result<InstallationResult, String> {
-    let mut steps = Vec::new();
-
-    steps.push(InstallationProgress {
+    let mut steps = vec![InstallationProgress {
         step: "Opening Microsoft Store".to_string(),
         output: "Opening App Installer page in Microsoft Store...".to_string(),
         success: false,
         requires_elevation: false,
-    });
+    }];
 
     // Open Microsoft Store to App Installer page
     let open_result = execute_command_with_output(

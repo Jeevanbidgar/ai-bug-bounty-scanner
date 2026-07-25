@@ -16,6 +16,14 @@ impl WorkflowLoader {
     }
 
     pub async fn load_workflow(&self, workflow_id: &str) -> Result<WorkflowTemplate> {
+        if workflow_id.is_empty()
+            || !workflow_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(anyhow!("Workflow ID contains invalid characters"));
+        }
+
         let workflow_path = self.workflows_dir.join(format!("{}.yaml", workflow_id));
 
         if !workflow_path.exists() {
@@ -40,14 +48,10 @@ impl WorkflowLoader {
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("yaml") {
                 if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    match self.load_workflow(stem).await {
-                        Ok(workflow) => {
-                            workflows.insert(workflow.id.clone(), workflow);
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to load workflow '{}': {}", stem, e);
-                        }
-                    }
+                    let workflow = self.load_workflow(stem).await.map_err(|error| {
+                        anyhow!("Failed to load workflow '{}': {}", stem, error)
+                    })?;
+                    workflows.insert(workflow.id.clone(), workflow);
                 }
             }
         }
@@ -84,6 +88,19 @@ impl WorkflowLoader {
 
         let inputs = self.parse_inputs(workflow_map.get("inputs"))?;
         let steps = self.parse_steps(workflow_map.get("steps")).await?;
+
+        if name.trim().is_empty() {
+            return Err(anyhow!(
+                "Workflow '{}' must have a non-empty name",
+                workflow_id
+            ));
+        }
+        if steps.is_empty() {
+            return Err(anyhow!(
+                "Workflow '{}' must contain at least one step",
+                workflow_id
+            ));
+        }
 
         // Validate DAG structure
         self.validate_dag(&steps)?;
@@ -123,15 +140,17 @@ impl WorkflowLoader {
     ) -> Result<Vec<WorkflowStep>> {
         let mut steps = Vec::new();
 
-        if let Some(steps_val) = steps_value {
-            if let Some(steps_seq) = steps_val.as_sequence() {
-                for (index, step_val) in steps_seq.iter().enumerate() {
-                    if let Some(step_map) = step_val.as_mapping() {
-                        let step = self.parse_step(step_map, index).await?;
-                        steps.push(step);
-                    }
-                }
-            }
+        let steps_val = steps_value.ok_or_else(|| anyhow!("Workflow must have a 'steps' field"))?;
+        let steps_seq = steps_val
+            .as_sequence()
+            .ok_or_else(|| anyhow!("Workflow 'steps' must be a list"))?;
+
+        for (index, step_val) in steps_seq.iter().enumerate() {
+            let step_map = step_val
+                .as_mapping()
+                .ok_or_else(|| anyhow!("Workflow step {} must be an object", index + 1))?;
+            let step = self.parse_step(step_map, index).await?;
+            steps.push(step);
         }
 
         Ok(steps)
@@ -170,33 +189,113 @@ impl WorkflowLoader {
             })
             .unwrap_or_default();
 
-        let run = step_map
+        let run_values = step_map
             .get("run")
             .and_then(|v| v.as_sequence())
-            .ok_or_else(|| anyhow!("Step '{}' must have a 'run' field", id))?
+            .ok_or_else(|| anyhow!("Step '{}' must have a list-valued 'run' field", id))?;
+        let run: Vec<String> = run_values
             .iter()
-            .filter_map(|v| v.as_str())
-            .map(|s| s.to_string())
-            .collect();
+            .enumerate()
+            .map(|(argument_index, value)| {
+                value.as_str().map(str::to_string).ok_or_else(|| {
+                    anyhow!(
+                        "Step '{}' command argument {} must be a string",
+                        id,
+                        argument_index + 1
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if run.is_empty() || run[0].trim().is_empty() {
+            return Err(anyhow!("Step '{}' must declare an executable", id));
+        }
+        if !run[0]
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(anyhow!(
+                "Step '{}' executable must be a registered tool name, not a path or template",
+                id
+            ));
+        }
 
-        let env = step_map
-            .get("env")
-            .and_then(|v| v.as_mapping())
-            .map(|env_map| {
-                env_map
-                    .iter()
-                    .filter_map(|(k, v)| {
-                        k.as_str().and_then(|k_str| {
-                            v.as_str()
-                                .map(|v_str| (k_str.to_string(), v_str.to_string()))
-                        })
-                    })
-                    .collect()
-            });
+        for argument in &run {
+            self.validate_template_variables(argument, &id)?;
+        }
+
+        let stdin = step_map
+            .get("stdin")
+            .and_then(|value| value.as_str())
+            .map(str::to_string);
+        if let Some(value) = &stdin {
+            if value.len() > 65_536 {
+                return Err(anyhow!("Step '{}' stdin template is too large", id));
+            }
+            self.validate_template_variables(value, &id)?;
+        }
+
+        let env: Option<HashMap<String, String>> = match step_map.get("env") {
+            Some(value) => {
+                let env_map = value
+                    .as_mapping()
+                    .ok_or_else(|| anyhow!("Step '{}' env must be an object", id))?;
+                let mut parsed = HashMap::new();
+                for (key, value) in env_map {
+                    let key = key
+                        .as_str()
+                        .ok_or_else(|| anyhow!("Step '{}' env keys must be strings", id))?;
+                    let value = value
+                        .as_str()
+                        .ok_or_else(|| anyhow!("Step '{}' env values must be strings", id))?;
+                    parsed.insert(key.to_string(), value.to_string());
+                }
+                Some(parsed)
+            }
+            None => None,
+        };
+        if let Some(environment) = &env {
+            for (key, value) in environment {
+                if key.trim().is_empty() || key.contains('=') || key.contains('\0') {
+                    return Err(anyhow!("Step '{}' has an invalid environment key", id));
+                }
+                self.validate_template_variables(value, &id)?;
+            }
+        }
 
         let timeout = step_map.get("timeout").and_then(|v| v.as_u64());
+        if matches!(timeout, Some(0) | Some(86_401..)) {
+            return Err(anyhow!(
+                "Step '{}' timeout must be between 1 and 86400 seconds",
+                id
+            ));
+        }
 
-        let retry = self.parse_retry(step_map.get("retry"));
+        let retry = self.parse_retry(step_map.get("retry"), &id)?;
+
+        let success_exit_codes = match step_map.get("success_exit_codes") {
+            Some(value) => {
+                let codes = value
+                    .as_sequence()
+                    .ok_or_else(|| anyhow!("Step '{}' success_exit_codes must be a list", id))?;
+                if codes.is_empty() {
+                    return Err(anyhow!("Step '{}' success_exit_codes cannot be empty", id));
+                }
+                let mut parsed = Vec::with_capacity(codes.len());
+                for code in codes {
+                    let code = code
+                        .as_i64()
+                        .filter(|code| (0..=255).contains(code))
+                        .ok_or_else(|| {
+                            anyhow!("Step '{}' success exit codes must be between 0 and 255", id)
+                        })? as i32;
+                    if !parsed.contains(&code) {
+                        parsed.push(code);
+                    }
+                }
+                parsed
+            }
+            None => vec![0],
+        };
 
         let outputs = self.parse_step_outputs(step_map.get("outputs"))?;
 
@@ -206,51 +305,77 @@ impl WorkflowLoader {
             description,
             needs,
             run,
+            stdin,
             env,
             timeout,
             retry,
+            success_exit_codes,
             outputs,
         })
     }
 
-    fn parse_retry(&self, retry_value: Option<&serde_yaml::Value>) -> Option<WorkflowRetry> {
+    fn parse_retry(
+        &self,
+        retry_value: Option<&serde_yaml::Value>,
+        step_id: &str,
+    ) -> Result<Option<WorkflowRetry>> {
         if let Some(retry_val) = retry_value {
-            if let Some(retry_map) = retry_val.as_mapping() {
-                // Parse max_attempts (backwards compatible with "count")
-                let max_attempts = retry_map
-                    .get("max_attempts")
-                    .or_else(|| retry_map.get("count")) // Backwards compatibility
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(3) as u32;
+            let retry_map = retry_val
+                .as_mapping()
+                .ok_or_else(|| anyhow!("Step '{}' retry must be an object", step_id))?;
 
-                // Parse initial_delay_ms (backwards compatible with "delay")
-                let initial_delay_ms = retry_map
-                    .get("initial_delay_ms")
-                    .or_else(|| retry_map.get("delay")) // Backwards compatibility
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(1000);
+            let max_attempts = retry_map
+                .get("max_attempts")
+                .or_else(|| retry_map.get("count"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(3);
+            let initial_delay_ms = retry_map
+                .get("initial_delay_ms")
+                .or_else(|| retry_map.get("delay"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1000);
+            let max_delay_ms = retry_map
+                .get("max_delay_ms")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(60000);
+            let backoff_multiplier = retry_map
+                .get("backoff_multiplier")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(2.0);
 
-                // Parse max_delay_ms (default 60 seconds)
-                let max_delay_ms = retry_map
-                    .get("max_delay_ms")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(60000);
-
-                // Parse backoff_multiplier (default 2.0 for exponential backoff)
-                let backoff_multiplier = retry_map
-                    .get("backoff_multiplier")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(2.0);
-
-                return Some(WorkflowRetry {
-                    max_attempts,
-                    initial_delay_ms,
-                    max_delay_ms,
-                    backoff_multiplier,
-                });
+            if !(1..=10).contains(&max_attempts) {
+                return Err(anyhow!(
+                    "Step '{}' retry max_attempts must be between 1 and 10",
+                    step_id
+                ));
             }
+            if initial_delay_ms > 300_000 || max_delay_ms > 300_000 {
+                return Err(anyhow!(
+                    "Step '{}' retry delays cannot exceed 300000 milliseconds",
+                    step_id
+                ));
+            }
+            if max_delay_ms < initial_delay_ms {
+                return Err(anyhow!(
+                    "Step '{}' retry max_delay_ms cannot be less than initial_delay_ms",
+                    step_id
+                ));
+            }
+            if !backoff_multiplier.is_finite() || !(1.0..=10.0).contains(&backoff_multiplier) {
+                return Err(anyhow!(
+                    "Step '{}' retry backoff_multiplier must be between 1 and 10",
+                    step_id
+                ));
+            }
+
+            return Ok(Some(WorkflowRetry {
+                max_attempts: max_attempts as u32,
+                initial_delay_ms,
+                max_delay_ms,
+                backoff_multiplier,
+            }));
         }
-        None
+        Ok(None)
     }
 
     fn parse_step_outputs(
@@ -275,6 +400,8 @@ impl WorkflowLoader {
                             .unwrap_or("output.txt")
                             .to_string();
 
+                        self.validate_output_path(&path, &name)?;
+
                         let artifact_type = output_map
                             .get("type")
                             .and_then(|v| v.as_str())
@@ -292,6 +419,45 @@ impl WorkflowLoader {
         }
 
         Ok(outputs)
+    }
+
+    fn validate_output_path(&self, path: &str, output_name: &str) -> Result<()> {
+        if path.trim().is_empty()
+            || path.contains('\0')
+            || path.split(['/', '\\']).any(|component| component == "..")
+        {
+            return Err(anyhow!(
+                "Output '{}' has an unsafe artifact path",
+                output_name
+            ));
+        }
+        self.validate_template_variables(path, output_name)
+    }
+
+    fn validate_template_variables(&self, value: &str, owner: &str) -> Result<()> {
+        let expression = regex::Regex::new(r"\{\{([^}]+)\}\}")?;
+        for capture in expression.captures_iter(value) {
+            let variable = capture.get(1).map(|item| item.as_str()).unwrap_or_default();
+            if !matches!(
+                variable,
+                "target" | "workdir" | "url" | "domain" | "host" | "wordlist"
+            ) && !variable.starts_with("artifacts.")
+            {
+                return Err(anyhow!(
+                    "'{}' uses unsupported template variable '{{{{{}}}}}'",
+                    owner,
+                    variable
+                ));
+            }
+        }
+
+        if value.contains("{{") && !expression.is_match(value) {
+            return Err(anyhow!(
+                "'{}' contains a malformed template variable",
+                owner
+            ));
+        }
+        Ok(())
     }
 
     fn validate_dag(&self, steps: &[WorkflowStep]) -> Result<()> {
@@ -321,10 +487,10 @@ impl WorkflowLoader {
         let mut rec_stack = std::collections::HashSet::new();
 
         for step in steps {
-            if !visited.contains(&step.id) {
-                if self.has_cycle(step, steps, &mut visited, &mut rec_stack)? {
-                    return Err(anyhow!("Circular dependency detected in workflow"));
-                }
+            if !visited.contains(&step.id)
+                && Self::has_cycle(step, steps, &mut visited, &mut rec_stack)?
+            {
+                return Err(anyhow!("Circular dependency detected in workflow"));
             }
         }
 
@@ -332,7 +498,6 @@ impl WorkflowLoader {
     }
 
     fn has_cycle(
-        &self,
         step: &WorkflowStep,
         all_steps: &[WorkflowStep],
         visited: &mut std::collections::HashSet<String>,
@@ -344,7 +509,7 @@ impl WorkflowLoader {
         for need in &step.needs {
             if let Some(dep_step) = all_steps.iter().find(|s| s.id == *need) {
                 if !visited.contains(need) {
-                    if self.has_cycle(dep_step, all_steps, visited, rec_stack)? {
+                    if Self::has_cycle(dep_step, all_steps, visited, rec_stack)? {
                         return Ok(true);
                     }
                 } else if rec_stack.contains(need) {
@@ -355,5 +520,223 @@ impl WorkflowLoader {
 
         rec_stack.remove(&step.id);
         Ok(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WorkflowLoader;
+    use crate::tools::catalog::{get_tool_catalog, InstallPlatform};
+
+    #[tokio::test]
+    async fn loads_every_packaged_workflow() {
+        let workflows_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("app/workflows");
+        let workflows = WorkflowLoader::new(workflows_dir)
+            .load_all_workflows()
+            .await
+            .unwrap();
+
+        assert_eq!(workflows.len(), 15);
+        assert!(workflows
+            .values()
+            .all(|workflow| !workflow.steps.is_empty()));
+        let expected_ids = [
+            "api-security-scan",
+            "cloud-security-scan",
+            "comprehensive-audit",
+            "content-discovery",
+            "discovery-only",
+            "full-recon",
+            "network-recon",
+            "nikto-web-audit",
+            "nuclei-only",
+            "passive-url-discovery",
+            "quick-bug-bounty",
+            "subdomain-takeover",
+            "web-application-scan",
+            "wordpress-assessment",
+            "xss-assessment",
+        ]
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+        let actual_ids = workflows
+            .keys()
+            .map(String::as_str)
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(actual_ids, expected_ids);
+
+        let packaged_tools = workflows
+            .values()
+            .flat_map(|workflow| workflow.steps.iter())
+            .filter_map(|step| step.run.first().map(String::as_str))
+            .collect::<std::collections::HashSet<_>>();
+        for core_tool in [
+            "nmap",
+            "subfinder",
+            "nuclei",
+            "naabu",
+            "amass",
+            "httpx",
+            "ffuf",
+            "gobuster",
+            "gau",
+            "waybackurls",
+            "sqlmap",
+            "nikto",
+            "wpscan",
+            "feroxbuster",
+            "dalfox",
+        ] {
+            assert!(
+                packaged_tools.contains(core_tool),
+                "core tool {core_tool} is not used by a packaged workflow"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_workflow_path_traversal() {
+        let loader = WorkflowLoader::new(env!("CARGO_MANIFEST_DIR"));
+        assert!(loader.load_workflow("../../not-a-workflow").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn packaged_workflows_only_use_supported_tools_and_declared_outputs() {
+        let workflows_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("app/workflows");
+        let workflows = WorkflowLoader::new(workflows_dir)
+            .load_all_workflows()
+            .await
+            .unwrap();
+        let catalog = get_tool_catalog();
+
+        for workflow in workflows.values() {
+            for step in &workflow.steps {
+                let tool_name = step.run.first().expect("validated step has no executable");
+                let definition = catalog.get(tool_name).unwrap_or_else(|| {
+                    panic!(
+                        "workflow '{}' step '{}' uses unregistered tool '{}'",
+                        workflow.id, step.id, tool_name
+                    )
+                });
+
+                for platform in [
+                    InstallPlatform::Macos,
+                    InstallPlatform::Windows,
+                    InstallPlatform::Linux,
+                ] {
+                    assert!(
+                        !definition
+                            .install_methods_for(tool_name, platform)
+                            .is_empty(),
+                        "workflow '{}' tool '{}' is unsupported on {}",
+                        workflow.id,
+                        tool_name,
+                        platform.as_str()
+                    );
+                }
+
+                for output in &step.outputs {
+                    if output.artifact_type == "stdout" {
+                        continue;
+                    }
+                    assert!(
+                        step.run.iter().any(|argument| argument.contains(&output.path)),
+                        "workflow '{}' step '{}' declares output '{}' but never passes its path to the tool",
+                        workflow.id,
+                        step.id,
+                        output.path
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn downstream_target_lists_are_emitted_as_plain_lines() {
+        let workflows_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("app/workflows");
+        let workflows = WorkflowLoader::new(workflows_dir)
+            .load_all_workflows()
+            .await
+            .unwrap();
+
+        for workflow in workflows.values() {
+            let producers = workflow
+                .steps
+                .iter()
+                .flat_map(|step| step.outputs.iter().map(move |output| (&output.path, step)))
+                .collect::<std::collections::HashMap<_, _>>();
+
+            for consumer in &workflow.steps {
+                let consumer_tool = consumer.run.first().map(String::as_str).unwrap_or_default();
+                let list_flags: &[&str] = match consumer_tool {
+                    "httpx" | "nuclei" => &["-l", "-list"],
+                    "katana" => &["-list"],
+                    "nmap" => &["-iL"],
+                    "sqlmap" => &["-m"],
+                    _ => &[],
+                };
+
+                for arguments in consumer.run.windows(2) {
+                    if !list_flags.contains(&arguments[0].as_str()) {
+                        continue;
+                    }
+                    let Some(producer) = producers.get(&arguments[1]) else {
+                        continue;
+                    };
+                    let producer_tool =
+                        producer.run.first().map(String::as_str).unwrap_or_default();
+                    let forbidden_flags: &[&str] = match producer_tool {
+                        "naabu" => &["-json", "-j", "-csv"],
+                        "httpx" => &[
+                            "-json",
+                            "-j",
+                            "-csv",
+                            "-title",
+                            "-sc",
+                            "-status-code",
+                            "-cl",
+                            "-content-length",
+                            "-ct",
+                            "-content-type",
+                            "-location",
+                            "-rt",
+                            "-response-time",
+                            "-td",
+                            "-tech-detect",
+                            "-web-server",
+                            "-server",
+                            "-cdn",
+                            "-cname",
+                            "-ip",
+                            "-asn",
+                            "-method",
+                            "-probe",
+                        ],
+                        _ => &[],
+                    };
+
+                    for flag in forbidden_flags {
+                        assert!(
+                            !producer.run.iter().any(|argument| argument == flag),
+                            "workflow '{}' step '{}' writes '{}' with '{}' but step '{}' consumes it as a plain target list",
+                            workflow.id,
+                            producer.id,
+                            arguments[1],
+                            flag,
+                            consumer.id
+                        );
+                    }
+                }
+            }
+        }
     }
 }

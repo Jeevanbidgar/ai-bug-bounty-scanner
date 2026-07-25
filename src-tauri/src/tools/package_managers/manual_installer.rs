@@ -10,7 +10,7 @@ use crate::events::{
 };
 use crate::runtime::process::configure_tokio_command;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[allow(dead_code)]
 pub struct ManualInstaller;
 
@@ -135,11 +135,16 @@ impl ManualInstaller {
                 InstallStep::ChangeDirectory { path: "wpscan".to_string() },
                 InstallStep::RunCommand {
                     command: "gem".to_string(),
-                    args: vec!["install", "bundler"].iter().map(|s| s.to_string()).collect(),
+                    args: vec!["install".to_string(), "bundler".to_string()],
                 },
                 InstallStep::RunCommand {
                     command: "bundle".to_string(),
-                    args: vec!["install", "--without", "test", "development"].iter().map(|s| s.to_string()).collect(),
+                    args: vec![
+                        "install".to_string(),
+                        "--without".to_string(),
+                        "test".to_string(),
+                        "development".to_string(),
+                    ],
                 },
             ],
 
@@ -183,6 +188,27 @@ impl ManualInstaller {
                 },
             ],
 
+            "sqlmap" => vec![
+                InstallStep::GitClone {
+                    url: "https://github.com/sqlmapproject/sqlmap.git".to_string(),
+                    target_dir: "sqlmap".to_string(),
+                },
+                InstallStep::ChangeDirectory {
+                    path: "sqlmap".to_string(),
+                },
+                InstallStep::Chmod {
+                    path: "sqlmap.py".to_string(),
+                    mode: "+x".to_string(),
+                },
+                InstallStep::CreateSymlink {
+                    source: "sqlmap.py".to_string(),
+                    target: Self::get_bin_dir()
+                        .join("sqlmap")
+                        .to_string_lossy()
+                        .to_string(),
+                },
+            ],
+
             // === Go Tools (requires compilation) ===
             "aquatone" => vec![
                 InstallStep::GitClone {
@@ -192,7 +218,7 @@ impl ManualInstaller {
                 InstallStep::ChangeDirectory { path: "aquatone".to_string() },
                 InstallStep::RunCommand {
                     command: "go".to_string(),
-                    args: vec!["build", "-o", "aquatone"].iter().map(|s| s.to_string()).collect(),
+                    args: vec!["build".to_string(), "-o".to_string(), "aquatone".to_string()],
                 },
                 InstallStep::CreateSymlink {
                     source: "aquatone".to_string(),
@@ -222,7 +248,7 @@ impl ManualInstaller {
                 InstallStep::ChangeDirectory { path: "RustScan".to_string() },
                 InstallStep::RunCommand {
                     command: "cargo".to_string(),
-                    args: vec!["build", "--release"].iter().map(|s| s.to_string()).collect(),
+                    args: vec!["build".to_string(), "--release".to_string()],
                 },
                 InstallStep::CreateSymlink {
                     source: "target/release/rustscan".to_string(),
@@ -240,9 +266,9 @@ impl ManualInstaller {
                 InstallStep::RunCommand {
                     command: if cfg!(windows) { "cmd".to_string() } else { "bash".to_string() },
                     args: if cfg!(windows) {
-                        vec!["/c", "setup.bat"].iter().map(|s| s.to_string()).collect()
+                        vec!["/c".to_string(), "setup.bat".to_string()]
                     } else {
-                        vec!["setup.sh"].iter().map(|s| s.to_string()).collect()
+                        vec!["setup.sh".to_string()]
                     },
                 },
             ],
@@ -251,35 +277,35 @@ impl ManualInstaller {
             "wappalyzer" => vec![
                 InstallStep::RunCommand {
                     command: "npm".to_string(),
-                    args: vec!["install", "-g", "wappalyzer"].iter().map(|s| s.to_string()).collect(),
+                    args: vec!["install".to_string(), "-g".to_string(), "wappalyzer".to_string()],
                 },
             ],
 
             "feroxbuster" => vec![
                 InstallStep::RunCommand {
                     command: "cargo".to_string(),
-                    args: vec!["install", "feroxbuster"].iter().map(|s| s.to_string()).collect(),
+                    args: vec!["install".to_string(), "feroxbuster".to_string()],
                 },
             ],
 
             "wfuzz" => vec![
                 InstallStep::RunCommand {
                     command: "pip".to_string(),
-                    args: vec!["install", "wfuzz"].iter().map(|s| s.to_string()).collect(),
+                    args: vec!["install".to_string(), "wfuzz".to_string()],
                 },
             ],
 
             "dirbuster" => vec![
                 InstallStep::RunCommand {
                     command: "echo".to_string(),
-                    args: vec!["DirBuster is a GUI tool. Please download from: https://sourceforge.net/projects/dirbuster/"].iter().map(|s| s.to_string()).collect(),
+                    args: vec!["DirBuster is a GUI tool. Please download from: https://sourceforge.net/projects/dirbuster/".to_string()],
                 },
             ],
 
             "metasploit" => vec![
                 InstallStep::RunCommand {
                     command: "echo".to_string(),
-                    args: vec!["Metasploit requires installer. Windows: https://windows.metasploit.com/metasploitframework-latest.msi | Linux: curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall && chmod 755 msfinstall && ./msfinstall"].iter().map(|s| s.to_string()).collect(),
+                    args: vec!["Metasploit requires installer. Windows: https://windows.metasploit.com/metasploitframework-latest.msi | Linux: curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall && chmod 755 msfinstall && ./msfinstall".to_string()],
                 },
             ],
 
@@ -306,11 +332,7 @@ impl ManualInstaller {
             "socat" => vec![
                 InstallStep::RunCommand {
                     command: if cfg!(windows) { "choco".to_string() } else { "apt-get".to_string() },
-                    args: if cfg!(windows) {
-                        vec!["install", "-y", "socat"].iter().map(|s| s.to_string()).collect()
-                    } else {
-                        vec!["install", "-y", "socat"].iter().map(|s| s.to_string()).collect()
-                    },
+                    args: vec!["install".to_string(), "-y".to_string(), "socat".to_string()],
                 },
             ],
 
@@ -473,6 +495,10 @@ impl ManualInstaller {
         })
     }
 
+    pub fn supports(tool_name: &str) -> bool {
+        !Self::get_install_steps(tool_name).is_empty()
+    }
+
     fn step_description(step: &InstallStep) -> String {
         match step {
             InstallStep::GitClone { url, .. } => format!("Cloning from {}", url),
@@ -514,7 +540,7 @@ impl ManualInstaller {
                 if target_path.exists() {
                     return Ok(StepResult {
                         message: format!("Directory {} already exists, skipping clone", target_dir),
-                        new_working_dir: Some(target_path),
+                        new_working_dir: None,
                         installed_path: None,
                     });
                 }
@@ -530,7 +556,7 @@ impl ManualInstaller {
 
                 Ok(StepResult {
                     message: format!("Cloned {} to {}", url, target_dir),
-                    new_working_dir: Some(target_path),
+                    new_working_dir: None,
                     installed_path: None,
                 })
             }
@@ -627,12 +653,17 @@ impl ManualInstaller {
 
                 let target_path = PathBuf::from(target);
 
-                // Skip if symlink already exists
-                if target_path.exists() {
+                #[cfg(target_os = "windows")]
+                let installed_target = target_path.with_extension("bat");
+                #[cfg(not(target_os = "windows"))]
+                let installed_target = target_path.clone();
+
+                // Skip if the platform-specific launcher already exists.
+                if installed_target.exists() {
                     return Ok(StepResult {
-                        message: format!("Symlink {} already exists", target),
+                        message: format!("Launcher {} already exists", installed_target.display()),
                         new_working_dir: None,
-                        installed_path: Some(target.clone()),
+                        installed_path: Some(installed_target.to_string_lossy().to_string()),
                     });
                 }
 
@@ -640,18 +671,19 @@ impl ManualInstaller {
                     // Windows: Create a batch file wrapper
                     let batch_content = if source.ends_with(".py") {
                         format!("@echo off\npython \"{}\" %*", source_path.display())
+                    } else if source.ends_with(".pl") {
+                        format!("@echo off\nperl \"{}\" %*", source_path.display())
                     } else {
                         format!("@echo off\n\"{}\" %*", source_path.display())
                     };
 
-                    let target_bat = format!("{}.bat", target);
-                    std::fs::write(&target_bat, batch_content)
+                    std::fs::write(&installed_target, batch_content)
                         .map_err(|e| format!("Failed to create batch file: {}", e))?;
 
                     Ok(StepResult {
-                        message: format!("Created batch wrapper at {}", target_bat),
+                        message: format!("Created batch wrapper at {}", installed_target.display()),
                         new_working_dir: None,
-                        installed_path: Some(target_bat),
+                        installed_path: Some(installed_target.to_string_lossy().to_string()),
                     })
                 } else {
                     // Linux: Create symlink
@@ -769,7 +801,7 @@ impl ManualInstaller {
         let stderr_reader = BufReader::new(stderr).lines();
 
         let tool_name_clone = tool_name.to_string();
-        let handle_clone = app_handle.map(|h| h.clone());
+        let handle_clone = app_handle.cloned();
         let stdout_task = tokio::spawn(async move {
             let mut lines = stdout_reader;
             while let Ok(Some(line)) = lines.next_line().await {
@@ -784,7 +816,7 @@ impl ManualInstaller {
         });
 
         let tool_name_clone = tool_name.to_string();
-        let handle_clone = app_handle.map(|h| h.clone());
+        let handle_clone = app_handle.cloned();
         let stderr_task = tokio::spawn(async move {
             let mut lines = stderr_reader;
             let mut error_output = Vec::new();

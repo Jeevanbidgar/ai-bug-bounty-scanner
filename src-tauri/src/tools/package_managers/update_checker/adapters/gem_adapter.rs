@@ -2,11 +2,11 @@
 //
 // Implements update checking for Ruby gems using gem list and gem search
 
-use std::time::Duration;
-use super::super::traits::{UpdateChecker, UpdateCheckResult, UpdateType};
-use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
 use super::super::command_runner::CommandRunner;
+use super::super::error_types::UpdateCheckError;
+use super::super::traits::{UpdateCheckResult, UpdateChecker, UpdateType};
 use super::super::version::Version;
+use std::time::Duration;
 
 /// Gem update checker
 pub struct GemUpdateChecker {
@@ -35,10 +35,10 @@ impl GemUpdateChecker {
     /// Get current version using `gem list <package> --exact --local`
     async fn get_current_version(&self, package_name: &str) -> Result<String, UpdateCheckError> {
         let gem_cmd = self.gem_command();
-        let output = self.command_runner.execute(
-            gem_cmd,
-            &["list", package_name, "--exact", "--local"],
-        ).await?;
+        let output = self
+            .command_runner
+            .execute(gem_cmd, &["list", package_name, "--exact", "--local"])
+            .await?;
 
         if !output.success {
             return Err(UpdateCheckError::package_not_found(
@@ -69,10 +69,13 @@ impl GemUpdateChecker {
     /// Get latest version using `gem search ^<package>$ --remote`
     async fn get_latest_version(&self, package_name: &str) -> Result<String, UpdateCheckError> {
         let gem_cmd = self.gem_command();
-        let output = self.command_runner.execute(
-            gem_cmd,
-            &["search", &format!("^{}$", package_name), "--remote"],
-        ).await?;
+        let output = self
+            .command_runner
+            .execute(
+                gem_cmd,
+                &["search", &format!("^{}$", package_name), "--remote"],
+            )
+            .await?;
 
         if !output.success {
             return Err(UpdateCheckError::command_failed(
@@ -125,37 +128,49 @@ impl GemUpdateChecker {
 }
 
 impl UpdateChecker for GemUpdateChecker {
-    fn check_update(&self, package_name: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        package_name: &str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>>
+                + Send
+                + '_,
+        >,
+    > {
         let command_runner = self.command_runner.clone();
         let package_name = package_name.to_string();
-        
+
         Box::pin(async move {
             let checker = GemUpdateChecker::new(command_runner);
             // Get current version
             let current_version = checker.get_current_version(&package_name).await?;
-            
+
             // Get latest version
             let latest_version = checker.get_latest_version(&package_name).await?;
-            
+
             // Compare versions
-            let has_update = match (Version::parse(&current_version), Version::parse(&latest_version)) {
-            (Some(current_v), Some(latest_v)) => latest_v > current_v,
-            _ => current_version != latest_version, // Fallback to string comparison
+            let has_update = match (
+                Version::parse(&current_version),
+                Version::parse(&latest_version),
+            ) {
+                (Some(current_v), Some(latest_v)) => latest_v > current_v,
+                _ => current_version != latest_version, // Fallback to string comparison
             };
-    
+
             let update_type = if has_update {
-            Self::determine_update_type(&current_version, &latest_version)
+                Self::determine_update_type(&current_version, &latest_version)
             } else {
-            None
+                None
             };
-    
+
             Ok(UpdateCheckResult::success(
-            has_update,
-            Some(current_version),
-            Some(latest_version),
-            "gem".to_string(),
-            Some("gem search --remote".to_string()),
-            update_type,
+                has_update,
+                Some(current_version),
+                Some(latest_version),
+                "gem".to_string(),
+                Some("gem search --remote".to_string()),
+                update_type,
             ))
         })
     }
@@ -164,10 +179,10 @@ impl UpdateChecker for GemUpdateChecker {
         "gem"
     }
 
-    fn is_available(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
-        Box::pin(async {
-        self.command_runner.is_available(self.gem_command()).await
-        })
+    fn is_available(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+        Box::pin(async { self.command_runner.is_available(self.gem_command()).await })
     }
 
     fn timeout(&self) -> Duration {

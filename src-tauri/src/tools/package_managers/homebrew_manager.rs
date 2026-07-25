@@ -32,6 +32,12 @@ pub struct HomebrewManager {
     >,
 }
 
+impl Default for HomebrewManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HomebrewManager {
     pub fn new() -> Self {
         Self {
@@ -383,10 +389,10 @@ pub async fn needs_update(tool_name: &str) -> bool {
         return false;
     }
 
-    match HomebrewManager::check_homebrew_update(tool_name).await {
-        Ok(Some(_)) => true,
-        _ => false,
-    }
+    matches!(
+        HomebrewManager::check_homebrew_update(tool_name).await,
+        Ok(Some(_))
+    )
 }
 
 /// Get tool version
@@ -508,10 +514,10 @@ fn parse_outdated_output(output: &str) -> Option<(String, String)> {
                 }
 
                 let installed_version = installed_segment
-                    .split(|c| c == ',' || c == ' ')
+                    .split([',', ' '])
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
-                    .last()
+                    .next_back()
                     .unwrap_or(installed_segment.trim())
                     .to_string();
 
@@ -526,12 +532,6 @@ fn parse_outdated_output(output: &str) -> Option<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tauri::AppHandle;
-
-    fn mock_app_handle() -> AppHandle {
-        // Mock AppHandle for testing - in real tests this would need proper Tauri setup
-        panic!("Mock AppHandle needed for testing")
-    }
 
     #[cfg(target_os = "macos")]
     #[tokio::test]
@@ -554,7 +554,7 @@ mod tests {
         let nuclei_mapping = manager._registry.get("nuclei").unwrap();
         assert_eq!(nuclei_mapping.brew_formula, Some("nuclei".to_string()));
         assert_eq!(nuclei_mapping.min_version, Some("3.0.0".to_string()));
-        assert_eq!(nuclei_mapping.verified, true);
+        assert!(nuclei_mapping.verified);
     }
 
     #[cfg(target_os = "macos")]

@@ -2,11 +2,11 @@
 //
 // Implements update checking for Homebrew packages using brew outdated
 
-use std::time::Duration;
-use super::super::traits::{UpdateChecker, UpdateCheckResult, UpdateType};
-use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
 use super::super::command_runner::CommandRunner;
+use super::super::error_types::UpdateCheckError;
+use super::super::traits::{UpdateCheckResult, UpdateChecker, UpdateType};
 use super::super::version::Version;
+use std::time::Duration;
 
 /// Homebrew update checker
 pub struct HomebrewUpdateChecker {
@@ -24,11 +24,14 @@ impl HomebrewUpdateChecker {
     }
 
     /// Check for updates using `brew outdated <package>`
-    async fn check_outdated(&self, package_name: &str) -> Result<Option<(String, String)>, UpdateCheckError> {
-        let output = self.command_runner.execute(
-            "brew",
-            &["outdated", package_name],
-        ).await?;
+    async fn check_outdated(
+        &self,
+        package_name: &str,
+    ) -> Result<Option<(String, String)>, UpdateCheckError> {
+        let output = self
+            .command_runner
+            .execute("brew", &["outdated", package_name])
+            .await?;
 
         if !output.success {
             // If the command fails, it might mean the package is not installed
@@ -39,7 +42,7 @@ impl HomebrewUpdateChecker {
                     package_name.to_string(),
                 ));
             }
-            
+
             return Err(UpdateCheckError::command_failed(
                 "homebrew".to_string(),
                 package_name.to_string(),
@@ -77,10 +80,10 @@ impl HomebrewUpdateChecker {
 
     /// Get current version using `brew list --versions <package>`
     async fn get_current_version(&self, package_name: &str) -> Result<String, UpdateCheckError> {
-        let output = self.command_runner.execute(
-            "brew",
-            &["list", "--versions", package_name],
-        ).await?;
+        let output = self
+            .command_runner
+            .execute("brew", &["list", "--versions", package_name])
+            .await?;
 
         if !output.success {
             return Err(UpdateCheckError::package_not_found(
@@ -128,64 +131,74 @@ impl HomebrewUpdateChecker {
 }
 
 impl UpdateChecker for HomebrewUpdateChecker {
-    fn check_update(&self, package_name: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        package_name: &str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>>
+                + Send
+                + '_,
+        >,
+    > {
         let command_runner = self.command_runner.clone();
         let package_name = package_name.to_string();
-        
+
         Box::pin(async move {
             let checker = HomebrewUpdateChecker::new(command_runner);
             // Check for updates
             let result = checker.check_outdated(&package_name).await?;
-            
+
             match result {
-            Some((current_version, latest_version)) => {
-            // Compare versions
-            let has_update = match (Version::parse(&current_version), Version::parse(&latest_version)) {
-            (Some(current_v), Some(latest_v)) => latest_v > current_v,
-            _ => current_version != latest_version, // Fallback to string comparison
-            };
-    
-            let update_type = if has_update {
-            Self::determine_update_type(&current_version, &latest_version)
-            } else {
-            None
-            };
-    
-            Ok(UpdateCheckResult::success(
-            has_update,
-            Some(current_version),
-            Some(latest_version),
-            "homebrew".to_string(),
-            Some("brew outdated".to_string()),
-            update_type,
-            ))
-            }
-            None => {
-            // No update available - get current version
-            match checker.get_current_version(&package_name).await {
-            Ok(current_version) => {
-            Ok(UpdateCheckResult::success(
-            false,
-            Some(current_version.clone()),
-            Some(current_version),
-            "homebrew".to_string(),
-            Some("brew outdated".to_string()),
-            None,
-            ))
-            }
-            Err(_) => {
-            // If we can't get current version, assume it's installed but up to date
-            Ok(UpdateCheckResult::success(
-            false,
-            Some("installed".to_string()),
-            Some("installed".to_string()),
-            "homebrew".to_string(),
-            Some("brew outdated".to_string()),
-            None,
-            ))
-            }
-            }
-            }
+                Some((current_version, latest_version)) => {
+                    // Compare versions
+                    let has_update = match (
+                        Version::parse(&current_version),
+                        Version::parse(&latest_version),
+                    ) {
+                        (Some(current_v), Some(latest_v)) => latest_v > current_v,
+                        _ => current_version != latest_version, // Fallback to string comparison
+                    };
+
+                    let update_type = if has_update {
+                        Self::determine_update_type(&current_version, &latest_version)
+                    } else {
+                        None
+                    };
+
+                    Ok(UpdateCheckResult::success(
+                        has_update,
+                        Some(current_version),
+                        Some(latest_version),
+                        "homebrew".to_string(),
+                        Some("brew outdated".to_string()),
+                        update_type,
+                    ))
+                }
+                None => {
+                    // No update available - get current version
+                    match checker.get_current_version(&package_name).await {
+                        Ok(current_version) => Ok(UpdateCheckResult::success(
+                            false,
+                            Some(current_version.clone()),
+                            Some(current_version),
+                            "homebrew".to_string(),
+                            Some("brew outdated".to_string()),
+                            None,
+                        )),
+                        Err(_) => {
+                            // If we can't get current version, assume it's installed but up to date
+                            Ok(UpdateCheckResult::success(
+                                false,
+                                Some("installed".to_string()),
+                                Some("installed".to_string()),
+                                "homebrew".to_string(),
+                                Some("brew outdated".to_string()),
+                                None,
+                            ))
+                        }
+                    }
+                }
             }
         })
     }
@@ -194,12 +207,12 @@ impl UpdateChecker for HomebrewUpdateChecker {
         "homebrew"
     }
 
-    fn is_available(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+    fn is_available(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
         let command_runner = self.command_runner.clone();
-        
-        Box::pin(async move {
-            command_runner.is_available("brew").await
-        })
+
+        Box::pin(async move { command_runner.is_available("brew").await })
     }
 
     fn timeout(&self) -> Duration {

@@ -74,7 +74,7 @@ impl WingetManager {
         // Run winget install with --accept-* flags for non-interactive mode
         let mut install_cmd = hidden_command(&winget_path);
         let mut child = install_cmd
-            .args(&[
+            .args([
                 "install",
                 "--id",
                 winget_id,
@@ -159,7 +159,7 @@ impl WingetManager {
 
         let mut upgrade_cmd = hidden_command(&winget_path);
         let mut child = upgrade_cmd
-            .args(&[
+            .args([
                 "upgrade",
                 "--id",
                 winget_id,
@@ -233,7 +233,7 @@ impl WingetManager {
 
         let mut uninstall_cmd = hidden_command(&winget_path);
         let output = uninstall_cmd
-            .args(&["uninstall", "--id", winget_id, "--silent"])
+            .args(["uninstall", "--id", winget_id, "--silent"])
             .output()
             .await
             .context("Failed to execute winget uninstall")?;

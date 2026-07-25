@@ -165,12 +165,16 @@ impl OutputParser {
     }
 
     /// Parse npm outdated output
-    pub fn parse_npm_outdated(output: &str) -> Result<HashMap<String, NpmOutdatedPackage>, serde_json::Error> {
+    pub fn parse_npm_outdated(
+        output: &str,
+    ) -> Result<HashMap<String, NpmOutdatedPackage>, serde_json::Error> {
         serde_json::from_str(output)
     }
 
     /// Parse pipx outdated output
-    pub fn parse_pipx_outdated(output: &str) -> Result<Vec<PipxOutdatedPackage>, serde_json::Error> {
+    pub fn parse_pipx_outdated(
+        output: &str,
+    ) -> Result<Vec<PipxOutdatedPackage>, serde_json::Error> {
         serde_json::from_str(output)
     }
 
@@ -217,7 +221,7 @@ impl OutputParser {
     /// Parse winget upgrade output (custom format)
     pub fn parse_winget_upgrade(output: &str) -> Vec<WingetUpgradeInfo> {
         let mut upgrades = Vec::new();
-        
+
         for line in output.lines() {
             if line.contains("upgrades available") || line.contains("available") {
                 // Try to parse versions from output
@@ -234,7 +238,7 @@ impl OutputParser {
                 }
             }
         }
-        
+
         upgrades
     }
 
@@ -301,7 +305,7 @@ mod tests {
                 }
             }
         }"#;
-        
+
         let result = OutputParser::parse_npm_list(json);
         assert!(result.is_ok());
         let package = result.unwrap();
@@ -316,7 +320,7 @@ mod tests {
             "version": "1.0.0",
             "latest_version": "1.1.0"
         }]"#;
-        
+
         let result = OutputParser::parse_pipx_outdated(json);
         assert!(result.is_ok());
         let packages = result.unwrap();

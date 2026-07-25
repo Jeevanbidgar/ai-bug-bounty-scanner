@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import type { ToastType, ToastProps } from '../components/ui/Toast'
+import { useNotificationStore } from '../stores/notificationStore'
 
 interface Toast extends ToastProps {
   id: string
@@ -13,6 +14,11 @@ export const useToast = () => {
     const newToast: Toast = { id, message, type, duration }
     
     setToasts((prev) => [...prev, newToast])
+    useNotificationStore.getState().addNotification({
+      level: type,
+      title: type === 'success' ? 'Action completed' : type === 'error' ? 'Action failed' : type === 'warning' ? 'Attention required' : 'System update',
+      message,
+    })
 
     // Auto-remove after duration
     setTimeout(() => {
@@ -24,13 +30,30 @@ export const useToast = () => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id))
   }, [])
 
+  const success = useCallback(
+    (message: string, duration?: number) => showToast(message, 'success', duration),
+    [showToast]
+  )
+  const error = useCallback(
+    (message: string, duration?: number) => showToast(message, 'error', duration),
+    [showToast]
+  )
+  const info = useCallback(
+    (message: string, duration?: number) => showToast(message, 'info', duration),
+    [showToast]
+  )
+  const warning = useCallback(
+    (message: string, duration?: number) => showToast(message, 'warning', duration),
+    [showToast]
+  )
+
   return {
     toasts,
     showToast,
     removeToast,
-    success: (message: string, duration?: number) => showToast(message, 'success', duration),
-    error: (message: string, duration?: number) => showToast(message, 'error', duration),
-    info: (message: string, duration?: number) => showToast(message, 'info', duration),
-    warning: (message: string, duration?: number) => showToast(message, 'warning', duration),
+    success,
+    error,
+    info,
+    warning,
   }
 }

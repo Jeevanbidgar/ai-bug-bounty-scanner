@@ -19,10 +19,18 @@ pub struct WorkflowStep {
     pub description: Option<String>,
     pub needs: Vec<String>,
     pub run: Vec<String>,
+    pub stdin: Option<String>,
     pub env: Option<HashMap<String, String>>,
     pub timeout: Option<u64>,
     pub retry: Option<WorkflowRetry>,
+    pub success_exit_codes: Vec<i32>,
     pub outputs: Vec<WorkflowOutput>,
+}
+
+impl WorkflowStep {
+    pub fn is_success_exit_code(&self, exit_code: i32) -> bool {
+        self.success_exit_codes.contains(&exit_code)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +91,7 @@ pub enum ExecutionStatus {
     Completed,
     Failed,
     Cancelled,
+    Interrupted,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,6 +129,7 @@ pub enum StepStatus {
     Completed,
     Failed,
     Skipped,
+    Interrupted,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -11,13 +11,13 @@ export const Badge = ({
   className = '',
   children
 }: BadgeProps) => {
-  const baseClasses = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium'
+  const baseClasses = 'inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em]'
 
   const variantClasses = {
-    default: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-    secondary: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
-    destructive: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
-    outline: 'border border-gray-300 text-gray-700 dark:border-gray-600 dark:text-gray-300'
+    default: 'border border-cyan-400/20 bg-cyan-400/10 text-cyan-200',
+    secondary: 'border border-white/10 bg-white/[0.05] text-slate-300',
+    destructive: 'border border-red-400/20 bg-red-400/10 text-red-300',
+    outline: 'border border-white/15 bg-transparent text-slate-300'
   }
 
   const classes = `${baseClasses} ${variantClasses[variant]} ${className}`

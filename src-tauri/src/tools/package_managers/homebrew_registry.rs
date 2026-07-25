@@ -17,6 +17,12 @@ pub struct HomebrewMapping {
     pub verified_date: Option<String>, // ISO date of last verification (e.g., "2025-10-16")
 }
 
+impl Default for HomebrewMapping {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HomebrewMapping {
     pub fn new() -> Self {
         Self {
@@ -213,6 +219,14 @@ pub static HOMEBREW_REGISTRY: Lazy<HashMap<&'static str, HomebrewMapping>> = Laz
             .with_verified_date("2025-10-16"),
     );
 
+    map.insert(
+        "dalfox",
+        HomebrewMapping::new()
+            .with_formula("dalfox")
+            .verified()
+            .with_verified_date("2026-07-21"),
+    );
+
     // === Tier 3 - GUI Tools (Casks) ===
 
     // GUI applications use casks instead of formulas
@@ -285,7 +299,7 @@ mod tests {
 
         assert_eq!(mapping.brew_formula, Some("test-tool".to_string()));
         assert_eq!(mapping.min_version, Some("1.0.0".to_string()));
-        assert_eq!(mapping.verified, true);
+        assert!(mapping.verified);
         assert_eq!(mapping.verified_date, Some("2025-10-16".to_string()));
     }
 
@@ -297,7 +311,7 @@ mod tests {
         let mapping = mapping.unwrap();
         assert_eq!(mapping.brew_formula, Some("nuclei".to_string()));
         assert_eq!(mapping.min_version, Some("3.0.0".to_string()));
-        assert_eq!(mapping.verified, true);
+        assert!(mapping.verified);
     }
 
     #[test]

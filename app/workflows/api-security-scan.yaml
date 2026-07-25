@@ -15,7 +15,7 @@ steps:
     run:
       - katana
       - -u
-      - "{{target}}"
+      - "{{url}}"
       - -d
       - "5"
       - -jc
@@ -32,7 +32,7 @@ steps:
         description: Discovered API endpoints
   - id: httpx-api
     name: API Service Analysis
-    description: Analyze API endpoints and detect technologies
+    description: Identify responsive API endpoints and retain a clean URL list
     needs:
       - katana
     run:
@@ -41,18 +41,13 @@ steps:
       - "{{workdir}}/api-endpoints.txt"
       - -o
       - "{{workdir}}/live-api-endpoints.txt"
-      - -json
-      - -tech-detect
-      - -status-code
-      - -content-length
-      - -method
       - -silent
     timeout: 600
     outputs:
       - name: live_endpoints
         type: file
         path: "{{workdir}}/live-api-endpoints.txt"
-        description: Live API endpoints with metadata
+        description: Plain live API URL list for downstream Nuclei and SQLMap steps
   - id: nuclei-api
     name: API Vulnerability Detection
     description: Scan for API-specific vulnerabilities (OWASP API Top 10)
@@ -132,7 +127,7 @@ outputs:
     type: file
   - name: live_endpoints
     path: "{{workdir}}/live-api-endpoints.txt"
-    description: Live API endpoints
+    description: Plain live API URLs used by downstream checks
     type: file
   - name: vulnerabilities
     path: "{{workdir}}/nuclei-api-vulns.jsonl"

@@ -2,48 +2,71 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
-mod adapters;
-mod commands;
-mod database;
-mod events;
-mod runtime;
-mod tools;
-mod workflow;
+use ai_bug_bounty_scanner::{commands, database, settings, tools};
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            let app_handle = app.handle();
             let app_data_dir = app
                 .path()
                 .app_data_dir()
                 .expect("Failed to get app data dir");
+            let development_workflows = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("Tauri crate must have a project parent directory")
+                .join("app/workflows");
+            let bundled_workflows = app
+                .path()
+                .resource_dir()
+                .expect("Failed to get app resource directory")
+                .join("workflows");
+            let workflows_dir = if development_workflows.exists() {
+                development_workflows
+            } else {
+                bundled_workflows
+            };
+            let results_dir = app_data_dir.join("results");
+            let reports_dir = app_data_dir.join("reports");
+
+            if !workflows_dir.exists() {
+                return Err(format!(
+                    "Workflow resources were not found at {}",
+                    workflows_dir.display()
+                )
+                .into());
+            }
+            std::fs::create_dir_all(&results_dir).expect("Failed to create scan results directory");
+            std::fs::create_dir_all(&reports_dir)
+                .expect("Failed to create report export directory");
 
             // Create tokio runtime for async operations
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
 
             // Initialize database
             let db = Arc::new(
-                rt.block_on(async { crate::database::Database::new(app_data_dir.clone()).await })
+                rt.block_on(async { database::Database::open_client(app_data_dir.clone()).await })
                     .expect("Failed to initialize database"),
             );
-
-            // Create artifacts directory
-            let artifacts_dir = app_data_dir.join("artifacts");
-            if !artifacts_dir.exists() {
-                std::fs::create_dir_all(&artifacts_dir)
-                    .expect("Failed to create artifacts directory");
-            }
+            let loaded_settings = rt
+                .block_on(async { db.get_setting("runtime").await })
+                .ok()
+                .flatten()
+                .and_then(|value| serde_json::from_str::<settings::AppSettings>(&value).ok())
+                .filter(|settings| settings.validate().is_ok())
+                .unwrap_or_default();
+            let settings = Arc::new(tokio::sync::RwLock::new(loaded_settings));
+            let auto_adapters = Arc::new(rt.block_on(
+                ai_bug_bounty_scanner::adapters::auto::AutoAdapterService::load(
+                    app_data_dir.join("auto_adapters.json"),
+                ),
+            ));
 
             // Initialize tool discovery with RwLock for async access
-            let mut tool_discovery_service = crate::tools::discovery::ToolDiscoveryService::new();
+            let mut tool_discovery_service = tools::discovery::ToolDiscoveryService::new(
+                app_data_dir.join("tool_discovery_cache.json"),
+            );
 
             // Load cache from disk
             rt.block_on(async {
@@ -54,103 +77,139 @@ fn main() {
             });
 
             let tool_discovery = Arc::new(tokio::sync::RwLock::new(tool_discovery_service));
-            let tool_registry = Arc::new(crate::tools::registry::ToolRegistry::new());
-
-            // Initialize workflow engine (pass tool_discovery and artifacts_dir)
-            let workflow_engine = Arc::new(crate::workflow::engine::WorkflowEngine::new(
-                app_handle.clone(),
-                tool_discovery.clone(),
-                artifacts_dir,
-                db.clone(),
-            ));
+            let tool_registry = Arc::new(tools::registry::ToolRegistry::new());
 
             // Create app state
-            let app_state = crate::commands::AppState {
+            let app_state = commands::AppState {
                 db,
-                workflow_engine,
                 tool_discovery,
                 tool_registry,
+                workflows_dir,
+                results_dir,
+                reports_dir,
+                settings,
+                auto_adapters,
             };
 
             // Store app state
             app.manage(app_state);
 
+            // Relay daemon-owned workflow events through the existing Tauri
+            // event names. The dedicated authenticated stream reconnects after
+            // daemon restarts without blocking command traffic.
+            let relay_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    match ai_bug_bounty_scanner::integrations::desktop_daemon().await {
+                        Ok(client) => match client.subscribe_events().await {
+                            Ok(mut events) => {
+                                while let Some(event) = events.recv().await {
+                                    if relay_app.emit(&event.name, event.payload).is_err() {
+                                        return;
+                                    }
+                                }
+                            }
+                            Err(error) => {
+                                eprintln!("UniHack event relay could not subscribe: {error}");
+                            }
+                        },
+                        Err(error) => {
+                            eprintln!("UniHack event relay could not connect: {error}");
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            crate::commands::load_workflow_templates,
-            crate::commands::get_workflow_details,
-            crate::commands::execute_workflow,
-            crate::commands::get_workflow_status,
-            crate::commands::stop_workflow_execution,
+            commands::load_workflow_templates,
+            commands::get_workflow_details,
+            commands::execute_workflow,
+            commands::start_scan,
+            commands::get_workflow_status,
+            commands::stop_workflow_execution,
+            commands::stop_scan,
             // Tool management commands
-            crate::commands::list_tools,
-            crate::commands::get_tool,
-            crate::commands::recheck_tool,
-            crate::commands::refresh_tools,
-            crate::commands::get_tool_categories,
-            crate::commands::get_tools_by_category,
-            crate::commands::add_manual_tool,
-            crate::commands::remove_manual_tool,
-            crate::commands::list_manual_tools,
-            crate::commands::get_available_tools_count,
-            crate::commands::get_os_info,
+            commands::list_tools,
+            commands::get_tool,
+            commands::test_tool,
+            commands::recheck_tool,
+            commands::refresh_tools,
+            commands::get_tool_categories,
+            commands::get_tools_by_category,
+            commands::add_manual_tool,
+            commands::remove_manual_tool,
+            commands::list_manual_tools,
+            commands::get_available_tools_count,
+            commands::get_os_info,
             // Tool installation commands (Phase 7)
-            crate::commands::install_tool,
-            crate::commands::install_tool_with_method,
-            crate::commands::update_tool,
-            crate::commands::uninstall_tool,
-            crate::commands::check_tool_installed,
-            crate::commands::get_tool_version,
-            crate::commands::check_tool_update,
-            crate::commands::check_tool_update_legacy,
-            crate::commands::check_tool_update_enhanced,
-            crate::commands::get_update_checker_telemetry,
-            crate::commands::clear_update_checker_telemetry,
-            crate::commands::get_tool_installation_info,
+            commands::install_tool,
+            commands::install_tool_with_method,
+            commands::update_tool,
+            commands::uninstall_tool,
+            commands::check_tool_installed,
+            commands::get_tool_version,
+            commands::check_tool_update,
+            commands::check_tool_update_legacy,
+            commands::check_tool_update_enhanced,
+            commands::get_update_checker_telemetry,
+            commands::clear_update_checker_telemetry,
+            commands::get_tool_installation_info,
             // Package manager commands
-            crate::commands::detect_package_managers,
-            crate::commands::check_package_manager,
-            crate::commands::install_package_manager_pipx,
-            crate::commands::install_package_manager_go,
-            crate::commands::install_package_manager_apt,
-            crate::commands::install_package_manager_winget,
-            crate::commands::check_elevation_support,
-            crate::commands::execute_elevated_command,
-            crate::commands::try_command_with_elevation,
-            crate::commands::check_pipx_path,
-            crate::commands::fix_pipx_path,
-            crate::commands::cleanup_old_pipx,
+            commands::detect_package_managers,
+            commands::check_package_manager,
+            commands::install_package_manager_pipx,
+            commands::install_package_manager_go,
+            commands::install_package_manager_winget,
+            commands::check_elevation_support,
+            commands::check_pipx_path,
+            commands::fix_pipx_path,
+            commands::cleanup_old_pipx,
             // Scan commands
-            crate::commands::list_scans,
-            crate::commands::create_scan,
-            crate::commands::get_scan,
-            crate::commands::update_scan,
-            crate::commands::delete_scan,
-            crate::commands::get_workflow_artifacts,
-            crate::commands::get_workflow_findings,
-            crate::commands::get_system_info,
+            commands::list_scans,
+            commands::create_scan,
+            commands::get_scan,
+            commands::update_scan,
+            commands::delete_scan,
+            commands::get_workflow_artifacts,
+            commands::reveal_workflow_artifact,
+            commands::reveal_scan_results,
+            commands::get_workflow_findings,
+            commands::get_system_info,
+            commands::get_settings,
+            commands::update_settings,
             // Vulnerability commands
-            crate::commands::list_vulnerabilities,
-            crate::commands::get_scan_vulnerabilities,
-            crate::commands::create_vulnerability,
-            crate::commands::delete_vulnerability,
+            commands::list_vulnerabilities,
+            commands::get_scan_vulnerabilities,
+            commands::create_vulnerability,
+            commands::delete_vulnerability,
             // Report commands
-            crate::commands::list_reports,
-            crate::commands::get_report,
-            crate::commands::create_report,
-            crate::commands::delete_report,
-            crate::commands::get_stats,
-            crate::commands::get_system_metrics,
+            commands::list_reports,
+            commands::get_report,
+            commands::reveal_report,
+            commands::create_report,
+            commands::delete_report,
+            commands::get_stats,
+            commands::get_system_metrics,
             // Adapter commands - Tool command builders
-            crate::commands::build_tool_command,
-            crate::commands::build_tool_command_with_defaults,
-            crate::commands::get_adapter_info,
-            crate::commands::list_adapters,
-            crate::commands::get_adapters_by_category,
-            crate::commands::get_adapters_by_risk_level,
-            crate::commands::has_adapter,
-            crate::commands::get_adapter_categories,
+            commands::build_tool_command,
+            commands::build_tool_command_with_defaults,
+            commands::get_adapter_info,
+            commands::list_adapters,
+            commands::get_adapters_by_category,
+            commands::get_adapters_by_risk_level,
+            commands::has_adapter,
+            commands::get_adapter_categories,
+            // Local AI client integration. These commands configure STDIO MCP
+            // only; they never request or persist model-provider API keys.
+            ai_bug_bounty_scanner::integrations::get_mcp_integration_info,
+            ai_bug_bounty_scanner::integrations::configure_mcp_client,
+            ai_bug_bounty_scanner::integrations::list_engagement_scopes,
+            ai_bug_bounty_scanner::integrations::create_engagement_scope,
+            ai_bug_bounty_scanner::integrations::revoke_engagement_scope,
+            ai_bug_bounty_scanner::integrations::list_mcp_audit_activity,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

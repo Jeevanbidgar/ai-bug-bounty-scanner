@@ -3,14 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw,
   CheckCircle,
-  XCircle,
   Search,
   Plus,
   Trash2,
   AlertTriangle,
   Loader2,
   ArrowUpCircle,
-  ChevronDown,
   ChevronUp
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
@@ -23,12 +21,13 @@ import { useToast } from '../hooks/useToast'
 import ToolDetailModal from '../components/ToolDetailModal'
 import { InstallationProgressModal } from '../components/InstallationProgressModal'
 import { PackageManagerPanel } from '../components/PackageManagerPanel'
-import { InstallationProgress } from '../components/InstallationProgress'
+import { ToolCard } from '../components/ToolCard'
 
 import type { Tool } from '../services/api'
 
 // API functions using our service
 import apiService from '../services/api'
+import { appBridge } from '../bridge/appBridge'
 
 const ToolsPage = () => {
   const [searchTerm, setSearchTerm] = useState('')
@@ -50,14 +49,11 @@ const ToolsPage = () => {
   const [installingTool, setInstallingTool] = useState<string | null>(null)
 
   const queryClient = useQueryClient()
-  const { toasts, success, error: showError, info, removeToast } = useToast()
+  const { toasts, success, error: showError, info, warning, removeToast } = useToast()
 
   const { data: tools, isLoading, error, refetch } = useQuery({
     queryKey: ['tools'],
-    queryFn: async () => {
-      const result = await apiService.getTools(false)
-      return result
-    },
+    queryFn: async () => (await apiService.getTools(false)).data,
     refetchInterval: isInitialDiscovery ? 2000 : false, // Poll every 2s during initial discovery
     refetchOnWindowFocus: false,
   })
@@ -66,7 +62,7 @@ const ToolsPage = () => {
   useEffect(() => {
     const triggerInitialDiscovery = async () => {
       // If we have no tools (empty cache), trigger discovery explicitly
-      if (tools && tools.data && tools.data.length === 0 && !isLoading) {
+      if (tools && tools.length === 0 && !isLoading) {
         setIsInitialDiscovery(true)
 
         // Trigger discovery with forceRefresh=true
@@ -78,7 +74,7 @@ const ToolsPage = () => {
           console.error('Failed to trigger initial discovery:', err)
           setIsInitialDiscovery(false)
         }
-      } else if (tools?.data && tools.data.length > 0) {
+      } else if (tools?.length) {
         // Once we have tools data, discovery is complete
         if (isInitialDiscovery) {
           setDiscoveryProgress(100)
@@ -112,21 +108,36 @@ const ToolsPage = () => {
       apiService.addManualTool(data),
     onSuccess: () => {
       refetch()
+      queryClient.invalidateQueries({ queryKey: ['manual-tools'] })
       setShowAddToolDialog(false)
       setManualToolName('')
       setManualToolPath('')
       setManualToolCategory('custom')
-    }
+      success('Manual tool registered and queued for local capability review')
+    },
+    onError: (error) => showError(error instanceof Error ? error.message : 'Failed to register manual tool'),
   })
 
   const removeManualToolMutation = useMutation({
     mutationFn: (toolName: string) => apiService.removeManualTool(toolName),
     onSuccess: () => {
       refetch()
-    }
+      queryClient.invalidateQueries({ queryKey: ['manual-tools'] })
+      success('Manual tool registration removed')
+    },
+    onError: (error) => showError(error instanceof Error ? error.message : 'Failed to remove manual tool'),
   })
 
-  const { data: manualTools } = useQuery({
+  useEffect(() => {
+    if (!showAddToolDialog) return
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !addManualToolMutation.isPending) setShowAddToolDialog(false)
+    }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [addManualToolMutation.isPending, showAddToolDialog])
+
+  const { data: manualTools, error: manualToolsError, refetch: refetchManualTools } = useQuery({
     queryKey: ['manual-tools'],
     queryFn: () => apiService.getManualTools(),
   })
@@ -134,21 +145,26 @@ const ToolsPage = () => {
   // Check for updates mutation - triggered manually via button click
   const checkUpdatesMutation = useMutation({
     mutationFn: async () => {
-      if (!tools?.data) return {}
+      if (!tools) return {}
 
       info('Checking for updates...')
 
       // Only check installed tools with valid paths
-      const installedTools = tools.data.filter((t: Tool) => t.installed && t.path)
+      const installedTools = tools.filter((t: Tool) => t.installed && t.path)
       const updates: Record<string, { hasUpdate: boolean; latestVersion: string | null }> = {}
 
       let checkedCount = 0
       let updatesFound = 0
+      let failedCount = 0
 
       // Check updates for all installed tools
       for (const tool of installedTools) {
         try {
           const result = await apiService.checkToolUpdate(tool.name)
+          if (result.error) {
+            failedCount++
+            continue
+          }
           updates[tool.name] = {
             hasUpdate: result.has_update,
             latestVersion: result.latest_version
@@ -157,20 +173,23 @@ const ToolsPage = () => {
             updatesFound++
           }
           checkedCount++
-        } catch (error) {
-          // Silently ignore all errors - version checking may not be supported for all tools
+        } catch {
+          failedCount++
         }
       }
 
-      return { updates, checkedCount, updatesFound }
+      return { updates, checkedCount, updatesFound, failedCount }
     },
     onSuccess: (data) => {
       if (data) {
         setToolUpdates(data.updates)
-        if (data.updatesFound > 0) {
+        if (data.checkedCount === 0 && data.failedCount > 0) {
+          warning(`Update checks were unavailable for ${data.failedCount} installed tool(s)`)
+        } else if (data.updatesFound > 0) {
           success(`Found ${data.updatesFound} update(s) available for ${data.checkedCount} tool(s)`)
         } else {
-          success(`All ${data.checkedCount} tool(s) are up to date`)
+          const suffix = data.failedCount > 0 ? `; ${data.failedCount} could not be checked` : ''
+          success(`All ${data.checkedCount} checked tool(s) are up to date${suffix}`)
         }
       }
     },
@@ -181,16 +200,7 @@ const ToolsPage = () => {
   })
 
   const filteredTools = useMemo(() => {
-    console.log('Filtering tools with:', {
-      totalTools: tools?.data?.length,
-      searchTerm,
-      categoryFilter,
-      statusFilter,
-      packageManagerFilter,
-      toolUpdatesCount: Object.keys(toolUpdates).length
-    })
-
-    const filtered = (tools?.data || []).filter((tool: Tool) => {
+    const filtered = (tools ?? []).filter((tool: Tool) => {
       const matchesSearch = tool.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         tool.description.toLowerCase().includes(searchTerm.toLowerCase())
       const matchesCategory = categoryFilter === 'all' || tool.category === categoryFilter
@@ -214,9 +224,8 @@ const ToolsPage = () => {
       return matchesSearch && matchesCategory && matchesStatus && matchesPackageManager
     })
 
-    console.log('Filtered result:', filtered.length, 'tools')
     return filtered
-  }, [tools?.data, searchTerm, categoryFilter, statusFilter, packageManagerFilter, toolUpdates])
+  }, [tools, searchTerm, categoryFilter, statusFilter, packageManagerFilter, toolUpdates])
 
   const getCategoryDisplayName = (category: string) => {
     const categoryNames: Record<string, string> = {
@@ -237,30 +246,22 @@ const ToolsPage = () => {
     return categoryNames[category] || category
   }
 
-  const getStatusIcon = (tool: Tool) => {
-    if (tool.installed) {
-      return <CheckCircle className="h-4 w-4 text-green-500" />
-    } else {
-      return <XCircle className="h-4 w-4 text-red-500" />
-    }
-  }
-
   const categories = useMemo(() => {
-    return Array.from(new Set((tools?.data || []).map(tool => tool.category)))
-  }, [tools?.data])
+    return Array.from(new Set((tools ?? []).map((tool) => tool.category)))
+  }, [tools])
 
-  const installationMethodMeta: Record<string, { label: string; badgeClass: string; helperText?: string }> = {
-    go: { label: 'Go Install', badgeClass: 'bg-emerald-700 text-emerald-100', helperText: 'go install automation available' },
-    'git-pip': { label: 'Git + Pip', badgeClass: 'bg-yellow-700 text-yellow-100', helperText: 'clones repo then pip install' },
-    pipx: { label: 'pipx', badgeClass: 'bg-sky-700 text-sky-100', helperText: 'isolated pipx environment' },
-    apt: { label: 'APT', badgeClass: 'bg-blue-700 text-blue-100', helperText: 'Requires sudo on Linux' },
-    winget: { label: 'WinGet', badgeClass: 'bg-indigo-700 text-indigo-100', helperText: 'Windows package manager' },
-    cargo: { label: 'Cargo', badgeClass: 'bg-orange-700 text-orange-100', helperText: 'Rust package manager' },
-    gem: { label: 'Ruby Gem', badgeClass: 'bg-rose-700 text-rose-100', helperText: 'Ruby gem install' },
-    npm: { label: 'npm', badgeClass: 'bg-red-700 text-red-100', helperText: 'Node package manager' },
-    homebrew: { label: 'Homebrew', badgeClass: 'bg-amber-700 text-amber-100', helperText: 'macOS/Linux package manager' },
-    manual: { label: 'Manual', badgeClass: 'bg-gray-700 text-gray-100', helperText: 'No automation available yet' },
-    runtime: { label: 'Runtime', badgeClass: 'bg-slate-700 text-slate-100', helperText: 'Built-in runtime tool' },
+  const installationMethodLabels: Record<string, string> = {
+    go: 'Go',
+    'git-pip': 'Git + pip',
+    pipx: 'pipx',
+    apt: 'APT',
+    winget: 'WinGet',
+    cargo: 'Cargo',
+    gem: 'Ruby gem',
+    npm: 'npm',
+    homebrew: 'Homebrew',
+    manual: 'Manual setup',
+    runtime: 'System runtime',
   }
 
   const autoInstallMethods = ['go', 'git-pip', 'pipx', 'apt', 'winget', 'cargo', 'gem', 'npm', 'homebrew']
@@ -398,13 +399,14 @@ const ToolsPage = () => {
         <div className="flex-1">
           <Input
             placeholder="Search tools..."
+            aria-label="Search tools"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full"
           />
         </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-full lg:w-48">
+          <SelectTrigger className="w-full lg:w-48" aria-label="Filter tools by category">
             <SelectValue placeholder="Category" />
           </SelectTrigger>
           <SelectContent>
@@ -417,7 +419,7 @@ const ToolsPage = () => {
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full lg:w-48">
+          <SelectTrigger className="w-full lg:w-48" aria-label="Filter tools by status">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -428,7 +430,7 @@ const ToolsPage = () => {
           </SelectContent>
         </Select>
         <Select value={packageManagerFilter} onValueChange={setPackageManagerFilter}>
-          <SelectTrigger className="w-full lg:w-48">
+          <SelectTrigger className="w-full lg:w-48" aria-label="Filter tools by package manager">
             <SelectValue placeholder="Package Manager" />
           </SelectTrigger>
           <SelectContent>
@@ -489,6 +491,7 @@ const ToolsPage = () => {
                     variant="ghost"
                     size="sm"
                     className="text-gray-400 hover:text-white"
+                    aria-label="Collapse manual tool management"
                   >
                     <ChevronUp className="h-5 w-5" />
                   </Button>
@@ -496,12 +499,17 @@ const ToolsPage = () => {
               </div>
             </CardHeader>
             <CardContent>
-              {(manualTools?.data?.manual_tools?.length ?? 0) > 0 ? (
+              {manualToolsError ? (
+                <div className="rounded-xl border border-red-400/20 bg-red-400/[0.05] p-4 text-sm text-red-200" role="alert">
+                  <p>Manual tool registrations could not be loaded.</p>
+                  <Button className="mt-3" size="sm" variant="ghost" onClick={() => refetchManualTools()}>Try again</Button>
+                </div>
+              ) : (manualTools?.data?.manual_tools?.length ?? 0) > 0 ? (
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-gray-300">Manually Added Tools:</h4>
                   <div className="grid gap-3">
                     {(manualTools?.data?.manual_tools ?? []).map((toolName: string) => {
-                      const tool = tools?.data?.find((t: Tool) => t.name === toolName)
+                      const tool = tools?.find((t: Tool) => t.name === toolName)
                       return (
                         <div key={toolName} className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-700">
                           <div className="flex items-center gap-3">
@@ -514,8 +522,11 @@ const ToolsPage = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => removeManualToolMutation.mutate(toolName)}
+                            onClick={() => {
+                              if (window.confirm(`Remove the manual registration for ${toolName}?`)) removeManualToolMutation.mutate(toolName)
+                            }}
                             className="text-red-400 border-red-400 hover:bg-red-400 hover:text-white"
+                            aria-label={`Remove manual tool ${toolName}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -538,18 +549,19 @@ const ToolsPage = () => {
 
       {/* Add Manual Tool Dialog */}
       {showAddToolDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4" role="dialog" aria-modal="true" aria-labelledby="manual-tool-dialog-title">
           <Card className="w-full max-w-md bg-gray-900 border-gray-700">
             <CardHeader>
-              <CardTitle className="text-blue-400">Add Manual Tool</CardTitle>
+              <CardTitle id="manual-tool-dialog-title" className="text-blue-400">Add Manual Tool</CardTitle>
               <CardDescription className="text-gray-400">
                 Add a tool that wasn't automatically discovered
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Tool Name</label>
+                <label htmlFor="manual-tool-name" className="text-sm font-medium text-gray-300">Tool Name</label>
                 <Input
+                  id="manual-tool-name"
                   placeholder="e.g., httpx"
                   value={manualToolName}
                   onChange={(e) => setManualToolName(e.target.value)}
@@ -557,8 +569,9 @@ const ToolsPage = () => {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Tool Path</label>
+                <label htmlFor="manual-tool-path" className="text-sm font-medium text-gray-300">Tool Path</label>
                 <Input
+                  id="manual-tool-path"
                   placeholder="e.g., /usr/local/bin/httpx"
                   value={manualToolPath}
                   onChange={(e) => setManualToolPath(e.target.value)}
@@ -568,7 +581,7 @@ const ToolsPage = () => {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300">Category</label>
                 <Select value={manualToolCategory} onValueChange={setManualToolCategory}>
-                  <SelectTrigger className="bg-gray-800 border-gray-600 text-white">
+                  <SelectTrigger className="bg-gray-800 border-gray-600 text-white" aria-label="Manual tool category">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -607,139 +620,43 @@ const ToolsPage = () => {
       )}
 
       {/* Tools Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 min-[1180px]:grid-cols-3">
         {isLoading ? (
           // Loading skeletons
           Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-6">
-                <div className="h-4 bg-gray-700 rounded w-3/4 mb-2"></div>
-                <div className="h-3 bg-gray-700 rounded w-full mb-4"></div>
-                <div className="flex space-x-2">
-                  <div className="h-6 bg-gray-700 rounded w-16"></div>
-                  <div className="h-6 bg-gray-700 rounded w-20"></div>
+            <Card key={i} className="min-h-[244px] animate-pulse">
+              <CardContent className="p-5">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-white/[0.06]" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-1/2 rounded bg-white/[0.07]" />
+                    <div className="h-2.5 w-1/3 rounded bg-white/[0.05]" />
+                  </div>
+                  <div className="h-6 w-20 rounded-full bg-white/[0.06]" />
                 </div>
+                <div className="mt-5 h-10 rounded-lg bg-white/[0.04]" />
+                <div className="mt-4 h-14 rounded-xl bg-white/[0.05]" />
+                <div className="mt-4 h-px bg-white/[0.06]" />
               </CardContent>
             </Card>
           ))
         ) : (
           filteredTools.map((tool: Tool) => {
-            const installMeta = tool.install_method ? installationMethodMeta[tool.install_method] : undefined
-            const hasAutoInstall = tool.install_method ? autoInstallMethods.includes(tool.install_method) : false
+            const installMethod = tool.install_method || tool.available_install_methods?.[0] || (tool.installed ? 'runtime' : 'manual')
+            const hasAutoInstall = autoInstallMethods.includes(installMethod) ||
+              tool.available_install_methods?.some(method => autoInstallMethods.includes(method))
+            const update = toolUpdates[tool.name]
             return (
-              <div
+              <ToolCard
                 key={tool.name}
-                className="cursor-pointer"
-                onClick={() => setSelectedTool(tool)}
-              >
-                <Card className="hover:border-blue-500 transition-colors">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        {getStatusIcon(tool)}
-                        <CardTitle className="text-lg">{tool.name}</CardTitle>
-                      </div>
-                      {toolUpdates[tool.name]?.hasUpdate && (
-                        <Badge className="bg-green-700 text-green-100 animate-pulse flex items-center gap-1">
-                          <ArrowUpCircle className="h-3 w-3" />
-                          Update
-                        </Badge>
-                      )}
-                    </div>
-                    <CardDescription>{tool.description}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Category:</span>
-                      <Badge variant="outline">
-                        {getCategoryDisplayName(tool.category)}
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Version:</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white">
-                          {tool.version || tool.raw_version || 'Unknown'}
-                        </span>
-                        {toolUpdates[tool.name]?.hasUpdate && toolUpdates[tool.name]?.latestVersion && (
-                          <span className="text-xs text-green-400">
-                            → {toolUpdates[tool.name].latestVersion}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Status:</span>
-                      <div className="flex items-center space-x-1">
-                        {tool.installed ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-red-500" />
-                        )}
-                        <span className={tool.installed ? 'text-green-400' : 'text-red-400'}>
-                          {tool.status}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Install Method:</span>
-                      <div className="flex items-center gap-2">
-                        {installMeta ? (
-                          <Badge className={`${installMeta.badgeClass} capitalize`}>
-                            {installMeta.label}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-gray-300 border-gray-600">
-                            Unknown
-                          </Badge>
-                        )}
-                        {hasAutoInstall ? (
-                          <span className="text-xs text-green-400">One-click</span>
-                        ) : (
-                          <span className="text-xs text-gray-500">Manual</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {installMeta?.helperText && (
-                      <div className="text-xs text-gray-500 text-right">
-                        {installMeta.helperText}
-                      </div>
-                    )}
-
-                    {tool.last_checked && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-400">Last Check:</span>
-                        <span className="text-gray-300">
-                          {new Date(tool.last_checked).toLocaleDateString()}
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="pt-2 border-t border-gray-700">
-                      <div className="text-xs text-gray-400 mb-2">Command Template:</div>
-                      <code className="text-xs text-gray-300 bg-gray-800 p-2 rounded block overflow-x-auto">
-                        {tool.command_template.join(' ')}
-                      </code>
-                      {tool.path && (
-                        <div className="mt-2 text-xs text-gray-400">
-                          <span className="font-medium text-gray-300">Executable:</span>
-                          <div className="truncate text-gray-400">{tool.path}</div>
-                        </div>
-                      )}
-                      {tool.missing_dependencies.length > 0 && (
-                        <div className="mt-2 text-xs text-red-400">
-                          <span className="font-medium text-red-300">Missing dependencies:</span>
-                          <div>{tool.missing_dependencies.join(', ')}</div>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+                tool={tool}
+                categoryLabel={getCategoryDisplayName(tool.category)}
+                installMethodLabel={installationMethodLabels[installMethod] || installMethod}
+                automatedInstallAvailable={Boolean(hasAutoInstall)}
+                hasUpdate={Boolean(update?.hasUpdate)}
+                latestVersion={update?.latestVersion || null}
+                onOpen={() => setSelectedTool(tool)}
+              />
             )
           })
         )}
@@ -761,14 +678,14 @@ const ToolsPage = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-xl sm:text-2xl font-bold text-white">{(tools?.data || []).length}</div>
+            <div className="text-xl sm:text-2xl font-bold text-white">{tools?.length ?? 0}</div>
             <div className="text-sm text-gray-400">Total Tools</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <div className="text-xl sm:text-2xl font-bold text-green-400">
-              {(tools?.data || []).filter((t: Tool) => t.installed).length}
+              {(tools ?? []).filter((t: Tool) => t.installed).length}
             </div>
             <div className="text-sm text-gray-400">Installed</div>
           </CardContent>
@@ -776,7 +693,7 @@ const ToolsPage = () => {
         <Card>
           <CardContent className="p-4 text-center">
             <div className="text-xl sm:text-2xl font-bold text-red-400">
-              {(tools?.data || []).filter((t: Tool) => !t.installed).length}
+              {(tools ?? []).filter((t: Tool) => !t.installed).length}
             </div>
             <div className="text-sm text-gray-400">Not Installed</div>
           </CardContent>
@@ -797,9 +714,10 @@ const ToolsPage = () => {
           tool={selectedTool}
           onClose={() => setSelectedTool(null)}
           onInstallStart={(toolName) => {
-            // Show installation progress modal
-            setInstallingTool(toolName)
-            setIsInstalling(true)
+            if (appBridge.capabilities.events) {
+              setInstallingTool(toolName)
+              setIsInstalling(true)
+            }
           }}
           onToolUpdate={(updatedTool) => {
             // Update the selected tool in local state
@@ -807,16 +725,9 @@ const ToolsPage = () => {
 
             // CRITICAL FIX: Update React Query cache directly
             // This prevents the tool from reverting to "Not Installed" when modal closes
-            queryClient.setQueryData(['tools'], (oldData: any) => {
-              if (!oldData?.data) return oldData
-
-              return {
-                ...oldData,
-                data: oldData.data.map((tool: Tool) =>
-                  tool.name === updatedTool.name ? updatedTool : tool
-                )
-              }
-            })
+            queryClient.setQueryData<Tool[]>(['tools'], (oldData) => oldData?.map((tool) =>
+              tool.name === updatedTool.name ? updatedTool : tool
+            ))
           }}
         />
       )}

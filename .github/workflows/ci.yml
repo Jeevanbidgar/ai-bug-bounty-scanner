@@ -1,310 +1,177 @@
-name: CI/CD Pipeline
+name: UniHack desktop CI
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - application
   pull_request:
-    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: "3.9"
-  NODE_VERSION: "18"
+  NODE_VERSION: "22"
+  CARGO_TERM_COLOR: always
 
 jobs:
-  # Backend testing
-  backend-test:
-    runs-on: ubuntu-latest
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
+  quality:
+    name: Frontend and Rust quality gates
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
+      - name: Install Linux build dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run linting
-        run: |
-          pip install black flake8 mypy
-          black --check backend/ || true
-          flake8 backend/ --max-line-length=100 --ignore=E203,W503 || true
-          mypy backend/ --ignore-missing-imports || true
-
-      - name: Run tests
-        run: |
-          pip install pytest pytest-asyncio pytest-cov
-          pytest tests/ -v --cov=backend --cov-report=xml --cov-report=term
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage.xml
-          flags: backend
-          name: backend-coverage
-
-  # Frontend testing
-  frontend-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            wget
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: |
-          cd frontend
-          npm ci
-
-      - name: Run linting
-        run: |
-          cd frontend
-          npm run lint
-
-      - name: Run tests
-        run: |
-          cd frontend
-          npm run test -- --coverage --watchAll=false
-
-      - name: Build frontend
-        run: |
-          cd frontend
-          npm run build
-
-  # macOS-specific testing for Homebrew functionality
-  macos-test:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup Homebrew
-        run: |
-          brew --version
-          brew update
-          echo "/opt/homebrew/bin" >> $GITHUB_PATH
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
 
-      - name: Install frontend dependencies
+      - name: Install locked JavaScript dependencies
         run: |
-          cd frontend
           npm ci
+          npm ci --prefix frontend
 
-      - name: Build frontend
+      - name: Audit JavaScript dependencies
         run: |
-          cd frontend
-          npm run build
+          npm audit --audit-level=high
+          npm audit --prefix frontend --audit-level=high
 
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: .
-          tauriScript: frontend/package.json
-          args: --no-bundle
-
-      # Test Homebrew functionality
-      - name: Test Homebrew Detection
+      - name: Lint and build frontend
         run: |
-          echo "Testing Homebrew detection..."
-          cargo test --package ai-bug-bounty-scanner --test integration_tests homebrew_manager::tests -- --nocapture
+          npm run lint --prefix frontend
+          npm run build --prefix frontend
 
-      - name: Test Homebrew Registry
-        run: |
-          echo "Testing Homebrew registry..."
-          cargo test --package ai-bug-bounty-scanner homebrew_registry -- --nocapture
+      - name: Install Playwright browser
+        run: npx --prefix frontend playwright install chromium
 
-      - name: Verify Critical Formulas
-        run: |
-          echo "Verifying critical Homebrew formulas exist..."
-          brew info nuclei || echo "nuclei formula check failed"
-          brew info httpx || echo "httpx formula check failed"
-          brew info subfinder || echo "subfinder formula check failed"
-          brew info nmap || echo "nmap formula check failed"
+      - name: Run responsive frontend tests
+        run: npm run test:e2e --prefix frontend
 
-  # Security scanning
-  security-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Run strict Rust lints
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 
-      - name: Install security tools
-        run: |
-          pip install bandit safety
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets --locked
 
-      - name: Run security scans
-        run: |
-          # Python security scanning
-          bandit -r backend/ -f json -o bandit-report.json || true
-          safety check --json || true
-
-          # Dependency vulnerability scanning
-          pip install safety
-          safety check
-
-      - name: Upload security reports
-        uses: actions/upload-artifact@v3
-        with:
-          name: security-reports
-          path: |
-            bandit-report.json
-            safety-report.json
-
-  # Docker build (optional)
-  docker-build:
-    runs-on: ubuntu-latest
-    needs: [backend-test, frontend-test]
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.backend
-          push: false
-          tags: ai-bug-bounty-scanner/backend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.frontend
-          push: false
-          tags: ai-bug-bounty-scanner/frontend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # Release builds
-  release:
-    runs-on: ${{ matrix.os }}
-    needs: [backend-test, frontend-test, macos-test, security-scan]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  package:
+    name: Package ${{ matrix.name }}
+    needs: quality
+    runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - name: linux-x64
+            runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            name: linux
-          - os: windows-latest
+            bundles: deb,appimage
+          - name: windows-x64
+            runner: windows-2025
             target: x86_64-pc-windows-msvc
-            name: windows
-          - os: macos-14 # Apple Silicon (M1/M2/M3)
+            bundles: nsis
+          - name: macos-arm64
+            runner: macos-15
             target: aarch64-apple-darwin
-            name: macos-arm64
-            brew_prefix: /opt/homebrew
-          - os: macos-13 # Intel Macs
+            bundles: app,dmg
+          - name: macos-x64
+            runner: macos-15-intel
             target: x86_64-apple-darwin
-            name: macos-x64
-            brew_prefix: /usr/local
+            bundles: app,dmg
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install --yes \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            wget
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
 
-      - name: Set up Rust
+      - name: Set up Rust target
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "./src-tauri -> target"
+          workspaces: src-tauri -> target
+          key: ${{ matrix.target }}
 
-      # macOS-specific: Set up Homebrew
-      - name: Setup Homebrew (macOS)
-        if: startsWith(matrix.os, 'macos-')
+      - name: Install locked JavaScript dependencies
         run: |
-          echo "Setting up Homebrew for ${{ matrix.os }}..."
-          brew --version
-          brew update
-
-          # Ensure Homebrew binaries are in PATH
-          echo "${{ matrix.brew_prefix }}/bin" >> $GITHUB_PATH
-
-          # Verify Homebrew is working
-          which brew
-          brew --version
-
-      - name: Install frontend dependencies
-        run: |
-          cd frontend
           npm ci
+          npm ci --prefix frontend
 
-      - name: Build frontend
-        run: |
-          cd frontend
-          npm run build
+      - name: Run platform Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked --target ${{ matrix.target }}
 
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare target-specific daemon and MCP sidecars
+        run: npm run prepare:sidecars -- --target ${{ matrix.target }}
+
+      - name: Build unsigned desktop bundles
+        run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Upload unsigned bundles
+        uses: actions/upload-artifact@v4
         with:
-          projectPath: .
-          tauriScript: frontend/package.json
-          args: --no-bundle
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: ai-bug-bounty-scanner-${{ matrix.name }}
-          path: |
-            target/release/bundle/**/*
-            frontend/dist/**/*
-
-  # Deploy to staging (optional)
-  deploy-staging:
-    runs-on: ubuntu-latest
-    needs: [backend-test, frontend-test, macos-test, security-scan, release]
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Deploy to staging
-        run: |
-          echo "Deploying to staging environment..."
-          # Add your deployment logic here
-          # e.g., docker-compose up, kubectl apply, etc.
+          name: unihack-${{ matrix.name }}-unsigned
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/**/*
+          if-no-files-found: error
+          retention-days: 14

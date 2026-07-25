@@ -1,6 +1,6 @@
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedFinding {
@@ -19,11 +19,10 @@ pub struct ParsedFinding {
 pub trait OutputParser: Send + Sync {
     /// Parse a file and return a list of findings
     fn parse(&self, file_path: &Path) -> Result<Vec<ParsedFinding>>;
-    
+
     /// Get the tool name this parser supports
     fn tool_name(&self) -> &str;
-    
+
     /// Check if this parser can handle the given file
     fn can_parse(&self, file_path: &Path) -> bool;
 }
-

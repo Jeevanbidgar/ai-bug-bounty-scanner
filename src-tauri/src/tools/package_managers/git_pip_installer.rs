@@ -120,7 +120,7 @@ impl GitPipInstaller {
         let stderr = child.stderr.take();
 
         let tool_name_clone = tool_name.to_string();
-        let app_handle_clone = app_handle.map(|h| h.clone());
+        let app_handle_clone = app_handle.cloned();
 
         let stdout_task = tokio::spawn(async move {
             if let Some(stdout) = stdout {
@@ -143,7 +143,7 @@ impl GitPipInstaller {
 
         // Stream stderr
         let tool_name_clone2 = tool_name.to_string();
-        let app_handle_clone2 = app_handle.map(|h| h.clone());
+        let app_handle_clone2 = app_handle.cloned();
 
         let stderr_task = tokio::spawn(async move {
             if let Some(stderr) = stderr {
@@ -585,7 +585,7 @@ impl GitPipInstaller {
         // Read stdout in background
         let tool_name_clone = tool_name.to_string();
         let step_name_clone = step_name.to_string();
-        let handle_clone = app_handle.map(|h| h.clone());
+        let handle_clone = app_handle.cloned();
         let stdout_task = tokio::spawn(async move {
             let mut lines = stdout_reader;
             while let Ok(Some(line)) = lines.next_line().await {
@@ -602,7 +602,7 @@ impl GitPipInstaller {
         // Read stderr in background
         let tool_name_clone = tool_name.to_string();
         let step_name_clone = step_name.to_string();
-        let handle_clone = app_handle.map(|h| h.clone());
+        let handle_clone = app_handle.cloned();
         let stderr_task = tokio::spawn(async move {
             let mut lines = stderr_reader;
             while let Ok(Some(line)) = lines.next_line().await {
@@ -647,7 +647,7 @@ impl GitPipInstaller {
 
         let mut uninstall_cmd = hidden_command(&python_cmd);
         match uninstall_cmd
-            .args(&["-m", "pip", "uninstall", "-y", tool_name])
+            .args(["-m", "pip", "uninstall", "-y", tool_name])
             .output()
             .await
         {
@@ -677,5 +677,11 @@ impl GitPipInstaller {
             }
             Err(e) => Err(format!("Failed to execute pip uninstall: {}", e)),
         }
+    }
+}
+
+impl Default for GitPipInstaller {
+    fn default() -> Self {
+        Self::new()
     }
 }

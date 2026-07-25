@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Badge } from './ui/Badge'
-import { Card } from './ui/Card'
 import { Button } from './ui/Button'
 import { CheckCircle2, XCircle, ArrowRight, Workflow, Clock, Package, X, Loader2 } from 'lucide-react'
 import { WorkflowTemplate, apiService } from '../services/api'
+import { useNavigate } from 'react-router-dom'
 
 interface WorkflowDetailsModalProps {
   workflow: WorkflowTemplate | null
@@ -39,14 +39,9 @@ export function WorkflowDetailsModal({ workflow, isOpen, onClose }: WorkflowDeta
   const [workflowDetails, setWorkflowDetails] = useState<WorkflowDetails | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate()
 
-  useEffect(() => {
-    if (isOpen && workflow) {
-      loadWorkflowDetails()
-    }
-  }, [isOpen, workflow])
-
-  const loadWorkflowDetails = async () => {
+  const loadWorkflowDetails = useCallback(async () => {
     if (!workflow) return
     
     setLoading(true)
@@ -60,7 +55,22 @@ export function WorkflowDetailsModal({ workflow, isOpen, onClose }: WorkflowDeta
     } finally {
       setLoading(false)
     }
-  }
+  }, [workflow])
+
+  useEffect(() => {
+    if (isOpen && workflow) {
+      loadWorkflowDetails()
+    }
+  }, [isOpen, workflow, loadWorkflowDetails])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [isOpen, onClose])
 
   if (!workflow) return null
 
@@ -83,6 +93,9 @@ export function WorkflowDetailsModal({ workflow, isOpen, onClose }: WorkflowDeta
         isOpen ? 'visible' : 'invisible'
       }`}
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="workflow-details-title"
     >
       {/* Backdrop */}
       <div
@@ -100,8 +113,10 @@ export function WorkflowDetailsModal({ workflow, isOpen, onClose }: WorkflowDeta
       >
         {/* Close Button */}
         <button
+          type="button"
           onClick={onClose}
           className="absolute top-4 right-4 z-10 p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+          aria-label="Close workflow details"
         >
           <X className="w-5 h-5" />
         </button>
@@ -110,7 +125,7 @@ export function WorkflowDetailsModal({ workflow, isOpen, onClose }: WorkflowDeta
         <div className="p-6 border-b border-slate-700">
           <div className="flex items-start justify-between pr-12">
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+              <h2 id="workflow-details-title" className="text-2xl font-bold text-white flex items-center gap-2">
                 <Workflow className="w-6 h-6 text-blue-400" />
                 {workflow.name}
               </h2>
@@ -156,7 +171,7 @@ export function WorkflowDetailsModal({ workflow, isOpen, onClose }: WorkflowDeta
           ) : (
             <div className="space-y-6">
               {/* Workflow Information */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
                   <div className="flex items-center gap-2 text-slate-400 mb-1">
                     <Package className="w-4 h-4" />
@@ -317,6 +332,10 @@ export function WorkflowDetailsModal({ workflow, isOpen, onClose }: WorkflowDeta
               </ul>
             </div>
           )}
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-700 pt-5 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => { onClose(); navigate(`/workflows?workflow=${encodeURIComponent(workflow.id)}`) }}>Open in Workflow Studio</Button>
+            <Button onClick={() => { onClose(); navigate(`/scans?workflow=${encodeURIComponent(workflow.id)}`) }}>Configure authorized run</Button>
+          </div>
             </div>
           )}
         </div>

@@ -1,0 +1,43 @@
+name: Passive URL Discovery
+description: Collect historical in-scope URLs from public archives without active vulnerability probing.
+category: reconnaissance
+inputs: {}
+steps:
+  - id: gau
+    name: Collect URLs with GAU
+    description: Query supported public URL archives for the target domain and its subdomains.
+    needs: []
+    run:
+      - gau
+      - --subs
+      - --o
+      - "{{workdir}}/gau-urls.txt"
+      - "{{domain}}"
+    timeout: 600
+    retry:
+      max_attempts: 2
+      initial_delay_ms: 2000
+      max_delay_ms: 10000
+      backoff_multiplier: 2
+    outputs:
+      - name: gau_urls
+        path: "{{workdir}}/gau-urls.txt"
+        type: text
+
+  - id: waybackurls
+    name: Collect URLs with Waybackurls
+    description: Send the domain through standard input as required by Waybackurls.
+    needs: []
+    run:
+      - waybackurls
+    stdin: "{{domain}}"
+    timeout: 600
+    retry:
+      max_attempts: 2
+      initial_delay_ms: 2000
+      max_delay_ms: 10000
+      backoff_multiplier: 2
+    outputs:
+      - name: wayback_urls
+        path: "{{workdir}}/wayback-urls.txt"
+        type: stdout

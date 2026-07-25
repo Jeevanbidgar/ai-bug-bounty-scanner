@@ -2,11 +2,11 @@
 //
 // Implements update checking for Go tools using go list -m -versions
 
-use std::time::Duration;
-use super::super::traits::{UpdateChecker, UpdateCheckResult, UpdateType};
-use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
 use super::super::command_runner::CommandRunner;
+use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
+use super::super::traits::{UpdateCheckResult, UpdateChecker, UpdateType};
 use super::super::version::Version;
+use std::time::Duration;
 
 /// Go update checker
 pub struct GoUpdateChecker {
@@ -20,8 +20,11 @@ impl GoUpdateChecker {
 
     /// Get current version from Go binary using `go version -m`
     async fn get_current_version(&self, tool_binary: &str) -> Result<String, UpdateCheckError> {
-        let output = self.command_runner.execute("go", &["version", "-m", tool_binary]).await?;
-        
+        let output = self
+            .command_runner
+            .execute("go", &["version", "-m", tool_binary])
+            .await?;
+
         if !output.success {
             return Err(UpdateCheckError::command_failed(
                 "go".to_string(),
@@ -52,8 +55,11 @@ impl GoUpdateChecker {
 
     /// Get latest version from Go module using `go list -m -versions`
     async fn get_latest_version(&self, module_path: &str) -> Result<String, UpdateCheckError> {
-        let output = self.command_runner.execute("go", &["list", "-m", "-versions", module_path]).await?;
-        
+        let output = self
+            .command_runner
+            .execute("go", &["list", "-m", "-versions", module_path])
+            .await?;
+
         if !output.success {
             return Err(UpdateCheckError::command_failed(
                 "go".to_string(),
@@ -66,7 +72,7 @@ impl GoUpdateChecker {
 
         // Output format: "module v1.0.0 v1.1.0 v1.2.0 ..."
         let versions: Vec<&str> = output.stdout.split_whitespace().collect();
-        
+
         if versions.len() < 2 {
             return Err(UpdateCheckError::new(
                 UpdateCheckErrorCode::PackageNotFound,
@@ -74,7 +80,8 @@ impl GoUpdateChecker {
                 super::super::error_types::UpdateCheckErrorContext::new(
                     "go".to_string(),
                     module_path.to_string(),
-                ).with_diagnostic(output.stdout),
+                )
+                .with_diagnostic(output.stdout),
             ));
         }
 
@@ -97,7 +104,10 @@ impl GoUpdateChecker {
         let current_normalized = Self::normalize_version(current);
         let latest_normalized = Self::normalize_version(latest);
 
-        match (Version::parse(&current_normalized), Version::parse(&latest_normalized)) {
+        match (
+            Version::parse(&current_normalized),
+            Version::parse(&latest_normalized),
+        ) {
             (Some(current_v), Some(latest_v)) => {
                 if latest_v > current_v {
                     if latest_v.major > current_v.major {
@@ -117,70 +127,98 @@ impl GoUpdateChecker {
 }
 
 impl UpdateChecker for GoUpdateChecker {
-    fn check_update(&self, package_name: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        package_name: &str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>>
+                + Send
+                + '_,
+        >,
+    > {
         let command_runner = self.command_runner.clone();
         let package_name = package_name.to_string();
-        
+
         Box::pin(async move {
             let checker = GoUpdateChecker::new(command_runner);
-        // For Go tools, we need to determine the binary path and module path
-        // This is a simplified version - in practice, we'd need to look up
-        // the tool definition to get the binary path and module path
-        
-        // For now, assume the package_name is the module path
-        let module_path = package_name.clone();
-        
-        // Try to find the binary in common locations (cross-platform)
-        let binary_paths = if cfg!(target_os = "windows") {
-            vec![
-                format!("{}\\go\\bin\\{}.exe", std::env::var("USERPROFILE").unwrap_or_default(), &package_name),
-                format!("{}\\go\\bin\\{}", std::env::var("USERPROFILE").unwrap_or_default(), &package_name),
-                format!("{}.exe", &package_name), // Assume it's in PATH
-                package_name.to_string(),
-            ]
-        } else {
-            vec![
-                format!("/usr/local/bin/{}", &package_name),
-                format!("/usr/bin/{}", &package_name),
-                format!("{}/go/bin/{}", std::env::var("HOME").unwrap_or_default(), &package_name),
-                format!("{}/.local/bin/{}", std::env::var("HOME").unwrap_or_default(), &package_name),
-                package_name.to_string(), // Assume it's in PATH
-            ]
-        };
+            // For Go tools, we need to determine the binary path and module path
+            // This is a simplified version - in practice, we'd need to look up
+            // the tool definition to get the binary path and module path
 
-        let mut binary_path = None;
-        for path in &binary_paths {
-            if std::path::Path::new(path).exists() {
-                binary_path = Some(path.clone());
-                break;
+            // For now, assume the package_name is the module path
+            let module_path = package_name.clone();
+
+            // Try to find the binary in common locations (cross-platform)
+            let binary_paths = if cfg!(target_os = "windows") {
+                vec![
+                    format!(
+                        "{}\\go\\bin\\{}.exe",
+                        std::env::var("USERPROFILE").unwrap_or_default(),
+                        &package_name
+                    ),
+                    format!(
+                        "{}\\go\\bin\\{}",
+                        std::env::var("USERPROFILE").unwrap_or_default(),
+                        &package_name
+                    ),
+                    format!("{}.exe", &package_name), // Assume it's in PATH
+                    package_name.to_string(),
+                ]
+            } else {
+                vec![
+                    format!("/usr/local/bin/{}", &package_name),
+                    format!("/usr/bin/{}", &package_name),
+                    format!(
+                        "{}/go/bin/{}",
+                        std::env::var("HOME").unwrap_or_default(),
+                        &package_name
+                    ),
+                    format!(
+                        "{}/.local/bin/{}",
+                        std::env::var("HOME").unwrap_or_default(),
+                        &package_name
+                    ),
+                    package_name.to_string(), // Assume it's in PATH
+                ]
+            };
+
+            let mut binary_path = None;
+            for path in &binary_paths {
+                if std::path::Path::new(path).exists() {
+                    binary_path = Some(path.clone());
+                    break;
+                }
             }
-        }
 
-        let binary_path = binary_path.ok_or_else(|| {
-            UpdateCheckError::package_not_found("go".to_string(), package_name.to_string())
-        })?;
+            let binary_path = binary_path.ok_or_else(|| {
+                UpdateCheckError::package_not_found("go".to_string(), package_name.to_string())
+            })?;
 
-        // Get current version
-        let current_version = self.get_current_version(&binary_path).await?;
-        
-        // Get latest version
-        let latest_version = checker.get_latest_version(&module_path).await?;
-        
-        // Normalize versions
-        let current_normalized = Self::normalize_version(&current_version);
-        let latest_normalized = Self::normalize_version(&latest_version);
-        
-        // Compare versions
-        let has_update = match (Version::parse(&current_normalized), Version::parse(&latest_normalized)) {
-            (Some(current_v), Some(latest_v)) => latest_v > current_v,
-            _ => latest_normalized != current_normalized, // Fallback to string comparison
-        };
+            // Get current version
+            let current_version = self.get_current_version(&binary_path).await?;
 
-        let update_type = if has_update {
-            Self::determine_update_type(&current_version, &latest_version)
-        } else {
-            None
-        };
+            // Get latest version
+            let latest_version = checker.get_latest_version(&module_path).await?;
+
+            // Normalize versions
+            let current_normalized = Self::normalize_version(&current_version);
+            let latest_normalized = Self::normalize_version(&latest_version);
+
+            // Compare versions
+            let has_update = match (
+                Version::parse(&current_normalized),
+                Version::parse(&latest_normalized),
+            ) {
+                (Some(current_v), Some(latest_v)) => latest_v > current_v,
+                _ => latest_normalized != current_normalized, // Fallback to string comparison
+            };
+
+            let update_type = if has_update {
+                Self::determine_update_type(&current_version, &latest_version)
+            } else {
+                None
+            };
 
             Ok(UpdateCheckResult::success(
                 has_update,
@@ -197,12 +235,12 @@ impl UpdateChecker for GoUpdateChecker {
         "go"
     }
 
-    fn is_available(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+    fn is_available(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
         let command_runner = self.command_runner.clone();
-        
-        Box::pin(async move {
-            command_runner.is_available("go").await
-        })
+
+        Box::pin(async move { command_runner.is_available("go").await })
     }
 
     fn timeout(&self) -> Duration {

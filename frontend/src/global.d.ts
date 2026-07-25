@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 // Global type declarations for VS Code TypeScript
 
 // Allow importing CSS files

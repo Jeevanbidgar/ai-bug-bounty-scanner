@@ -6,15 +6,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{RwLock, Semaphore};
+use tokio::sync::RwLock;
 use tokio::time::{timeout, Instant};
 
-use super::traits::{UpdateChecker, UpdateCheckResult, UpdateCheckerConfig, MockUpdateChecker};
-use super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
-use super::cache::{UpdateCache, CacheEntry};
-use super::metrics::{MetricsCollector, UpdateCheckMetrics};
+use super::cache::UpdateCache;
 use super::command_runner::CommandRunner;
+use super::error_types::UpdateCheckError;
+use super::metrics::{MetricsCollector, UpdateCheckMetrics};
 use super::telemetry::{TelemetryCollector, TelemetryContext};
+use super::traits::{UpdateCheckResult, UpdateChecker, UpdateCheckerConfig};
 
 /// Progress callback type
 pub type ProgressCallback = Box<dyn Fn(u8) + Send + Sync>;
@@ -24,19 +24,19 @@ pub type ProgressCallback = Box<dyn Fn(u8) + Send + Sync>;
 pub struct CoordinatedUpdateResult {
     /// Package name
     pub package: String,
-    
+
     /// Results from each manager
     pub results: HashMap<String, UpdateCheckResult>,
-    
+
     /// Best result (highest priority successful result)
     pub best_result: Option<UpdateCheckResult>,
-    
+
     /// Whether any manager found an update
     pub has_update: bool,
-    
+
     /// Total duration
     pub duration: Duration,
-    
+
     /// Number of managers checked
     pub managers_checked: usize,
 }
@@ -45,24 +45,18 @@ pub struct CoordinatedUpdateResult {
 pub struct UpdateCheckerCoordinator {
     /// Available update checkers
     checkers: Arc<RwLock<Vec<Box<dyn UpdateChecker>>>>,
-    
+
     /// Command runner
     command_runner: Arc<CommandRunner>,
-    
+
     /// Cache for results
     cache: Arc<UpdateCache>,
-    
+
     /// Metrics collector
     metrics: Arc<MetricsCollector>,
-    
+
     /// Telemetry collector
     telemetry: Arc<std::sync::Mutex<TelemetryCollector>>,
-    
-    /// Configuration
-    config: UpdateCheckerConfig,
-    
-    /// Semaphore for concurrency control
-    semaphore: Arc<Semaphore>,
 }
 
 impl UpdateCheckerCoordinator {
@@ -71,30 +65,26 @@ impl UpdateCheckerCoordinator {
             config.default_timeout,
             config.debug_logging,
         ));
-        
+
         let cache = Arc::new(UpdateCache::new(
             config.cache_duration,
             1000, // Max 1000 cache entries
         ));
-        
+
         let metrics = Arc::new(MetricsCollector::new(100));
-        
+
         let telemetry = Arc::new(std::sync::Mutex::new(TelemetryCollector::new(
             1000, // Max 1000 events
             config.debug_logging,
             true, // Enable metrics collection
         )));
-        
-        let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
-        
+
         Self {
             checkers: Arc::new(RwLock::new(Vec::new())),
             command_runner,
             cache,
             metrics,
             telemetry,
-            config,
-            semaphore,
         }
     }
 
@@ -102,13 +92,16 @@ impl UpdateCheckerCoordinator {
     pub async fn add_checker(&self, checker: Box<dyn UpdateChecker>) {
         let mut checkers = self.checkers.write().await;
         checkers.push(checker);
-        
+
         // Sort by priority (lower priority = higher priority)
         checkers.sort_by_key(|c| c.priority());
     }
 
     /// Check for updates for a single package
-    pub async fn check_update(&self, package_name: &str) -> Result<CoordinatedUpdateResult, UpdateCheckError> {
+    pub async fn check_update(
+        &self,
+        package_name: &str,
+    ) -> Result<CoordinatedUpdateResult, UpdateCheckError> {
         self.check_update_with_progress(package_name, None).await
     }
 
@@ -119,33 +112,32 @@ impl UpdateCheckerCoordinator {
         progress_callback: Option<ProgressCallback>,
     ) -> Result<CoordinatedUpdateResult, UpdateCheckError> {
         let start_time = Instant::now();
-        
+
         // Create telemetry context
-        let telemetry_context = TelemetryContext::new(
-            self.telemetry.clone(),
-            package_name.to_string(),
-        );
-        
+        let telemetry_context =
+            TelemetryContext::new(self.telemetry.clone(), package_name.to_string());
+
         // Get available managers
         let checkers = self.checkers.read().await;
-        let manager_names: Vec<String> = checkers.iter()
+        let manager_names: Vec<String> = checkers
+            .iter()
             .map(|c| c.manager_name().to_string())
             .collect();
         drop(checkers);
-        
+
         // Record update check started
         telemetry_context.record_update_check_started(manager_names);
-        
+
         // Check cache first
         let cache_key = UpdateCache::cache_key("coordinated", package_name);
         if let Some(cached_result) = self.cache.get(&cache_key).await {
             if let Some(progress_callback) = &progress_callback {
                 progress_callback(100);
             }
-            
+
             // Record cache hit
             telemetry_context.record_cache_hit("coordinated".to_string(), Duration::ZERO);
-            
+
             let has_update = cached_result.has_update;
             return Ok(CoordinatedUpdateResult {
                 package: package_name.to_string(),
@@ -169,10 +161,10 @@ impl UpdateCheckerCoordinator {
         for checker in checkers.iter() {
             let package_name_str = package_name.to_string();
             let telemetry_ctx = telemetry_context.clone();
-            
+
             // Record manager check started
             telemetry_ctx.record_manager_check_started(checker.manager_name().to_string());
-            
+
             let result = Self::check_with_manager(
                 checker.as_ref(),
                 &package_name_str,
@@ -180,8 +172,9 @@ impl UpdateCheckerCoordinator {
                 &self.metrics,
                 &self.command_runner,
                 &telemetry_ctx,
-            ).await;
-            
+            )
+            .await;
+
             // Record manager check completed
             match &result {
                 Ok(update_result) => {
@@ -191,10 +184,10 @@ impl UpdateCheckerCoordinator {
                         update_result.has_update,
                         None,
                     );
-                    
+
                     let manager_name = update_result.package_manager.clone();
                     results.insert(manager_name, update_result.clone());
-                    
+
                     // Update best result based on priority and success
                     if update_result.error.is_none() {
                         if best_result.is_none() || update_result.has_update {
@@ -205,7 +198,7 @@ impl UpdateCheckerCoordinator {
                             updates_found += 1;
                         }
                     }
-                    
+
                     managers_checked += 1;
                 }
                 Err(error) => {
@@ -219,23 +212,19 @@ impl UpdateCheckerCoordinator {
                     eprintln!("⚠️ Update check failed for {}: {}", package_name, error);
                 }
             }
-            
+
             // Update progress
             if let Some(progress_callback) = &progress_callback {
                 let progress = ((managers_checked + errors) * 100) / checkers.len();
                 progress_callback(progress as u8);
             }
         }
-        
+
         let duration = start_time.elapsed();
-        
+
         // Record update check completed
-        telemetry_context.record_update_check_completed(
-            managers_checked,
-            updates_found,
-            errors,
-        );
-        
+        telemetry_context.record_update_check_completed(managers_checked, updates_found, errors);
+
         let coordinated_result = CoordinatedUpdateResult {
             package: package_name.to_string(),
             results,
@@ -259,17 +248,20 @@ impl UpdateCheckerCoordinator {
         package_names: &[String],
     ) -> Result<Vec<CoordinatedUpdateResult>, UpdateCheckError> {
         let mut results = Vec::new();
-        
+
         for package_name in package_names {
             match self.check_update(package_name).await {
                 Ok(result) => results.push(result),
                 Err(error) => {
-                    eprintln!("⚠️ Batch update check failed for {}: {}", package_name, error);
+                    eprintln!(
+                        "⚠️ Batch update check failed for {}: {}",
+                        package_name, error
+                    );
                     // Continue with other packages
                 }
             }
         }
-        
+
         Ok(results)
     }
 
@@ -317,7 +309,10 @@ impl UpdateCheckerCoordinator {
     }
 
     /// Get recent telemetry events
-    pub fn get_recent_telemetry_events(&self, limit: Option<usize>) -> Vec<super::telemetry::TelemetryEvent> {
+    pub fn get_recent_telemetry_events(
+        &self,
+        limit: Option<usize>,
+    ) -> Vec<super::telemetry::TelemetryEvent> {
         if let Ok(telemetry) = self.telemetry.lock() {
             telemetry.get_recent_events(limit)
         } else {
@@ -351,15 +346,15 @@ impl UpdateCheckerCoordinator {
         telemetry_context: &TelemetryContext,
     ) -> Result<UpdateCheckResult, UpdateCheckError> {
         let start_time = Instant::now();
-        let mut check_metrics = UpdateCheckMetrics::new(
-            checker.manager_name().to_string(),
-            package_name.to_string(),
-        );
+        let mut check_metrics =
+            UpdateCheckMetrics::new(checker.manager_name().to_string(), package_name.to_string());
 
         // Check if manager is available
         if !checker.is_available().await {
             let error = UpdateCheckError::manager_not_available(checker.manager_name().to_string());
-            check_metrics = check_metrics.with_success(false).with_error_code(error.code.to_string());
+            check_metrics = check_metrics
+                .with_success(false)
+                .with_error_code(error.code.to_string());
             metrics.record_check(check_metrics).await;
             return Err(error);
         }
@@ -367,38 +362,48 @@ impl UpdateCheckerCoordinator {
         // Check cache first
         let cache_key = UpdateCache::cache_key(checker.manager_name(), package_name);
         if let Some(cached_result) = cache.get(&cache_key).await {
-            check_metrics = check_metrics.with_success(true).with_update(cached_result.has_update);
+            check_metrics = check_metrics
+                .with_success(true)
+                .with_update(cached_result.has_update);
             metrics.record_check(check_metrics).await;
-            
+
             // Record cache hit
             telemetry_context.record_cache_hit(checker.manager_name().to_string(), Duration::ZERO);
-            
+
             return Ok(cached_result);
         }
-        
+
         // Record cache miss
         telemetry_context.record_cache_miss(checker.manager_name().to_string());
 
         // Perform the actual check
-        let result = timeout(checker.timeout(), checker.check_update(package_name)).await
-            .map_err(|_| UpdateCheckError::timeout(
-                checker.manager_name().to_string(),
-                package_name.to_string(),
-                format!("{} check", checker.manager_name()),
-            ))?;
+        let result = timeout(checker.timeout(), checker.check_update(package_name))
+            .await
+            .map_err(|_| {
+                UpdateCheckError::timeout(
+                    checker.manager_name().to_string(),
+                    package_name.to_string(),
+                    format!("{} check", checker.manager_name()),
+                )
+            })?;
 
         let result = match result {
             Ok(mut result) => {
                 result = result.with_duration(start_time.elapsed());
-                check_metrics = check_metrics.with_success(true).with_update(result.has_update);
-                
+                check_metrics = check_metrics
+                    .with_success(true)
+                    .with_update(result.has_update);
+
                 // Cache successful results
                 cache.set(cache_key, result.clone()).await;
-                
+
                 result
             }
             Err(error) => {
-                check_metrics = check_metrics.with_success(false).with_error_code(error.code.to_string());
+                check_metrics = check_metrics
+                    .with_success(false)
+                    .with_error_code(error.code.to_string());
+                metrics.record_check(check_metrics).await;
                 return Err(error);
             }
         };
@@ -427,22 +432,29 @@ mod tests {
     }
 
     impl UpdateChecker for MockUpdateChecker {
-        fn check_update(&self, _package_name: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+        fn check_update(
+            &self,
+            _package_name: &str,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>>
+                    + Send
+                    + '_,
+            >,
+        > {
             let result = self.result.clone();
-            Box::pin(async move {
-                Ok(result)
-            })
+            Box::pin(async move { Ok(result) })
         }
 
         fn manager_name(&self) -> &str {
             &self.name
         }
 
-        fn is_available(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+        fn is_available(
+            &self,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
             let available = self.available;
-            Box::pin(async move {
-                available
-            })
+            Box::pin(async move { available })
         }
 
         fn timeout(&self) -> Duration {
@@ -457,7 +469,7 @@ mod tests {
     #[tokio::test]
     async fn test_coordinator_basic() {
         let coordinator = UpdateCheckerCoordinator::new(UpdateCheckerConfig::default());
-        
+
         // Add a mock checker
         let mock_checker = MockUpdateChecker {
             name: "test".to_string(),
@@ -471,13 +483,13 @@ mod tests {
                 None,
             ),
         };
-        
+
         coordinator.add_checker(Box::new(mock_checker)).await;
-        
+
         // Test update check
         let result = coordinator.check_update("test-package").await;
         assert!(result.is_ok());
-        
+
         let result = result.unwrap();
         assert_eq!(result.package, "test-package");
         assert_eq!(result.managers_checked, 1);
@@ -487,7 +499,7 @@ mod tests {
     #[tokio::test]
     async fn test_coordinator_cache() {
         let coordinator = UpdateCheckerCoordinator::new(UpdateCheckerConfig::default());
-        
+
         // Add a mock checker
         let mock_checker = MockUpdateChecker {
             name: "test".to_string(),
@@ -501,17 +513,17 @@ mod tests {
                 None,
             ),
         };
-        
+
         coordinator.add_checker(Box::new(mock_checker)).await;
-        
+
         // First check should populate cache
         let result1 = coordinator.check_update("test-package").await;
         assert!(result1.is_ok());
-        
+
         // Second check should use cache
         let result2 = coordinator.check_update("test-package").await;
         assert!(result2.is_ok());
-        
+
         // Both results should be the same
         assert_eq!(result1.unwrap().has_update, result2.unwrap().has_update);
     }

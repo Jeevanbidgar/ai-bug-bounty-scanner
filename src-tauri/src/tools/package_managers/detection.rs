@@ -321,10 +321,10 @@ async fn detect_apt() -> PackageManagerInfo {
     // APT is Linux-only
     #[cfg(not(target_os = "linux"))]
     {
-        return PackageManagerInfo::unavailable(
+        PackageManagerInfo::unavailable(
             PackageManagerType::Apt,
             "APT is only available on Linux".to_string(),
-        );
+        )
     }
 
     #[cfg(target_os = "linux")]
@@ -365,10 +365,10 @@ async fn detect_winget() -> PackageManagerInfo {
     // WinGet is Windows-only
     #[cfg(not(target_os = "windows"))]
     {
-        return PackageManagerInfo::unavailable(
+        PackageManagerInfo::unavailable(
             PackageManagerType::WinGet,
             "WinGet is only available on Windows".to_string(),
-        );
+        )
     }
 
     #[cfg(target_os = "windows")]

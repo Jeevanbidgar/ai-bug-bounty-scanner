@@ -1,0 +1,42 @@
+name: Web Content Discovery
+description: Discover exposed web paths with two independent native content discovery engines.
+category: web
+inputs: {}
+steps:
+  - id: gobuster
+    name: Gobuster directory discovery
+    needs: []
+    run:
+      - gobuster
+      - dir
+      - -u
+      - "{{url}}"
+      - -w
+      - "{{wordlist}}"
+      - -o
+      - "{{workdir}}/gobuster.txt"
+    timeout: 1200
+    outputs:
+      - name: gobuster_results
+        path: "{{workdir}}/gobuster.txt"
+        type: text
+
+  - id: feroxbuster
+    name: Feroxbuster recursive discovery
+    needs: []
+    run:
+      - feroxbuster
+      - -u
+      - "{{url}}"
+      - -w
+      - "{{wordlist}}"
+      - --json
+      - --output
+      - "{{workdir}}/feroxbuster.jsonl"
+      - --no-state
+      - --quiet
+    timeout: 1200
+    outputs:
+      - name: feroxbuster_results
+        path: "{{workdir}}/feroxbuster.jsonl"
+        type: jsonl

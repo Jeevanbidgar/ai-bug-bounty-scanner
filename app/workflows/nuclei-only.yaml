@@ -20,7 +20,7 @@ steps:
     run:
       - nuclei
       - -u
-      - "{{target}}"
+      - "{{url}}"
       - -jsonl
       - -o
       - "{{workdir}}/nuclei.jsonl"

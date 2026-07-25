@@ -1,0 +1,23 @@
+name: Nikto Web Server Audit
+description: Run Nikto's web-server checks against an authorized HTTP or HTTPS endpoint.
+category: web
+inputs: {}
+steps:
+  - id: nikto
+    name: Nikto assessment
+    needs: []
+    run:
+      - nikto
+      - -h
+      - "{{url}}"
+      - -Format
+      - json
+      - -output
+      - "{{workdir}}/nikto.json"
+      - -nointeractive
+      - -nocheck
+    timeout: 1800
+    outputs:
+      - name: nikto_results
+        path: "{{workdir}}/nikto.json"
+        type: json

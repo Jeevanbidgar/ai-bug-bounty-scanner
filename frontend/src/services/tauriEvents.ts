@@ -3,7 +3,9 @@
  * Replaces Socket.IO with Tauri's native event system
  */
 
-import { listen, UnlistenFn } from '@tauri-apps/api/event'
+import { appBridge } from '../bridge/appBridge'
+
+type UnlistenFn = () => void
 
 export interface ScanProgressUpdate {
   scan_id: string
@@ -88,9 +90,7 @@ class TauriEventService {
 
   private async setupEventListener(event: string, callback: (payload: any) => void): Promise<void> {
     try {
-      const unlisten = await listen(event, (tauriEvent) => {
-        callback(tauriEvent.payload)
-      })
+      const unlisten = await appBridge.listen(event, callback)
 
       if (!this.listeners.has(event)) {
         this.listeners.set(event, [])

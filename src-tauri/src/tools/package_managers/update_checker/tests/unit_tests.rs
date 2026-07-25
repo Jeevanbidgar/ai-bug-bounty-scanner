@@ -2,12 +2,12 @@
 //
 // Unit tests for individual components of the update checker system
 
-use super::super::traits::{UpdateCheckResult, UpdateCheckerConfig, UpdateType};
-use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode, UpdateCheckErrorContext};
+use super::super::cache::UpdateCache;
 use super::super::command_runner::CommandRunner;
-use super::super::cache::{UpdateCache, CacheEntry};
+use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode, UpdateCheckErrorContext};
 use super::super::metrics::{MetricsCollector, UpdateCheckMetrics};
-use super::fixtures::{UpdateCheckerFixtures, TestConfig, TestUtils};
+use super::super::traits::{UpdateCheckResult, UpdateCheckerConfig, UpdateType};
+use super::fixtures::UpdateCheckerFixtures;
 use super::mock_adapters::MockUpdateCheckerFactory;
 use std::time::Duration;
 
@@ -18,11 +18,11 @@ mod command_runner_tests {
     #[tokio::test]
     async fn test_command_runner_success() {
         let runner = CommandRunner::new(Duration::from_secs(5), false);
-        
+
         // Test with a simple command that should succeed
         let result = runner.execute("echo", &["hello"]).await;
         assert!(result.is_ok());
-        
+
         let result = result.unwrap();
         assert!(result.success);
         assert_eq!(result.exit_code, 0);
@@ -32,11 +32,11 @@ mod command_runner_tests {
     #[tokio::test]
     async fn test_command_runner_failure() {
         let runner = CommandRunner::new(Duration::from_secs(5), false);
-        
+
         // Test with a command that should fail
         let result = runner.execute("false", &[]).await;
         assert!(result.is_ok());
-        
+
         let result = result.unwrap();
         assert!(!result.success);
         assert_eq!(result.exit_code, 1);
@@ -45,11 +45,11 @@ mod command_runner_tests {
     #[tokio::test]
     async fn test_command_runner_timeout() {
         let runner = CommandRunner::new(Duration::from_millis(100), false);
-        
+
         // Test with a command that should timeout
         let result = runner.execute("sleep", &["1"]).await;
         assert!(result.is_err());
-        
+
         let error = result.unwrap_err();
         assert_eq!(error.code, UpdateCheckErrorCode::Timeout);
     }
@@ -57,10 +57,10 @@ mod command_runner_tests {
     #[tokio::test]
     async fn test_is_available() {
         let runner = CommandRunner::new(Duration::from_secs(5), false);
-        
+
         // Test with a command that should be available
         assert!(runner.is_available("echo").await);
-        
+
         // Test with a command that should not be available
         assert!(!runner.is_available("nonexistent_command_12345").await);
     }
@@ -73,19 +73,19 @@ mod cache_tests {
     #[tokio::test]
     async fn test_cache_basic_operations() {
         let cache = UpdateCache::new(Duration::from_secs(1), 10);
-        
+
         let result = UpdateCheckerFixtures::successful_update();
-        
+
         // Test set and get
         cache.set("test:package".to_string(), result.clone()).await;
         let cached = cache.get("test:package").await;
         assert!(cached.is_some());
         assert_eq!(cached.unwrap().current_version, result.current_version);
-        
+
         // Test removal
         let removed = cache.remove("test:package").await;
         assert!(removed.is_some());
-        
+
         // Test get after removal
         let cached = cache.get("test:package").await;
         assert!(cached.is_none());
@@ -94,18 +94,18 @@ mod cache_tests {
     #[tokio::test]
     async fn test_cache_expiration() {
         let cache = UpdateCache::new(Duration::from_millis(100), 10);
-        
+
         let result = UpdateCheckerFixtures::successful_update();
-        
+
         // Set entry
         cache.set("test:package".to_string(), result).await;
-        
+
         // Should be available immediately
         assert!(cache.get("test:package").await.is_some());
-        
+
         // Wait for expiration
         tokio::time::sleep(Duration::from_millis(150)).await;
-        
+
         // Should be expired
         assert!(cache.get("test:package").await.is_none());
     }
@@ -113,13 +113,13 @@ mod cache_tests {
     #[tokio::test]
     async fn test_cache_stats() {
         let cache = UpdateCache::new(Duration::from_secs(1), 10);
-        
+
         let result = UpdateCheckerFixtures::successful_update();
-        
+
         // Add some entries
         cache.set("test:package1".to_string(), result.clone()).await;
         cache.set("test:package2".to_string(), result.clone()).await;
-        
+
         let stats = cache.stats().await;
         assert_eq!(stats.total_entries, 2);
         assert_eq!(stats.valid_entries, 2);
@@ -141,28 +141,30 @@ mod metrics_tests {
     #[tokio::test]
     async fn test_metrics_collection() {
         let collector = MetricsCollector::new(10);
-        
+
         // Record a successful check
         let mut metrics = UpdateCheckMetrics::new("npm".to_string(), "package".to_string());
         metrics = metrics.with_success(true).with_update(false);
-        
+
         collector.record_check(metrics).await;
-        
+
         let summary = collector.get_summary().await;
         assert_eq!(summary.total_checks, 1);
         assert_eq!(summary.success_rate, 1.0);
         assert_eq!(summary.updates_found, 0);
-        
+
         // Record a failed check
         let mut metrics = UpdateCheckMetrics::new("npm".to_string(), "package2".to_string());
-        metrics = metrics.with_success(false).with_error_code("CommandFailed".to_string());
-        
+        metrics = metrics
+            .with_success(false)
+            .with_error_code("CommandFailed".to_string());
+
         collector.record_check(metrics).await;
-        
+
         let summary = collector.get_summary().await;
         assert_eq!(summary.total_checks, 2);
         assert_eq!(summary.success_rate, 0.5);
-        
+
         // Check manager-specific metrics
         let manager_metrics = collector.get_manager_metrics("npm").await;
         assert!(manager_metrics.is_some());
@@ -175,17 +177,17 @@ mod metrics_tests {
     #[tokio::test]
     async fn test_recent_checks_limit() {
         let collector = MetricsCollector::new(3);
-        
+
         // Add more checks than the limit
         for i in 0..5 {
             let mut metrics = UpdateCheckMetrics::new("npm".to_string(), format!("package{}", i));
             metrics = metrics.with_success(true);
             collector.record_check(metrics).await;
         }
-        
+
         let recent = collector.get_recent_checks(None).await;
         assert_eq!(recent.len(), 3); // Should be limited to 3
-        
+
         // Check that we kept the most recent ones
         assert_eq!(recent[0].package, "package4");
         assert_eq!(recent[1].package, "package3");
@@ -220,11 +222,19 @@ mod error_types_tests {
         assert!(!error.retryable);
         assert_eq!(error.context.exit_code, Some(1));
 
-        let error = UpdateCheckError::timeout("test".to_string(), "package".to_string(), "command".to_string());
+        let error = UpdateCheckError::timeout(
+            "test".to_string(),
+            "package".to_string(),
+            "command".to_string(),
+        );
         assert_eq!(error.code, UpdateCheckErrorCode::Timeout);
         assert!(error.retryable);
 
-        let error = UpdateCheckError::network_error("test".to_string(), "package".to_string(), "network error".to_string());
+        let error = UpdateCheckError::network_error(
+            "test".to_string(),
+            "package".to_string(),
+            "network error".to_string(),
+        );
         assert_eq!(error.code, UpdateCheckErrorCode::NetworkError);
         assert!(error.retryable);
     }
@@ -295,7 +305,8 @@ mod traits_tests {
             "test".to_string(),
             None,
             None,
-        ).with_duration(Duration::from_secs(5));
+        )
+        .with_duration(Duration::from_secs(5));
 
         assert_eq!(result.duration, Some(Duration::from_secs(5)));
     }

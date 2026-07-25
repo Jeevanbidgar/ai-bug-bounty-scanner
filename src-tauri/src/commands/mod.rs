@@ -1,32 +1,43 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+#[cfg(test)]
+use std::path::Component;
+use std::path::{Path, PathBuf};
 use tauri::Emitter;
 
 use crate::tools::catalog::ToolDefinition;
 
 use crate::database::Database;
 use crate::events::{
-    EventEmitter, SCAN_COMPLETED, SCAN_FAILED, SCAN_PROGRESS_UPDATE, SCAN_STARTED,
-    TOOL_INSTALLATION_COMPLETED, TOOL_INSTALLATION_STARTED,
+    EventEmitter, SCAN_COMPLETED, SCAN_FAILED, SCAN_PROGRESS_UPDATE, TOOL_INSTALLATION_COMPLETED,
+    TOOL_INSTALLATION_STARTED,
 };
+use crate::governance::ScopeBudget;
 use crate::runtime::process::hidden_tokio_command;
+use crate::service::{CreateEngagementRequest, RunStatus, StartWorkflowRequest};
 use crate::tools::catalog::get_tool_catalog;
 use crate::tools::discovery::ToolDiscoveryService;
 use crate::tools::package_managers::{GoInstallManager, InstallationResult, VersionCheckResult};
-use crate::workflow::{
-    engine::WorkflowEngine, loader::WorkflowLoader, types::WorkflowCompatibility,
-};
+use crate::workflow::{loader::WorkflowLoader, types::WorkflowCompatibility};
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowExecuteRequest {
     pub workflow_id: String,
     pub inputs: HashMap<String, String>,
     pub working_directory: Option<String>,
+    pub scan_id: Option<String>,
+    pub scan_name: Option<String>,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub authorization_confirmed: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkflowExecuteResponse {
     pub execution_id: String,
+    pub scan_id: String,
     pub status: String,
     pub message: String,
 }
@@ -51,6 +62,17 @@ pub struct ToolInfo {
     pub version: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolTestResult {
+    pub tool_name: String,
+    pub success: bool,
+    pub path: String,
+    pub output: String,
+    pub exit_code: Option<i32>,
+    pub duration_ms: u128,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkflowSummary {
     pub id: String,
@@ -62,13 +84,230 @@ pub struct WorkflowSummary {
     pub compatibility: Option<WorkflowCompatibility>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportView {
+    pub id: String,
+    pub scan_id: String,
+    pub title: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub target: String,
+    pub vulnerability_count: usize,
+    pub format: String,
+    pub severity: String,
+    pub file_path: Option<String>,
+    pub size_bytes: Option<i64>,
+    pub sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+}
+
 // App state structure
 pub struct AppState {
     pub db: std::sync::Arc<Database>,
-    pub workflow_engine: std::sync::Arc<WorkflowEngine>,
     pub tool_discovery: std::sync::Arc<tokio::sync::RwLock<ToolDiscoveryService>>,
     #[allow(dead_code)]
     pub tool_registry: std::sync::Arc<crate::tools::registry::ToolRegistry>,
+    pub workflows_dir: std::path::PathBuf,
+    pub results_dir: std::path::PathBuf,
+    pub reports_dir: std::path::PathBuf,
+    pub settings: std::sync::Arc<tokio::sync::RwLock<crate::settings::AppSettings>>,
+    pub auto_adapters: std::sync::Arc<crate::adapters::auto::AutoAdapterService>,
+}
+
+#[cfg(test)]
+fn ensure_workflow_compatible(
+    workflow_id: &str,
+    compatibility: &WorkflowCompatibility,
+) -> Result<(), String> {
+    if compatibility.compatible {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Workflow '{}' cannot start because required tools are unavailable: {}. Install or register the missing tools, then refresh tool discovery.",
+        workflow_id,
+        compatibility.missing_tools.join(", ")
+    ))
+}
+
+#[cfg(test)]
+fn resolve_results_directory(
+    results_root: &Path,
+    requested_directory: Option<&str>,
+) -> Result<String, String> {
+    let requested = requested_directory
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let Some(requested) = requested else {
+        return Ok(results_root
+            .join(uuid::Uuid::new_v4().to_string())
+            .to_string_lossy()
+            .to_string());
+    };
+
+    let requested_path = Path::new(requested);
+    let resolved = if requested_path.is_absolute() {
+        if !requested_path.starts_with(results_root) {
+            return Err(format!(
+                "Scan results must stay under {}",
+                results_root.display()
+            ));
+        }
+        requested_path.to_path_buf()
+    } else {
+        let mut safe_relative = PathBuf::new();
+        for component in requested_path.components() {
+            match component {
+                Component::CurDir => {}
+                Component::Normal(value) => safe_relative.push(value),
+                Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                    return Err("Working directory cannot contain path traversal".to_string());
+                }
+            }
+        }
+
+        // Older frontend versions suggested ./results/<name>. Treat that as a
+        // results-root-relative path instead of nesting results/results.
+        let safe_relative = safe_relative
+            .strip_prefix("results")
+            .unwrap_or(&safe_relative)
+            .to_path_buf();
+        let safe_relative = if safe_relative.as_os_str().is_empty() {
+            PathBuf::from(uuid::Uuid::new_v4().to_string())
+        } else {
+            safe_relative
+        };
+        results_root.join(safe_relative)
+    };
+
+    Ok(resolved.to_string_lossy().to_string())
+}
+
+async fn resolve_execution_id(db: &Database, execution_or_scan_id: &str) -> Result<String, String> {
+    if db
+        .get_workflow_execution(execution_or_scan_id)
+        .await
+        .map_err(|error| format!("Failed to find workflow execution: {}", error))?
+        .is_some()
+    {
+        return Ok(execution_or_scan_id.to_string());
+    }
+
+    db.get_latest_workflow_execution_for_scan(execution_or_scan_id)
+        .await
+        .map_err(|error| format!("Failed to find scan execution: {}", error))?
+        .map(|execution| execution.id)
+        .ok_or_else(|| format!("Execution or scan '{}' not found", execution_or_scan_id))
+}
+
+async fn report_view(
+    db: &Database,
+    report: crate::database::Report,
+    include_content: bool,
+) -> Result<ReportView, String> {
+    let scan = db
+        .get_scan(&report.scan_id)
+        .await
+        .map_err(|error| format!("Failed to load report scan: {}", error))?
+        .ok_or_else(|| format!("Scan '{}' for report was not found", report.scan_id))?;
+    let findings = db
+        .get_vulnerabilities_by_scan(&report.scan_id)
+        .await
+        .map_err(|error| format!("Failed to load report findings: {}", error))?;
+    let export = db
+        .get_report_export(&report.id)
+        .await
+        .map_err(|error| format!("Failed to load report export: {}", error))?;
+
+    Ok(ReportView {
+        id: report.id,
+        scan_id: report.scan_id,
+        title: report.title,
+        created_at: report.created_at,
+        target: scan.target,
+        vulnerability_count: findings.len(),
+        format: report.format,
+        severity: crate::reports::highest_severity(&findings).to_string(),
+        file_path: export.as_ref().map(|value| value.file_path.clone()),
+        size_bytes: export.as_ref().map(|value| value.size_bytes),
+        sha256: export.map(|value| value.sha256),
+        content: include_content.then_some(report.content),
+    })
+}
+
+fn confined_report_export_path(reports_root: &Path, path: &Path) -> Result<(), String> {
+    if path.parent() != Some(reports_root) || !path.starts_with(reports_root) {
+        return Err(
+            "Stored report export path is outside the managed reports directory".to_string(),
+        );
+    }
+    Ok(())
+}
+
+async fn canonical_managed_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
+    let canonical_root = tokio::fs::canonicalize(root)
+        .await
+        .map_err(|error| format!("Failed to resolve managed directory: {}", error))?;
+    let canonical_path = tokio::fs::canonicalize(path)
+        .await
+        .map_err(|error| format!("Managed file or directory is unavailable: {}", error))?;
+    if !canonical_path.starts_with(&canonical_root) {
+        return Err("Requested path is outside UniHack managed storage".to_string());
+    }
+    Ok(canonical_path)
+}
+
+async fn reveal_in_file_manager(path: &Path, select_file: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = hidden_tokio_command("open");
+        if select_file {
+            command.arg("-R");
+        }
+        command.arg(path);
+        command
+    };
+
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = hidden_tokio_command("explorer.exe");
+        if select_file {
+            command.arg(format!("/select,{}", path.display()));
+        } else {
+            command.arg(path);
+        }
+        command
+    };
+
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut command = hidden_tokio_command("xdg-open");
+        let destination = if select_file {
+            path.parent().unwrap_or(path)
+        } else {
+            path
+        };
+        command.arg(destination);
+        command
+    };
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    return Err("Opening the system file manager is unsupported on this platform".to_string());
+
+    let output = command
+        .output()
+        .await
+        .map_err(|error| format!("Failed to open the system file manager: {}", error))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let diagnostic = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "The system file manager could not open this location: {}",
+            diagnostic.trim()
+        ))
+    }
 }
 
 // Commands for workflow management
@@ -76,30 +315,7 @@ pub struct AppState {
 pub async fn load_workflow_templates(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<WorkflowSummary>, String> {
-    // Try multiple paths: relative, from project root, from current dir
-    let possible_paths = vec![
-        std::path::PathBuf::from("app/workflows"),
-        std::path::PathBuf::from("../app/workflows"),
-        std::path::PathBuf::from("../../app/workflows"),
-        std::env::current_dir()
-            .unwrap_or_default()
-            .join("app/workflows"),
-        std::env::current_dir()
-            .unwrap_or_default()
-            .parent()
-            .unwrap_or(std::path::Path::new("."))
-            .join("app/workflows"),
-    ];
-
-    let workflows_dir = possible_paths
-        .iter()
-        .find(|p| p.exists())
-        .cloned()
-        .unwrap_or_else(|| std::path::PathBuf::from("app/workflows"));
-
-    eprintln!("Loading workflows from: {:?}", workflows_dir);
-    eprintln!("Workflows directory exists: {}", workflows_dir.exists());
-    let workflow_loader = WorkflowLoader::new(workflows_dir.clone());
+    let workflow_loader = WorkflowLoader::new(state.workflows_dir.clone());
 
     match workflow_loader.load_all_workflows().await {
         Ok(workflows) => {
@@ -149,27 +365,7 @@ pub async fn get_workflow_details(
     state: tauri::State<'_, AppState>,
     workflow_id: String,
 ) -> Result<serde_json::Value, String> {
-    let possible_paths = vec![
-        std::path::PathBuf::from("app/workflows"),
-        std::path::PathBuf::from("../app/workflows"),
-        std::path::PathBuf::from("../../app/workflows"),
-        std::env::current_dir()
-            .unwrap_or_default()
-            .join("app/workflows"),
-        std::env::current_dir()
-            .unwrap_or_default()
-            .parent()
-            .unwrap_or(std::path::Path::new("."))
-            .join("app/workflows"),
-    ];
-
-    let workflows_dir = possible_paths
-        .iter()
-        .find(|p| p.exists())
-        .cloned()
-        .unwrap_or_else(|| std::path::PathBuf::from("app/workflows"));
-
-    let workflow_loader = WorkflowLoader::new(workflows_dir.clone());
+    let workflow_loader = WorkflowLoader::new(state.workflows_dir.clone());
 
     match workflow_loader.load_workflow(&workflow_id).await {
         Ok(workflow) => {
@@ -212,28 +408,149 @@ pub async fn get_workflow_details(
     }
 }
 
+async fn start_desktop_authorized_workflow(
+    workflow_id: &str,
+    target: &str,
+    scan_id: Option<String>,
+    scan_name: Option<String>,
+    description: Option<String>,
+) -> Result<WorkflowExecuteResponse, String> {
+    let daemon = crate::integrations::desktop_daemon().await?;
+    let workflow = daemon
+        .get_workflow(workflow_id)
+        .await
+        .map_err(|error| format!("Failed to load workflow: {error}"))?;
+    if !workflow.compatibility.compatible {
+        return Err(format!(
+            "Workflow '{}' cannot start because required tools are unavailable: {}",
+            workflow_id,
+            workflow.compatibility.missing_tools.join(", ")
+        ));
+    }
+    let budget = ScopeBudget {
+        max_executions: 1,
+        ..ScopeBudget::default()
+    };
+    let duration_minutes = (budget.max_runtime_seconds.div_ceil(60) + 10).min(43_200) as u32;
+    let scope = daemon
+        .create_engagement(CreateEngagementRequest {
+            name: format!("Desktop authorization · {}", workflow.workflow.name),
+            targets: vec![target.to_string()],
+            workflow_ids: vec![workflow_id.to_string()],
+            allowed_risk_tier: workflow.risk_tier,
+            duration_minutes,
+            authorization_confirmed: true,
+            budget,
+        })
+        .await
+        .map_err(|error| format!("Failed to create one-shot authorization: {error}"))?;
+    let accepted = match daemon
+        .start_workflow(StartWorkflowRequest {
+            scope_id: scope.id.clone(),
+            workflow_id: workflow_id.to_string(),
+            revision_hash: workflow.revision_hash,
+            target: target.to_string(),
+            idempotency_key: format!("desktop/{}", uuid::Uuid::new_v4()),
+            scan_id,
+            scan_name,
+            description,
+            revoke_scope_on_completion: true,
+        })
+        .await
+    {
+        Ok(accepted) => accepted,
+        Err(error) => {
+            let _ = daemon.revoke_engagement(&scope.id).await;
+            return Err(format!("Failed to start workflow: {error}"));
+        }
+    };
+    Ok(WorkflowExecuteResponse {
+        execution_id: accepted.run_id,
+        scan_id: accepted.scan_id,
+        status: accepted.status,
+        message: "Workflow execution started through unihackd".to_string(),
+    })
+}
+
+fn workflow_status_response(status: RunStatus) -> WorkflowStatusResponse {
+    WorkflowStatusResponse {
+        execution_id: status.run_id,
+        status: status.status,
+        progress: status.progress,
+        current_step: status.current_step,
+        logs: status.logs,
+    }
+}
+
 #[tauri::command]
 pub async fn execute_workflow(
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     request: WorkflowExecuteRequest,
 ) -> Result<WorkflowExecuteResponse, String> {
-    let execution_id = state
-        .workflow_engine
-        .execute_workflow(
-            request.workflow_id,
-            request.inputs,
-            request
-                .working_directory
-                .unwrap_or_else(|| "./results".to_string()),
-        )
-        .await
-        .map_err(|e| format!("Failed to execute workflow: {}", e))?;
+    if !request.authorization_confirmed {
+        return Err(
+            "Authorization confirmation is required before running security tools".to_string(),
+        );
+    }
 
-    Ok(WorkflowExecuteResponse {
-        execution_id,
-        status: "running".to_string(),
-        message: "Workflow execution started".to_string(),
-    })
+    let target = request
+        .inputs
+        .get("target")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "A non-empty target input is required".to_string())?
+        .to_string();
+    let target = crate::security::validate_scan_target(&target)?;
+    let response = start_desktop_authorized_workflow(
+        &request.workflow_id,
+        &target,
+        request.scan_id,
+        request.scan_name,
+        request.description,
+    )
+    .await?;
+
+    Ok(response)
+}
+
+#[tauri::command]
+pub async fn start_scan(
+    state: tauri::State<'_, AppState>,
+    #[allow(non_snake_case)] scanId: String,
+    #[allow(non_snake_case)] authorizationConfirmed: bool,
+) -> Result<WorkflowExecuteResponse, String> {
+    if !authorizationConfirmed {
+        return Err(
+            "Authorization confirmation is required before running security tools".to_string(),
+        );
+    }
+
+    let scan = state
+        .db
+        .get_scan(&scanId)
+        .await
+        .map_err(|e| format!("Failed to load scan: {}", e))?
+        .ok_or_else(|| format!("Scan '{}' not found", scanId))?;
+
+    if scan.status.eq_ignore_ascii_case("running") {
+        return Err("Scan is already running".to_string());
+    }
+
+    let target = crate::security::validate_scan_target(&scan.target)?;
+    let workflow_id = scan
+        .workflow_id
+        .clone()
+        .ok_or_else(|| "Scan has no workflow assigned".to_string())?;
+    let response = start_desktop_authorized_workflow(
+        &workflow_id,
+        &target,
+        Some(scan.id.clone()),
+        Some(scan.name.clone()),
+        scan.description.clone(),
+    )
+    .await?;
+
+    Ok(response)
 }
 
 #[tauri::command]
@@ -241,24 +558,13 @@ pub async fn get_workflow_status(
     state: tauri::State<'_, AppState>,
     #[allow(non_snake_case)] executionId: String,
 ) -> Result<WorkflowStatusResponse, String> {
-    let execution = state
-        .workflow_engine
-        .get_execution_status(&executionId)
+    let resolved_execution_id = resolve_execution_id(&state.db, &executionId).await?;
+    let status = crate::integrations::desktop_daemon()
+        .await?
+        .get_run_status(&resolved_execution_id)
         .await
-        .map_err(|e| format!("Failed to get execution status: {}", e))?
-        .ok_or_else(|| format!("Execution '{}' not found", executionId))?;
-
-    Ok(WorkflowStatusResponse {
-        execution_id: execution.id,
-        status: format!("{:?}", execution.status),
-        progress: execution.progress,
-        current_step: execution.current_step,
-        logs: execution
-            .logs
-            .iter()
-            .map(|log| log.message.clone())
-            .collect(),
-    })
+        .map_err(|error| format!("Failed to get execution status: {error}"))?;
+    Ok(workflow_status_response(status))
 }
 
 #[tauri::command]
@@ -266,13 +572,35 @@ pub async fn stop_workflow_execution(
     state: tauri::State<'_, AppState>,
     #[allow(non_snake_case)] executionId: String,
 ) -> Result<String, String> {
-    state
-        .workflow_engine
-        .stop_execution(&executionId)
+    let resolved_execution_id = resolve_execution_id(&state.db, &executionId).await?;
+    crate::integrations::desktop_daemon()
+        .await?
+        .cancel_run(&resolved_execution_id)
         .await
         .map_err(|e| format!("Failed to stop execution: {}", e))?;
 
     Ok("Execution stopped".to_string())
+}
+
+#[tauri::command]
+pub async fn stop_scan(
+    state: tauri::State<'_, AppState>,
+    #[allow(non_snake_case)] scanId: String,
+) -> Result<String, String> {
+    let execution = state
+        .db
+        .get_running_workflow_execution_for_scan(&scanId)
+        .await
+        .map_err(|e| format!("Failed to find running execution: {}", e))?
+        .ok_or_else(|| format!("Scan '{}' has no running execution", scanId))?;
+
+    crate::integrations::desktop_daemon()
+        .await?
+        .cancel_run(&execution.id)
+        .await
+        .map_err(|e| format!("Failed to stop scan: {}", e))?;
+
+    Ok(execution.id)
 }
 
 // Commands for tool management
@@ -290,7 +618,7 @@ pub async fn list_tools(
         forceRefresh,
         tools.len()
     );
-    if tools.len() > 0 {
+    if !tools.is_empty() {
         eprintln!(
             "First 5 tools: {:?}",
             tools.iter().take(5).map(|t| &t.name).collect::<Vec<_>>()
@@ -316,42 +644,77 @@ pub async fn get_tool(
 }
 
 #[tauri::command]
+pub async fn test_tool(
+    #[allow(non_snake_case)] tool_name: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<ToolTestResult, String> {
+    let catalog = get_tool_catalog();
+    let definition = catalog
+        .get(&tool_name)
+        .ok_or_else(|| format!("Tool '{}' is not declared in the catalog", tool_name))?;
+    let discovery = state.tool_discovery.read().await;
+    let record = discovery
+        .get_tool_record(&tool_name, true)
+        .await
+        .ok_or_else(|| format!("Tool '{}' was not found", tool_name))?;
+    drop(discovery);
+    if !record.installed || record.status != "available" {
+        return Err(format!(
+            "Tool '{}' is not available for a health check",
+            tool_name
+        ));
+    }
+    let path = record
+        .path
+        .ok_or_else(|| format!("Tool '{}' has no verified executable path", tool_name))?;
+    let started = std::time::Instant::now();
+    let mut command = hidden_tokio_command(&path);
+    command.args(&definition.version_args);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(10), command.output())
+        .await
+        .map_err(|_| format!("Health check for '{}' timed out", tool_name))?
+        .map_err(|error| format!("Failed to run '{}': {}", tool_name, error))?;
+    let mut combined = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if !stderr.is_empty() {
+        if !combined.is_empty() {
+            combined.push('\n');
+        }
+        combined.push_str(&stderr);
+    }
+    if combined.chars().count() > 8_000 {
+        combined = combined.chars().take(8_000).collect::<String>();
+        combined.push_str("\n… output truncated");
+    }
+
+    Ok(ToolTestResult {
+        tool_name,
+        success: output.status.success(),
+        path,
+        output: combined,
+        exit_code: output.status.code(),
+        duration_ms: started.elapsed().as_millis(),
+    })
+}
+
+#[tauri::command]
 pub async fn recheck_tool(
     #[allow(non_snake_case)] tool_name: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<crate::tools::discovery::ToolRecord>, String> {
     eprintln!("🔄 Rechecking tool: {}", tool_name);
     let discovery_service = state.tool_discovery.read().await;
-
-    // Get the current cached tool record WITHOUT forcing refresh (avoid cache save that triggers rebuild)
-    let mut record = match discovery_service.get_tool_record(&tool_name, false).await {
-        Some(r) => r,
-        None => return Ok(None),
-    };
-
-    // Manually check if tool is available without saving to cache
-    let tool_path = discovery_service.get_tool_path(&tool_name).await;
-    let tool_available = tool_path.is_some();
-
-    // Update the record in memory
-    if tool_available {
-        record.installed = true;
-        record.status = "available".to_string();
-        if let Some(path) = tool_path {
-            eprintln!("✅ Tool {} found at: {}", tool_name, path);
-            record.path = Some(path);
+    let record = discovery_service.get_tool_record(&tool_name, true).await;
+    drop(discovery_service);
+    if let Some(record) = &record {
+        if let Err(error) = state.auto_adapters.ensure_profile(record).await {
+            eprintln!(
+                "Auto-adapter generation for '{}' requires attention: {}",
+                tool_name, error
+            );
         }
-    } else {
-        eprintln!("⚠️  Tool {} not found on system", tool_name);
-        record.installed = false;
-        record.status = "missing".to_string();
-        record.path = None;
     }
-
-    record.last_checked = Some(chrono::Utc::now().to_rfc3339());
-
-    // Return the updated record WITHOUT saving cache (to avoid triggering dev server reload)
-    Ok(Some(record))
+    Ok(record)
 }
 
 #[tauri::command]
@@ -361,6 +724,15 @@ pub async fn refresh_tools(
     let discovery_service = state.tool_discovery.read().await;
 
     let results = discovery_service.refresh_all_tools().await;
+    drop(discovery_service);
+
+    let failures = state
+        .auto_adapters
+        .sync_installed_tools(results.values().cloned())
+        .await;
+    for failure in failures {
+        eprintln!("Auto-adapter generation requires attention: {}", failure);
+    }
 
     Ok(results)
 }
@@ -457,7 +829,6 @@ pub async fn list_scans(
 
 #[tauri::command]
 pub async fn create_scan(
-    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     scan_data: HashMap<String, serde_json::Value>,
 ) -> Result<String, String> {
@@ -531,10 +902,6 @@ pub async fn create_scan(
         .create_scan(&scan)
         .await
         .map_err(|e| format!("Failed to create scan: {}", e))?;
-
-    // Emit scan started event
-    let event = EventEmitter::scan_started(&scan.id);
-    let _ = app.emit(SCAN_STARTED, event);
 
     Ok(scan.id)
 }
@@ -612,11 +979,55 @@ pub async fn delete_scan(
     state: tauri::State<'_, AppState>,
     #[allow(non_snake_case)] scanId: String,
 ) -> Result<(), String> {
+    let scan = state
+        .db
+        .get_scan(&scanId)
+        .await
+        .map_err(|error| format!("Failed to load scan: {}", error))?
+        .ok_or_else(|| format!("Scan '{}' was not found", scanId))?;
+    if scan.status.eq_ignore_ascii_case("running") {
+        return Err("Stop the running scan before deleting it".to_string());
+    }
+
+    let mut report_exports = Vec::new();
+    let reports = state
+        .db
+        .list_reports()
+        .await
+        .map_err(|error| format!("Failed to load scan reports: {}", error))?;
+    for report in reports
+        .into_iter()
+        .filter(|report| report.scan_id == scanId)
+    {
+        if let Some(export) = state
+            .db
+            .get_report_export(&report.id)
+            .await
+            .map_err(|error| format!("Failed to load report export: {}", error))?
+        {
+            let path = PathBuf::from(export.file_path);
+            confined_report_export_path(&state.reports_dir, &path)?;
+            report_exports.push(path);
+        }
+    }
+
     state
         .db
         .delete_scan(&scanId)
         .await
         .map_err(|e| format!("Failed to delete scan: {}", e))?;
+
+    for export_path in report_exports {
+        match tokio::fs::remove_file(&export_path).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => eprintln!(
+                "Warning: failed to remove deleted scan report {}: {}",
+                export_path.display(),
+                error
+            ),
+        }
+    }
 
     Ok(())
 }
@@ -624,20 +1035,55 @@ pub async fn delete_scan(
 // Commands for system information
 #[tauri::command]
 pub async fn get_system_info() -> Result<serde_json::Value, String> {
-    use sysinfo::{System, SystemExt};
+    use sysinfo::{ProcessExt, System, SystemExt};
 
     let mut sys = System::new_all();
     sys.refresh_all();
+    let current_pid = sysinfo::get_current_pid().ok();
+    if let Some(pid) = current_pid {
+        // sysinfo CPU values need two samples separated by its minimum update
+        // interval. The async wait keeps this measurement honest without
+        // blocking the Tauri runtime thread.
+        tokio::time::sleep(System::MINIMUM_CPU_UPDATE_INTERVAL).await;
+        sys.refresh_process(pid);
+    }
+    let process = current_pid.and_then(|pid| sys.process(pid));
 
     let info = serde_json::json!({
         "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
-        "total_memory_mb": sys.total_memory(),
-        "available_memory_mb": sys.available_memory(),
-        "cpu_cores": sys.cpus().len()
+        "total_memory_mb": sys.total_memory() / 1024 / 1024,
+        "available_memory_mb": sys.available_memory() / 1024 / 1024,
+        "cpu_cores": sys.cpus().len(),
+        "process_memory_mb": process.map(|value| value.memory() / 1024 / 1024).unwrap_or(0),
+        "process_cpu_percent": process.map(|value| value.cpu_usage()).unwrap_or(0.0)
     });
 
     Ok(info)
+}
+
+#[tauri::command]
+pub async fn get_settings(
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::settings::AppSettings, String> {
+    Ok(state.settings.read().await.clone())
+}
+
+#[tauri::command]
+pub async fn update_settings(
+    state: tauri::State<'_, AppState>,
+    settings: crate::settings::AppSettings,
+) -> Result<crate::settings::AppSettings, String> {
+    settings.validate()?;
+    let serialized = serde_json::to_string(&settings)
+        .map_err(|error| format!("Failed to serialize settings: {}", error))?;
+    state
+        .db
+        .upsert_setting("runtime", &serialized)
+        .await
+        .map_err(|error| format!("Failed to save settings: {}", error))?;
+    *state.settings.write().await = settings.clone();
+    Ok(settings)
 }
 
 // Commands for workflow artifacts and findings
@@ -646,9 +1092,10 @@ pub async fn get_workflow_artifacts(
     state: tauri::State<'_, AppState>,
     #[allow(non_snake_case)] executionId: String,
 ) -> Result<Vec<serde_json::Value>, String> {
+    let execution_id = resolve_execution_id(&state.db, &executionId).await?;
     let artifacts = state
         .db
-        .get_workflow_artifacts(&executionId)
+        .get_workflow_artifacts(&execution_id)
         .await
         .map_err(|e| format!("Failed to get artifacts: {}", e))?;
 
@@ -661,13 +1108,58 @@ pub async fn get_workflow_artifacts(
 }
 
 #[tauri::command]
+pub async fn reveal_workflow_artifact(
+    state: tauri::State<'_, AppState>,
+    #[allow(non_snake_case)] executionId: String,
+    #[allow(non_snake_case)] artifactId: String,
+) -> Result<(), String> {
+    let execution_id = resolve_execution_id(&state.db, &executionId).await?;
+    let artifact = state
+        .db
+        .get_workflow_artifacts(&execution_id)
+        .await
+        .map_err(|error| format!("Failed to load artifacts: {}", error))?
+        .into_iter()
+        .find(|artifact| artifact.id == artifactId)
+        .ok_or_else(|| format!("Artifact '{}' was not found", artifactId))?;
+    let path = artifact
+        .file_path
+        .as_deref()
+        .map(Path::new)
+        .ok_or_else(|| "Artifact has no managed file".to_string())?;
+    let path = canonical_managed_path(&state.results_dir, path).await?;
+    reveal_in_file_manager(&path, true).await
+}
+
+#[tauri::command]
+pub async fn reveal_scan_results(
+    state: tauri::State<'_, AppState>,
+    #[allow(non_snake_case)] scanId: String,
+) -> Result<(), String> {
+    let scan = state
+        .db
+        .get_scan(&scanId)
+        .await
+        .map_err(|error| format!("Failed to load scan: {}", error))?
+        .ok_or_else(|| format!("Scan '{}' was not found", scanId))?;
+    let path = scan
+        .working_directory
+        .as_deref()
+        .map(Path::new)
+        .ok_or_else(|| "Scan has no results directory".to_string())?;
+    let path = canonical_managed_path(&state.results_dir, path).await?;
+    reveal_in_file_manager(&path, false).await
+}
+
+#[tauri::command]
 pub async fn get_workflow_findings(
     state: tauri::State<'_, AppState>,
     #[allow(non_snake_case)] executionId: String,
 ) -> Result<Vec<serde_json::Value>, String> {
+    let execution_id = resolve_execution_id(&state.db, &executionId).await?;
     let findings = state
         .db
-        .get_workflow_findings(&executionId)
+        .get_workflow_findings(&execution_id)
         .await
         .map_err(|e| format!("Failed to get findings: {}", e))?;
 
@@ -806,18 +1298,16 @@ pub async fn delete_vulnerability(
 
 // Commands for report management
 #[tauri::command]
-pub async fn list_reports(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<serde_json::Value>, String> {
+pub async fn list_reports(state: tauri::State<'_, AppState>) -> Result<Vec<ReportView>, String> {
     let reports = state
         .db
         .list_reports()
         .await
         .map_err(|e| format!("Failed to list reports: {}", e))?;
 
-    let mut report_data = Vec::new();
+    let mut report_data = Vec::with_capacity(reports.len());
     for report in reports {
-        report_data.push(serde_json::to_value(&report).unwrap_or_default());
+        report_data.push(report_view(&state.db, report, false).await?);
     }
 
     Ok(report_data)
@@ -827,57 +1317,114 @@ pub async fn list_reports(
 pub async fn get_report(
     state: tauri::State<'_, AppState>,
     report_id: String,
-) -> Result<Option<serde_json::Value>, String> {
+) -> Result<Option<ReportView>, String> {
     let report = state
         .db
         .get_report(&report_id)
         .await
         .map_err(|e| format!("Failed to get report: {}", e))?;
 
-    if let Some(report) = report {
-        Ok(Some(serde_json::to_value(&report).unwrap_or_default()))
-    } else {
-        Ok(None)
+    match report {
+        Some(report) => Ok(Some(report_view(&state.db, report, true).await?)),
+        None => Ok(None),
     }
+}
+
+#[tauri::command]
+pub async fn reveal_report(
+    state: tauri::State<'_, AppState>,
+    #[allow(non_snake_case)] reportId: String,
+) -> Result<(), String> {
+    let export = state
+        .db
+        .get_report_export(&reportId)
+        .await
+        .map_err(|error| format!("Failed to load report export: {}", error))?
+        .ok_or_else(|| format!("Report export '{}' was not found", reportId))?;
+    let path = Path::new(&export.file_path);
+    confined_report_export_path(&state.reports_dir, path)?;
+    let path = canonical_managed_path(&state.reports_dir, path).await?;
+    reveal_in_file_manager(&path, true).await
 }
 
 #[tauri::command]
 pub async fn create_report(
     state: tauri::State<'_, AppState>,
     report_data: HashMap<String, serde_json::Value>,
-) -> Result<String, String> {
+) -> Result<ReportView, String> {
+    let scan_id = report_data
+        .get("scan_id")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or("scan_id is required")?
+        .to_string();
+    let scan = state
+        .db
+        .get_scan(&scan_id)
+        .await
+        .map_err(|error| format!("Failed to load scan: {}", error))?
+        .ok_or_else(|| format!("Scan '{}' not found", scan_id))?;
+    let findings = state
+        .db
+        .get_vulnerabilities_by_scan(&scan_id)
+        .await
+        .map_err(|error| format!("Failed to load scan findings: {}", error))?;
+    let format = report_data
+        .get("format")
+        .and_then(|value| value.as_str())
+        .unwrap_or("html")
+        .trim()
+        .to_ascii_lowercase();
+    let extension = crate::reports::extension(&format).map_err(|error| error.to_string())?;
+    let content = crate::reports::generate_report(&format, &scan, &findings)
+        .map_err(|error| format!("Failed to generate report: {}", error))?;
+    let title = report_data
+        .get("title")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{} Security Report", scan.name));
+    if title.chars().count() > 200 {
+        return Err("Report title must not exceed 200 characters".to_string());
+    }
+
     let report = crate::database::Report {
         id: uuid::Uuid::new_v4().to_string(),
-        scan_id: report_data
-            .get("scan_id")
-            .and_then(|v| v.as_str())
-            .ok_or("scan_id is required")?
-            .to_string(),
-        title: report_data
-            .get("title")
-            .and_then(|v| v.as_str())
-            .ok_or("title is required")?
-            .to_string(),
-        content: report_data
-            .get("content")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        format: report_data
-            .get("format")
-            .and_then(|v| v.as_str())
-            .unwrap_or("html")
-            .to_string(),
+        scan_id,
+        title,
+        content,
+        format,
         created_at: chrono::Utc::now(),
     };
 
-    state
-        .db
-        .create_report(&report)
+    let export_path = state
+        .reports_dir
+        .join(format!("{}.{}", report.id, extension));
+    confined_report_export_path(&state.reports_dir, &export_path)?;
+    tokio::fs::write(&export_path, report.content.as_bytes())
         .await
-        .map_err(|e| format!("Failed to create report: {}", e))?;
+        .map_err(|error| format!("Failed to write report export: {}", error))?;
+    let export = crate::database::ReportExport {
+        report_id: report.id.clone(),
+        file_path: export_path.to_string_lossy().to_string(),
+        size_bytes: report.content.len() as i64,
+        sha256: format!("{:x}", Sha256::digest(report.content.as_bytes())),
+        created_at: chrono::Utc::now(),
+    };
 
-    Ok(report.id)
+    if let Err(error) = state.db.create_report(&report).await {
+        let _ = tokio::fs::remove_file(&export_path).await;
+        return Err(format!("Failed to create report: {}", error));
+    }
+    if let Err(error) = state.db.create_report_export(&export).await {
+        let _ = state.db.delete_report(&report.id).await;
+        let _ = tokio::fs::remove_file(&export_path).await;
+        return Err(format!("Failed to store report export: {}", error));
+    }
+
+    report_view(&state.db, report, true).await
 }
 
 #[tauri::command]
@@ -885,6 +1432,20 @@ pub async fn delete_report(
     state: tauri::State<'_, AppState>,
     report_id: String,
 ) -> Result<(), String> {
+    let export = state
+        .db
+        .get_report_export(&report_id)
+        .await
+        .map_err(|error| format!("Failed to load report export: {}", error))?;
+    if let Some(export) = export {
+        let export_path = Path::new(&export.file_path);
+        confined_report_export_path(&state.reports_dir, export_path)?;
+        match tokio::fs::remove_file(export_path).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("Failed to remove report export: {}", error)),
+        }
+    }
     state
         .db
         .delete_report(&report_id)
@@ -1115,31 +1676,6 @@ pub async fn install_package_manager_go(
 }
 
 #[tauri::command]
-pub async fn install_package_manager_apt(
-    package_name: String,
-) -> Result<crate::tools::package_managers::InstallationResult, String> {
-    eprintln!("📦 Installing APT package: {}", package_name);
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        return Err("APT is only available on Linux systems".to_string());
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let result = crate::tools::package_managers::install_apt_package(&package_name).await?;
-
-        if result.success {
-            eprintln!("✅ APT package installed");
-        } else {
-            eprintln!("❌ APT installation failed: {}", result.message);
-        }
-
-        Ok(result)
-    }
-}
-
-#[tauri::command]
 pub async fn install_package_manager_winget(
 ) -> Result<crate::tools::package_managers::InstallationResult, String> {
     eprintln!("📦 Opening WinGet installation page...");
@@ -1176,25 +1712,27 @@ pub async fn install_tool_with_method(
 
     // Look up tool in catalog
     let catalog = get_tool_catalog();
-    let mut tool_def = catalog
+    let tool_def = catalog
         .get(&tool_name)
-        .ok_or_else(|| format!("Tool '{}' not found in catalog", tool_name))?
-        .clone();
+        .ok_or_else(|| format!("Tool '{}' not found in catalog", tool_name))?;
+    let install_method = installMethod.trim().to_ascii_lowercase();
+    let approved_methods = tool_def.install_methods_for(
+        &tool_name,
+        crate::tools::catalog::InstallPlatform::current(),
+    );
+    if !approved_methods.contains(&install_method) {
+        return Err(format!(
+            "Installation method '{}' is not approved for '{}' on this operating system. Available methods: {}",
+            install_method,
+            tool_name,
+            approved_methods.join(", ")
+        ));
+    }
 
-    // Override install_method with user-specified method
-    tool_def.install_method = installMethod.clone();
-
-    eprintln!("   Installation method: {}", tool_def.install_method);
+    eprintln!("   Installation method: {}", install_method);
 
     // Route to appropriate installer
-    install_tool_internal(
-        &tool_name,
-        &tool_def,
-        &tool_def.install_method,
-        app_handle,
-        state,
-    )
-    .await
+    install_tool_internal(&tool_name, tool_def, &install_method, app_handle, state).await
 }
 
 #[tauri::command]
@@ -1219,23 +1757,9 @@ pub async fn install_tool(
 }
 
 fn resolve_install_method(tool_name: &str, tool_def: &ToolDefinition) -> String {
-    let mut method = tool_def.install_method.clone();
-
-    #[cfg(target_os = "macos")]
-    {
-        let prefers_homebrew = matches!(
-            method.as_str(),
-            "apt" | "winget" | "pipx" | "git-pip" | "manual"
-        );
-
-        if prefers_homebrew {
-            if crate::tools::package_managers::get_homebrew_mapping(tool_name).is_some() {
-                method = "homebrew".to_string();
-            }
-        }
-    }
-
-    method
+    tool_def
+        .recommended_install_method(tool_name, crate::tools::catalog::InstallPlatform::current())
+        .unwrap_or_else(|| tool_def.install_method.clone())
 }
 
 async fn install_tool_internal(
@@ -1319,17 +1843,15 @@ async fn install_tool_internal(
 
             eprintln!("   Pipx package/repo: {}", package_or_repo);
 
-            let manager = crate::tools::package_managers::GitPipInstaller::new();
+            let manager = crate::tools::package_managers::PipxManager::new();
 
             if !manager.is_pipx_available().await {
                 return Err("pipx is not installed. Please install pipx first.".to_string());
             }
 
-            // Use the git_repo if available (for pipx install git+repo)
-            let git_repo = tool_def.git_repo.as_ref()
-                .ok_or_else(|| format!("Tool '{}' has no git_repo defined for pipx installation", tool_name))?;
-
-            let pipx_result = manager.install_with_pipx(git_repo, tool_name, Some(&app_handle)).await?;
+            let pipx_result = manager
+                .install(&package_or_repo, tool_name, Some(&app_handle))
+                .await?;
 
             if pipx_result.success {
                 eprintln!("✅ Successfully installed {}", tool_name);
@@ -1352,15 +1874,15 @@ async fn install_tool_internal(
             eprintln!("   APT package: {}", apt_package);
 
             let manager = crate::tools::package_managers::AptManager::new(app_handle.clone());
-            let started_event = EventEmitter::tool_installation_started(&tool_name, "apt");
+            let started_event = EventEmitter::tool_installation_started(tool_name, "apt");
             let _ = app_handle.emit(TOOL_INSTALLATION_STARTED, started_event);
 
-            match manager.install(apt_package, &tool_name).await {
+            match manager.install(apt_package, tool_name).await {
                 Ok(message) => {
                     eprintln!("✅ Successfully installed {}", tool_name);
                     let _ = recheck_tool(tool_name.to_string(), state).await;
 
-                    let completed_event = EventEmitter::tool_installation_completed(&tool_name, true, &message);
+                    let completed_event = EventEmitter::tool_installation_completed(tool_name, true, &message);
                     let _ = app_handle.emit(TOOL_INSTALLATION_COMPLETED, completed_event);
 
                     Ok(InstallationResult {
@@ -1374,7 +1896,7 @@ async fn install_tool_internal(
                     let error_msg = format!("Failed to install {}: {}", tool_name, e);
                     eprintln!("❌ {}", error_msg);
 
-                    let completed_event = EventEmitter::tool_installation_completed(&tool_name, false, &error_msg);
+                    let completed_event = EventEmitter::tool_installation_completed(tool_name, false, &error_msg);
                     let _ = app_handle.emit(TOOL_INSTALLATION_COMPLETED, completed_event);
 
                     Err(error_msg)
@@ -1388,15 +1910,15 @@ async fn install_tool_internal(
             eprintln!("   WinGet ID: {}", winget_id);
 
             let manager = crate::tools::package_managers::WingetManager::new(app_handle.clone());
-            let started_event = EventEmitter::tool_installation_started(&tool_name, "winget");
+            let started_event = EventEmitter::tool_installation_started(tool_name, "winget");
             let _ = app_handle.emit(TOOL_INSTALLATION_STARTED, started_event);
 
-            match manager.install(winget_id, &tool_name).await {
+            match manager.install(winget_id, tool_name).await {
                 Ok(message) => {
                     eprintln!("✅ Successfully installed {}", tool_name);
                     let _ = recheck_tool(tool_name.to_string(), state).await;
 
-                    let completed_event = EventEmitter::tool_installation_completed(&tool_name, true, &message);
+                    let completed_event = EventEmitter::tool_installation_completed(tool_name, true, &message);
                     let _ = app_handle.emit(TOOL_INSTALLATION_COMPLETED, completed_event);
 
                     Ok(InstallationResult {
@@ -1410,7 +1932,7 @@ async fn install_tool_internal(
                     let error_msg = format!("Failed to install {}: {}", tool_name, e);
                     eprintln!("❌ {}", error_msg);
 
-                    let completed_event = EventEmitter::tool_installation_completed(&tool_name, false, &error_msg);
+                    let completed_event = EventEmitter::tool_installation_completed(tool_name, false, &error_msg);
                     let _ = app_handle.emit(TOOL_INSTALLATION_COMPLETED, completed_event);
 
                     Err(error_msg)
@@ -1433,7 +1955,7 @@ async fn install_tool_internal(
                 return Err("Python is not installed. Please install Python first.".to_string());
             }
 
-            let git_pip_result = manager.install(git_repo, &tool_name, Some(&app_handle)).await?;
+            let git_pip_result = manager.install(git_repo, tool_name, Some(&app_handle)).await?;
 
             if git_pip_result.success {
                 eprintln!("✅ Successfully installed {}", tool_name);
@@ -1455,17 +1977,17 @@ async fn install_tool_internal(
             let manager = crate::tools::package_managers::CargoInstaller::new(app_handle.clone());
 
             // Emit installation started event
-            let started_event = EventEmitter::tool_installation_started(&tool_name, "cargo");
+            let started_event = EventEmitter::tool_installation_started(tool_name, "cargo");
             let _ = app_handle.emit(TOOL_INSTALLATION_STARTED, started_event);
 
-            match manager.install(tool_def, &tool_name).await {
+            match manager.install(tool_def, tool_name).await {
                 Ok(message) => {
                     eprintln!("✅ {}", message);
                     let _ = recheck_tool(tool_name.to_string(), state).await;
 
                     // Emit installation completed event
                     let completed_event = EventEmitter::tool_installation_completed(
-                        &tool_name,
+                        tool_name,
                         true,
                         &message
                     );
@@ -1484,7 +2006,7 @@ async fn install_tool_internal(
 
                     // Emit installation failed event
                     let completed_event = EventEmitter::tool_installation_completed(
-                        &tool_name,
+                        tool_name,
                         false,
                         &error_msg
                     );
@@ -1501,19 +2023,19 @@ async fn install_tool_internal(
             eprintln!("   Gem package: {}", gem_package);
 
             // Emit installation started event
-            let started_event = EventEmitter::tool_installation_started(&tool_name, "gem");
+            let started_event = EventEmitter::tool_installation_started(tool_name, "gem");
             let _ = app_handle.emit(TOOL_INSTALLATION_STARTED, started_event);
 
             let manager = crate::tools::package_managers::GemInstaller::new(app_handle.clone());
 
-            match manager.install(tool_def, &tool_name).await {
+            match manager.install(tool_def, tool_name).await {
                 Ok(message) => {
                     eprintln!("✅ {}", message);
                     let _ = recheck_tool(tool_name.to_string(), state).await;
 
                     // Emit installation completed event
                     let completed_event = EventEmitter::tool_installation_completed(
-                        &tool_name,
+                        tool_name,
                         true,
                         &message
                     );
@@ -1532,7 +2054,7 @@ async fn install_tool_internal(
 
                     // Emit installation failed event
                     let completed_event = EventEmitter::tool_installation_completed(
-                        &tool_name,
+                        tool_name,
                         false,
                         &error_msg
                     );
@@ -1549,19 +2071,19 @@ async fn install_tool_internal(
             eprintln!("   NPM package: {}", npm_package);
 
             // Emit installation started event
-            let started_event = EventEmitter::tool_installation_started(&tool_name, "npm");
+            let started_event = EventEmitter::tool_installation_started(tool_name, "npm");
             let _ = app_handle.emit(TOOL_INSTALLATION_STARTED, started_event);
 
             let manager = crate::tools::package_managers::NpmInstaller::new(app_handle.clone());
 
-            match manager.install(tool_def, &tool_name).await {
+            match manager.install(tool_def, tool_name).await {
                 Ok(message) => {
                     eprintln!("✅ {}", message);
                     let _ = recheck_tool(tool_name.to_string(), state).await;
 
                     // Emit installation completed event
                     let completed_event = EventEmitter::tool_installation_completed(
-                        &tool_name,
+                        tool_name,
                         true,
                         &message
                     );
@@ -1580,7 +2102,7 @@ async fn install_tool_internal(
 
                     // Emit installation failed event
                     let completed_event = EventEmitter::tool_installation_completed(
-                        &tool_name,
+                        tool_name,
                         false,
                         &error_msg
                     );
@@ -1603,17 +2125,17 @@ async fn install_tool_internal(
             {
                 let manager = crate::tools::package_managers::HomebrewManager::new();
                 let started_event =
-                    EventEmitter::tool_installation_started(&tool_name, "homebrew");
+                    EventEmitter::tool_installation_started(tool_name, "homebrew");
                 let _ = app_handle.emit(TOOL_INSTALLATION_STARTED, started_event);
 
-                match manager.install_tool(&tool_name, app_handle.clone()).await {
+                match manager.install_tool(tool_name, app_handle.clone()).await {
                     Ok(_) => {
                         let message = format!("Installed {} via Homebrew", tool_name);
                         eprintln!("✅ {}", message);
                         let _ = recheck_tool(tool_name.to_string(), state).await;
 
                         let completed_event = EventEmitter::tool_installation_completed(
-                            &tool_name,
+                            tool_name,
                             true,
                             &message,
                         );
@@ -1634,7 +2156,7 @@ async fn install_tool_internal(
                         eprintln!("❌ {}", error_msg);
 
                         let completed_event = EventEmitter::tool_installation_completed(
-                            &tool_name,
+                            tool_name,
                             false,
                             &error_msg,
                         );
@@ -1646,10 +2168,23 @@ async fn install_tool_internal(
             }
         }
         "manual" => {
-            Err(format!(
-                "Tool '{}' requires manual installation. Check documentation.",
-                tool_name
-            ))
+            if !crate::tools::package_managers::ManualInstaller::supports(tool_name) {
+                return Err(format!(
+                    "Tool '{}' requires manual installation and has no audited automation recipe",
+                    tool_name
+                ));
+            }
+            let manager = crate::tools::package_managers::ManualInstaller::new();
+            let result = manager.install(tool_name, Some(&app_handle)).await?;
+            if result.success {
+                let _ = recheck_tool(tool_name.to_string(), state).await;
+            }
+            Ok(InstallationResult {
+                success: result.success,
+                message: result.message,
+                steps: vec![],
+                requires_restart: false,
+            })
         },
         "runtime" => {
             Err(format!(
@@ -2272,15 +2807,18 @@ pub async fn check_tool_update(
     // Get tool definition to find its package manager
     let tool_catalog = crate::tools::get_tool_catalog();
     let tool_def = tool_catalog.get(&tool_name);
-    
+
     if tool_def.is_none() {
-        eprintln!("   ⚠️  Tool '{}' not found in catalog, trying legacy...", tool_name);
+        eprintln!(
+            "   ⚠️  Tool '{}' not found in catalog, trying legacy...",
+            tool_name
+        );
         return check_tool_update_legacy(tool_name, _state, _app_handle).await;
     }
-    
+
     let tool_def = tool_def.unwrap();
     let install_method = &tool_def.install_method;
-    
+
     // Map install method to package manager name
     let manager_name = match install_method.as_str() {
         "go" => "go",
@@ -2293,7 +2831,7 @@ pub async fn check_tool_update(
             }
             #[cfg(target_os = "linux")]
             "apt"
-        },
+        }
         "winget" => {
             #[cfg(not(target_os = "windows"))]
             {
@@ -2302,7 +2840,7 @@ pub async fn check_tool_update(
             }
             #[cfg(target_os = "windows")]
             "winget"
-        },
+        }
         "homebrew" => {
             #[cfg(not(target_os = "macos"))]
             {
@@ -2311,41 +2849,48 @@ pub async fn check_tool_update(
             }
             #[cfg(target_os = "macos")]
             "homebrew"
-        },
+        }
         "cargo" => "cargo",
         "gem" => "gem",
         "npm" => "npm",
         "manual" | "runtime" => {
             // Manual/runtime tools don't support automated updates
-            eprintln!("   ⚠️  Tool '{}' uses manual/runtime install, no automated updates", tool_name);
+            eprintln!(
+                "   ⚠️  Tool '{}' uses manual/runtime install, no automated updates",
+                tool_name
+            );
             return Ok(VersionCheckResult::error(
                 format!("Tool '{}' requires manual update checking", tool_name),
                 install_method.to_string(),
             ));
-        },
+        }
         _ => {
             // Unknown install method, use legacy
-            eprintln!("   ⚠️  Unknown install method '{}', using legacy checker", install_method);
+            eprintln!(
+                "   ⚠️  Unknown install method '{}', using legacy checker",
+                install_method
+            );
             return check_tool_update_legacy(tool_name, _state, _app_handle).await;
         }
     };
-    
+
     eprintln!("   📦 Tool installed via: {}", manager_name);
 
     // Use the new unified update checker coordinator with specific manager
     let config = crate::tools::package_managers::UpdateCheckerConfig::default();
     let coordinator = crate::tools::package_managers::UpdateCheckerCoordinator::new(config.clone());
-    
+
     // Only add the specific checker for this tool's package manager
     let checker = crate::tools::package_managers::UpdateCheckerFactory::create_checker_by_name(
         manager_name,
-        &config
-    ).await;
-    
+        &config,
+    )
+    .await;
+
     match checker {
         Some(checker) => {
             coordinator.add_checker(checker).await;
-            
+
             // Check for updates using the coordinator with only the relevant manager
             match coordinator.check_update(&tool_name).await {
                 Ok(coordinated_result) => {
@@ -2355,7 +2900,7 @@ pub async fn check_tool_update(
                         let latest_version = best_result.latest_version.clone();
                         let package_manager = best_result.package_manager.clone();
                         let error = best_result.error.clone();
-                        
+
                         // Convert new result to old format for backward compatibility
                         let old_result = VersionCheckResult {
                             has_update,
@@ -2394,7 +2939,10 @@ pub async fn check_tool_update(
         }
         None => {
             // Checker not available, use legacy
-            eprintln!("   ⚠️  Package manager '{}' not available, using legacy", manager_name);
+            eprintln!(
+                "   ⚠️  Package manager '{}' not available, using legacy",
+                manager_name
+            );
             check_tool_update_legacy(tool_name, _state, _app_handle).await
         }
     }
@@ -2600,9 +3148,26 @@ pub async fn get_tool_installation_info(
         .get(&tool_name)
         .ok_or_else(|| format!("Tool '{}' not found in catalog", tool_name))?;
 
+    let platform = crate::tools::catalog::InstallPlatform::current();
+    let available_methods = tool_def.install_methods_for(&tool_name, platform);
+    let recommended_method = tool_def.recommended_install_method(&tool_name, platform);
+    let automated_methods = available_methods
+        .iter()
+        .filter(|method| {
+            method.as_str() != "runtime"
+                && (method.as_str() != "manual"
+                    || crate::tools::package_managers::ManualInstaller::supports(&tool_name))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
     let info = serde_json::json!({
         "name": tool_def.name,
-        "install_method": tool_def.install_method,
+        "platform": platform.as_str(),
+        "install_method": recommended_method.clone(),
+        "recommended_install_method": recommended_method,
+        "available_install_methods": available_methods,
+        "automated_install_methods": automated_methods,
         "go_module": tool_def.go_module,
         "pipx_package": tool_def.pipx_package,
         "apt_package": tool_def.apt_package,
@@ -2623,60 +3188,6 @@ pub async fn check_elevation_support(
     let method = crate::tools::package_managers::check_elevation_support().await;
     eprintln!("✓ Elevation method: {:?}", method);
     Ok(method)
-}
-
-#[tauri::command]
-pub async fn execute_elevated_command(
-    command: String,
-    args: Vec<String>,
-    timeout_secs: u64,
-) -> Result<crate::tools::package_managers::ElevationResult, String> {
-    eprintln!("🔐 Executing elevated command: {} {:?}", command, args);
-
-    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result =
-        crate::tools::package_managers::execute_elevated(&command, &args_refs, timeout_secs)
-            .await?;
-
-    if result.success {
-        eprintln!("✅ Elevated command succeeded");
-    } else {
-        eprintln!("❌ Elevated command failed");
-    }
-
-    Ok(result)
-}
-
-#[tauri::command]
-pub async fn try_command_with_elevation(
-    command: String,
-    args: Vec<String>,
-    reason: String,
-    timeout_secs: u64,
-) -> Result<crate::tools::package_managers::ElevationResult, String> {
-    eprintln!(
-        "🔐 Trying command with smart elevation: {} {:?}",
-        command, args
-    );
-    eprintln!("   Reason: {}", reason);
-
-    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-    match crate::tools::package_managers::execute_with_smart_elevation(
-        &command,
-        &args_refs,
-        &reason,
-        timeout_secs,
-    )
-    .await
-    {
-        Ok(result) => Ok(result),
-        Err(e) if e.starts_with("ELEVATION_REQUIRED:") => {
-            // Return error to frontend so it can show dialog
-            Err(e)
-        }
-        Err(e) => Err(e),
-    }
 }
 
 /// Check if pipx .local\bin is in PATH
@@ -2813,7 +3324,7 @@ pub async fn cleanup_old_pipx() -> Result<String, String> {
 #[tauri::command]
 pub async fn build_tool_command(
     adapter_type: crate::adapters::AdapterType,
-) -> Result<Vec<String>, String> {
+) -> Result<crate::adapters::CommandPreview, String> {
     let registry = crate::adapters::AdapterRegistry::new();
     Ok(registry.build_command(&adapter_type))
 }
@@ -2824,57 +3335,129 @@ pub async fn build_tool_command_with_defaults(
     #[allow(non_snake_case)] tool_name: String,
     target: String,
     #[allow(non_snake_case)] outputFile: Option<String>,
-) -> Result<Vec<String>, String> {
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::adapters::CommandPreview, String> {
+    let target_inputs = crate::security::workflow_target_inputs(&target)?;
     let registry = crate::adapters::AdapterRegistry::new();
-    registry.build_command_with_defaults(&tool_name, target, outputFile)
+    if let Some(target_kind) = registry.target_kind(&tool_name) {
+        let normalized_target = target_inputs
+            .get(target_kind)
+            .ok_or_else(|| format!("{} requires a {} target", tool_name, target_kind))?;
+        return registry.build_command_with_defaults(
+            &tool_name,
+            normalized_target.clone(),
+            outputFile,
+        );
+    }
+
+    let profile = state
+        .auto_adapters
+        .get_profile(&tool_name)
+        .await
+        .ok_or_else(|| format!("No adapter is available for '{}'", tool_name))?;
+    let normalized_target = target_inputs
+        .get(&profile.target_kind)
+        .ok_or_else(|| format!("{} requires a {} target", tool_name, profile.target_kind))?;
+    profile.build_command(normalized_target, outputFile.as_deref())
 }
 
 /// Get detailed information about a specific adapter
 #[tauri::command]
 pub async fn get_adapter_info(
     #[allow(non_snake_case)] tool_name: String,
+    state: tauri::State<'_, AppState>,
 ) -> Result<crate::adapters::AdapterInfo, String> {
     let registry = crate::adapters::AdapterRegistry::new();
-    registry.get_adapter_info(&tool_name)
+    match registry.get_adapter_info(&tool_name) {
+        Ok(info) => Ok(info),
+        Err(_) => state
+            .auto_adapters
+            .get_profile(&tool_name)
+            .await
+            .map(|profile| profile.to_info())
+            .ok_or_else(|| format!("Unknown tool: {}", tool_name)),
+    }
 }
 
 /// List all available adapters
 #[tauri::command]
-pub async fn list_adapters() -> Result<Vec<crate::adapters::AdapterInfo>, String> {
+pub async fn list_adapters(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<crate::adapters::AdapterInfo>, String> {
     let registry = crate::adapters::AdapterRegistry::new();
-    Ok(registry.list_adapters())
+    let records = state
+        .tool_discovery
+        .read()
+        .await
+        .get_all_tool_records(false)
+        .await;
+    let failures = state.auto_adapters.sync_installed_tools(records).await;
+    for failure in failures {
+        eprintln!("Auto-adapter generation requires attention: {}", failure);
+    }
+
+    let mut adapters = registry.list_adapters();
+    adapters.extend(
+        state
+            .auto_adapters
+            .list_profiles()
+            .await
+            .into_iter()
+            .map(|profile| profile.to_info()),
+    );
+    adapters.sort_by(|left, right| left.tool_name.cmp(&right.tool_name));
+    Ok(adapters)
 }
 
 /// Get adapters by category
 #[tauri::command]
 pub async fn get_adapters_by_category(
     category: String,
+    state: tauri::State<'_, AppState>,
 ) -> Result<Vec<crate::adapters::AdapterInfo>, String> {
-    let registry = crate::adapters::AdapterRegistry::new();
-    Ok(registry.get_adapters_by_category(&category))
+    Ok(list_adapters(state)
+        .await?
+        .into_iter()
+        .filter(|info| info.category.eq_ignore_ascii_case(&category))
+        .collect())
 }
 
 /// Get adapters by risk level
 #[tauri::command]
 pub async fn get_adapters_by_risk_level(
     #[allow(non_snake_case)] riskLevel: String,
+    state: tauri::State<'_, AppState>,
 ) -> Result<Vec<crate::adapters::AdapterInfo>, String> {
-    let registry = crate::adapters::AdapterRegistry::new();
-    Ok(registry.get_adapters_by_risk_level(&riskLevel))
+    Ok(list_adapters(state)
+        .await?
+        .into_iter()
+        .filter(|info| info.risk_level.eq_ignore_ascii_case(&riskLevel))
+        .collect())
 }
 
 /// Check if an adapter exists for a tool
 #[tauri::command]
-pub async fn has_adapter(#[allow(non_snake_case)] tool_name: String) -> Result<bool, String> {
+pub async fn has_adapter(
+    #[allow(non_snake_case)] tool_name: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<bool, String> {
     let registry = crate::adapters::AdapterRegistry::new();
-    Ok(registry.has_adapter(&tool_name))
+    Ok(registry.has_adapter(&tool_name) || state.auto_adapters.has_ready_profile(&tool_name).await)
 }
 
 /// Get all adapter categories
 #[tauri::command]
-pub async fn get_adapter_categories() -> Result<Vec<String>, String> {
-    let registry = crate::adapters::AdapterRegistry::new();
-    Ok(registry.get_categories())
+pub async fn get_adapter_categories(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let mut categories = list_adapters(state)
+        .await?
+        .into_iter()
+        .map(|adapter| adapter.category)
+        .collect::<Vec<_>>();
+    categories.sort();
+    categories.dedup();
+    Ok(categories)
 }
 
 /// Enhanced update check with detailed results from multiple package managers
@@ -2891,7 +3474,8 @@ pub async fn check_tool_update_enhanced(
     let coordinator = crate::tools::package_managers::UpdateCheckerCoordinator::new(config.clone());
 
     // Add all available checkers
-    let checkers = crate::tools::package_managers::UpdateCheckerFactory::create_all_checkers(&config).await;
+    let checkers =
+        crate::tools::package_managers::UpdateCheckerFactory::create_all_checkers(&config).await;
     for checker in checkers {
         coordinator.add_checker(checker).await;
     }
@@ -2926,12 +3510,13 @@ pub async fn get_update_checker_telemetry(
 
     // Get telemetry summary
     let summary = coordinator.get_telemetry_summary();
-    
+
     // Get recent events
     let recent_events = coordinator.get_recent_telemetry_events(Some(50));
-    
+
     // Export events to JSON
-    let events_json = coordinator.export_telemetry_events()
+    let events_json = coordinator
+        .export_telemetry_events()
         .map_err(|e| format!("Failed to export telemetry events: {}", e))?;
 
     let telemetry_data = serde_json::json!({
@@ -2960,4 +3545,48 @@ pub async fn clear_update_checker_telemetry(
 
     eprintln!("   ✅ Telemetry cleared");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ensure_workflow_compatible, resolve_results_directory};
+    use crate::workflow::types::WorkflowCompatibility;
+
+    #[test]
+    fn confines_scan_results_to_managed_root() {
+        let root = std::env::temp_dir().join("unihack-results");
+
+        assert_eq!(
+            std::path::PathBuf::from(
+                resolve_results_directory(&root, Some("audit/example.com")).unwrap()
+            ),
+            root.join("audit").join("example.com")
+        );
+        assert_eq!(
+            std::path::PathBuf::from(
+                resolve_results_directory(&root, Some("./results/legacy-name")).unwrap()
+            ),
+            root.join("legacy-name")
+        );
+        assert!(resolve_results_directory(&root, Some("../escape")).is_err());
+        let outside = std::env::temp_dir().join("unihack-outside");
+        assert!(resolve_results_directory(&root, outside.to_str()).is_err());
+    }
+
+    #[test]
+    fn rejects_workflows_with_missing_tools_before_execution() {
+        let compatibility = WorkflowCompatibility {
+            compatible: false,
+            required_tools: vec!["subfinder".to_string(), "nuclei".to_string()],
+            available_tools: vec!["subfinder".to_string()],
+            missing_tools: vec!["nuclei".to_string()],
+            compatibility_percentage: 50.0,
+            warnings: vec![],
+        };
+
+        let error = ensure_workflow_compatible("quick-scan", &compatibility).unwrap_err();
+        assert!(error.contains("quick-scan"));
+        assert!(error.contains("nuclei"));
+        assert!(error.contains("refresh tool discovery"));
+    }
 }

@@ -35,12 +35,10 @@ pub use go_install::GoInstallManager;
 pub use homebrew_manager::HomebrewManager;
 pub use homebrew_registry::get_homebrew_mapping;
 pub use installation::{install_pipx, InstallationResult};
+pub use manual_installer::ManualInstaller;
 pub use npm_installer::NpmInstaller;
 pub use pipx_manager::PipxManager;
-pub use update_checker::{
-    UpdateCheckerCoordinator, UpdateCheckResult as NewUpdateCheckResult,
-    UpdateCheckError, UpdateCheckErrorCode, UpdateCheckerConfig, UpdateCheckerFactory,
-};
+pub use update_checker::{UpdateCheckerConfig, UpdateCheckerCoordinator, UpdateCheckerFactory};
 pub use version_checker::{
     check_apt_update, check_go_update, check_pipx_update, VersionCheckResult,
 };

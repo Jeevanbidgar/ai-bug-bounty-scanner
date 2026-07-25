@@ -2,11 +2,11 @@
 //
 // Implements update checking for npm packages using npm outdated -g
 
-use std::time::Duration;
-use super::super::traits::{UpdateChecker, UpdateCheckResult, UpdateType};
-use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
 use super::super::command_runner::CommandRunner;
+use super::super::error_types::UpdateCheckError;
+use super::super::traits::{UpdateCheckResult, UpdateChecker, UpdateType};
 use super::super::version::Version;
+use std::time::Duration;
 
 /// NPM update checker
 pub struct NpmUpdateChecker {
@@ -35,10 +35,13 @@ impl NpmUpdateChecker {
     /// Get current version using `npm list -g <package> --depth=0 --json`
     async fn get_current_version(&self, package_name: &str) -> Result<String, UpdateCheckError> {
         let npm_cmd = self.npm_command();
-        let output = self.command_runner.execute(
-            npm_cmd,
-            &["list", "-g", package_name, "--depth=0", "--json"],
-        ).await?;
+        let output = self
+            .command_runner
+            .execute(
+                npm_cmd,
+                &["list", "-g", package_name, "--depth=0", "--json"],
+            )
+            .await?;
 
         if !output.success {
             return Err(UpdateCheckError::package_not_found(
@@ -64,10 +67,10 @@ impl NpmUpdateChecker {
     /// Check for updates using `npm outdated -g <package> --json`
     async fn check_outdated(&self, package_name: &str) -> Result<Option<String>, UpdateCheckError> {
         let npm_cmd = self.npm_command();
-        let output = self.command_runner.execute(
-            npm_cmd,
-            &["outdated", "-g", package_name, "--json"],
-        ).await?;
+        let output = self
+            .command_runner
+            .execute(npm_cmd, &["outdated", "-g", package_name, "--json"])
+            .await?;
 
         // npm outdated returns exit code 1 if there are outdated packages
         if output.stdout.trim().is_empty() {
@@ -108,26 +111,36 @@ impl NpmUpdateChecker {
 }
 
 impl UpdateChecker for NpmUpdateChecker {
-    fn check_update(&self, package_name: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        package_name: &str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>>
+                + Send
+                + '_,
+        >,
+    > {
         let command_runner = self.command_runner.clone();
         let package_name = package_name.to_string();
-        
+
         Box::pin(async move {
             let checker = NpmUpdateChecker::new(command_runner);
-            
-            // Get current version  
+
+            // Get current version
             let current_version = checker.get_current_version(&package_name).await?;
-        
+
             // Check for updates
             let latest_version = checker.check_outdated(&package_name).await?;
-            
+
             match latest_version {
                 Some(latest) => {
                     // Compare versions
-                    let has_update = match (Version::parse(&current_version), Version::parse(&latest)) {
-                        (Some(current_v), Some(latest_v)) => latest_v > current_v,
-                        _ => current_version != latest, // Fallback to string comparison
-                    };
+                    let has_update =
+                        match (Version::parse(&current_version), Version::parse(&latest)) {
+                            (Some(current_v), Some(latest_v)) => latest_v > current_v,
+                            _ => current_version != latest, // Fallback to string comparison
+                        };
 
                     let update_type = if has_update {
                         Self::determine_update_type(&current_version, &latest)
@@ -163,13 +176,13 @@ impl UpdateChecker for NpmUpdateChecker {
         "npm"
     }
 
-    fn is_available(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+    fn is_available(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
         let command_runner = self.command_runner.clone();
         let npm_cmd = self.npm_command().to_string();
-        
-        Box::pin(async move {
-            command_runner.is_available(&npm_cmd).await
-        })
+
+        Box::pin(async move { command_runner.is_available(&npm_cmd).await })
     }
 
     fn timeout(&self) -> Duration {

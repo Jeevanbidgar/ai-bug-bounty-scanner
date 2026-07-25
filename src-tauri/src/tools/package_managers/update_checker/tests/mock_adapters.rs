@@ -2,12 +2,12 @@
 //
 // Provides mock implementations of update checkers for testing
 
-use super::super::traits::{UpdateChecker, UpdateCheckResult};
 use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
+use super::super::traits::{UpdateCheckResult, UpdateChecker};
 use super::fixtures::UpdateCheckerFixtures;
-use std::time::Duration;
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
+use std::time::Duration;
 
 /// Mock update checker that always returns a successful update
 pub struct MockSuccessfulUpdateChecker {
@@ -37,7 +37,11 @@ impl MockSuccessfulUpdateChecker {
 }
 
 impl UpdateChecker for MockSuccessfulUpdateChecker {
-    fn check_update(&self, _package_name: &str) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        _package_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>>
+    {
         let manager_name = self.manager_name.clone();
         Box::pin(async move {
             let mut result = UpdateCheckerFixtures::successful_update();
@@ -51,9 +55,7 @@ impl UpdateChecker for MockSuccessfulUpdateChecker {
     }
 
     fn is_available(&self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
-        Box::pin(async {
-            true
-        })
+        Box::pin(async { true })
     }
 
     fn timeout(&self) -> Duration {
@@ -93,7 +95,11 @@ impl MockNoUpdateChecker {
 }
 
 impl UpdateChecker for MockNoUpdateChecker {
-    fn check_update(&self, _package_name: &str) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        _package_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>>
+    {
         let manager_name = self.manager_name.clone();
         Box::pin(async move {
             let mut result = UpdateCheckerFixtures::no_update();
@@ -107,9 +113,7 @@ impl UpdateChecker for MockNoUpdateChecker {
     }
 
     fn is_available(&self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
-        Box::pin(async {
-            true
-        })
+        Box::pin(async { true })
     }
 
     fn timeout(&self) -> Duration {
@@ -156,19 +160,20 @@ impl MockErrorUpdateChecker {
 }
 
 impl UpdateChecker for MockErrorUpdateChecker {
-    fn check_update(&self, package_name: &str) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        package_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>>
+    {
         let error_code = self.error_code;
         let manager_name = self.manager_name.clone();
         let package_name = package_name.to_string();
-        
+
         Box::pin(async move {
             Err(UpdateCheckError::new(
                 error_code,
                 format!("Mock error for {}", package_name),
-                super::super::error_types::UpdateCheckErrorContext::new(
-                    manager_name,
-                    package_name,
-                ),
+                super::super::error_types::UpdateCheckErrorContext::new(manager_name, package_name),
             ))
         })
     }
@@ -178,9 +183,7 @@ impl UpdateChecker for MockErrorUpdateChecker {
     }
 
     fn is_available(&self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
-        Box::pin(async {
-            true
-        })
+        Box::pin(async { true })
     }
 
     fn timeout(&self) -> Duration {
@@ -220,13 +223,17 @@ impl MockTimeoutUpdateChecker {
 }
 
 impl UpdateChecker for MockTimeoutUpdateChecker {
-    fn check_update(&self, package_name: &str) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        _package_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>>
+    {
         let manager_name = self.manager_name.clone();
-        
+
         Box::pin(async move {
             // Simulate a long-running operation that will timeout
             tokio::time::sleep(Duration::from_secs(10)).await;
-            
+
             Ok(UpdateCheckResult::success(
                 true,
                 Some("1.0.0".to_string()),
@@ -243,9 +250,7 @@ impl UpdateChecker for MockTimeoutUpdateChecker {
     }
 
     fn is_available(&self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
-        Box::pin(async {
-            true
-        })
+        Box::pin(async { true })
     }
 
     fn timeout(&self) -> Duration {
@@ -285,10 +290,14 @@ impl MockNetworkErrorUpdateChecker {
 }
 
 impl UpdateChecker for MockNetworkErrorUpdateChecker {
-    fn check_update(&self, package_name: &str) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        package_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>>
+    {
         let manager_name = self.manager_name.clone();
         let package_name = package_name.to_string();
-        
+
         Box::pin(async move {
             Err(UpdateCheckError::network_error(
                 manager_name,
@@ -303,9 +312,7 @@ impl UpdateChecker for MockNetworkErrorUpdateChecker {
     }
 
     fn is_available(&self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
-        Box::pin(async {
-            true
-        })
+        Box::pin(async { true })
     }
 
     fn timeout(&self) -> Duration {
@@ -345,10 +352,14 @@ impl MockPackageNotFoundUpdateChecker {
 }
 
 impl UpdateChecker for MockPackageNotFoundUpdateChecker {
-    fn check_update(&self, package_name: &str) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        package_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>>
+    {
         let manager_name = self.manager_name.clone();
         let package_name = package_name.to_string();
-        
+
         Box::pin(async move {
             Err(UpdateCheckError::package_not_found(
                 manager_name,
@@ -362,9 +373,7 @@ impl UpdateChecker for MockPackageNotFoundUpdateChecker {
     }
 
     fn is_available(&self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
-        Box::pin(async {
-            true
-        })
+        Box::pin(async { true })
     }
 
     fn timeout(&self) -> Duration {
@@ -404,12 +413,14 @@ impl MockManagerNotAvailableUpdateChecker {
 }
 
 impl UpdateChecker for MockManagerNotAvailableUpdateChecker {
-    fn check_update(&self, _package_name: &str) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        _package_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>>
+    {
         let manager_name = self.manager_name.clone();
-        
-        Box::pin(async move {
-            Err(UpdateCheckError::manager_not_available(manager_name))
-        })
+
+        Box::pin(async move { Err(UpdateCheckError::manager_not_available(manager_name)) })
     }
 
     fn manager_name(&self) -> &str {

@@ -5,36 +5,54 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::RwLock;
+use tokio::sync::{watch, RwLock};
 use tokio::time::timeout;
 use uuid::Uuid;
 
-use crate::adapters::AdapterRegistry;
+use crate::events::SharedEventSink;
 use crate::runtime::process::configure_tokio_command;
+use crate::settings::AppSettings;
 use crate::tools::discovery::ToolDiscoveryService;
 use crate::workflow::artifacts::ArtifactManager;
 use crate::workflow::types::{WorkflowArtifact, WorkflowStep};
 
+#[derive(Debug)]
+pub struct StepOutcome {
+    pub artifacts: Vec<WorkflowArtifact>,
+    pub exit_code: i32,
+    pub stdout: Vec<String>,
+    pub stderr: Vec<String>,
+    pub started_at: chrono::DateTime<Utc>,
+    pub completed_at: chrono::DateTime<Utc>,
+}
+
+struct RetryState<'a> {
+    config: &'a crate::workflow::types::WorkflowRetry,
+    cancellation: watch::Receiver<bool>,
+}
+
 #[derive(Clone)]
 pub struct ProcessExecutor {
-    app_handle: AppHandle,
+    events: SharedEventSink,
     tool_discovery: Arc<RwLock<ToolDiscoveryService>>,
     artifact_manager: Arc<ArtifactManager>,
+    settings: Arc<RwLock<AppSettings>>,
 }
 
 impl ProcessExecutor {
     pub fn new(
-        app_handle: AppHandle,
+        events: SharedEventSink,
         tool_discovery: Arc<RwLock<ToolDiscoveryService>>,
         artifact_manager: Arc<ArtifactManager>,
+        settings: Arc<RwLock<AppSettings>>,
     ) -> Self {
         Self {
-            app_handle,
+            events,
             tool_discovery,
             artifact_manager,
+            settings,
         }
     }
 
@@ -45,7 +63,9 @@ impl ProcessExecutor {
         execution_id: &str,
         working_directory: &str,
         inputs: &HashMap<String, String>,
-    ) -> Result<Vec<WorkflowArtifact>> {
+        artifacts: &HashMap<String, Vec<WorkflowArtifact>>,
+        cancellation: watch::Receiver<bool>,
+    ) -> Result<StepOutcome> {
         // Check if step has retry configuration
         if let Some(retry_config) = &step.retry {
             self.execute_step_with_retry(
@@ -53,13 +73,24 @@ impl ProcessExecutor {
                 execution_id,
                 working_directory,
                 inputs,
-                retry_config,
+                artifacts,
+                RetryState {
+                    config: retry_config,
+                    cancellation,
+                },
             )
             .await
         } else {
             // No retry, execute once
-            self.execute_step_once(step, execution_id, working_directory, inputs)
-                .await
+            self.execute_step_once(
+                step,
+                execution_id,
+                working_directory,
+                inputs,
+                artifacts,
+                cancellation,
+            )
+            .await
         }
     }
 
@@ -70,9 +101,13 @@ impl ProcessExecutor {
         execution_id: &str,
         working_directory: &str,
         inputs: &HashMap<String, String>,
-        retry_config: &crate::workflow::types::WorkflowRetry,
-    ) -> Result<Vec<WorkflowArtifact>> {
+        artifacts: &HashMap<String, Vec<WorkflowArtifact>>,
+        retry: RetryState<'_>,
+    ) -> Result<StepOutcome> {
+        let retry_config = retry.config;
+        let mut cancellation = retry.cancellation;
         let mut last_error = None;
+        let mut last_outcome = None;
         let max_attempts = retry_config.max_attempts.max(1); // At least 1 attempt
 
         for attempt in 0..max_attempts {
@@ -88,7 +123,7 @@ impl ProcessExecutor {
                 );
 
                 // Emit retry event
-                let _ = self.app_handle.emit(
+                let _ = self.events.emit(
                     "workflow:step_retry",
                     serde_json::json!({
                         "execution_id": execution_id,
@@ -101,15 +136,27 @@ impl ProcessExecutor {
                 );
 
                 // Wait before retrying (exponential backoff)
-                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(delay_ms)) => {}
+                    _ = Self::wait_for_cancellation(&mut cancellation) => {
+                        return Err(anyhow!("Execution cancelled"));
+                    }
+                }
             }
 
             // Attempt execution
             match self
-                .execute_step_once(step, execution_id, working_directory, inputs)
+                .execute_step_once(
+                    step,
+                    execution_id,
+                    working_directory,
+                    inputs,
+                    artifacts,
+                    cancellation.clone(),
+                )
                 .await
             {
-                Ok(artifacts) => {
+                Ok(outcome) if step.is_success_exit_code(outcome.exit_code) => {
                     if attempt > 0 {
                         eprintln!(
                             "Step '{}' succeeded on attempt {}/{}",
@@ -118,7 +165,17 @@ impl ProcessExecutor {
                             max_attempts
                         );
                     }
-                    return Ok(artifacts);
+                    return Ok(outcome);
+                }
+                Ok(outcome) => {
+                    eprintln!(
+                        "Step '{}' exited with code {} on attempt {}/{}",
+                        step.id,
+                        outcome.exit_code,
+                        attempt + 1,
+                        max_attempts
+                    );
+                    last_outcome = Some(outcome);
                 }
                 Err(e) => {
                     last_error = Some(e);
@@ -138,6 +195,10 @@ impl ProcessExecutor {
             }
         }
 
+        if let Some(outcome) = last_outcome {
+            return Ok(outcome);
+        }
+
         // All attempts failed
         Err(last_error
             .unwrap_or_else(|| anyhow!("Step execution failed after {} attempts", max_attempts)))
@@ -150,26 +211,21 @@ impl ProcessExecutor {
         execution_id: &str,
         working_directory: &str,
         inputs: &HashMap<String, String>,
-    ) -> Result<Vec<WorkflowArtifact>> {
+        artifacts: &HashMap<String, Vec<WorkflowArtifact>>,
+        mut cancellation: watch::Receiver<bool>,
+    ) -> Result<StepOutcome> {
         let step_id = &step.id;
+        let started_at = Utc::now();
 
-        // Emit step started event (only on first attempt)
-        let _ = self.app_handle.emit(
-            "workflow:step_started",
-            serde_json::json!({
-                "execution_id": execution_id,
-                "step_id": step_id,
-                "step_name": step.name,
-                "timestamp": Utc::now().to_rfc3339()
-            }),
-        );
+        if *cancellation.borrow() {
+            return Err(anyhow!("Execution cancelled"));
+        }
 
         // Build command with template variable substitution
-        let empty_artifacts = HashMap::new();
         let mut command_args = Vec::new();
         for arg in &step.run {
             let resolved_arg =
-                self.resolve_template_variables(arg, working_directory, inputs, &empty_artifacts);
+                self.resolve_template_variables(arg, working_directory, inputs, artifacts);
             command_args.push(resolved_arg);
         }
 
@@ -177,29 +233,23 @@ impl ProcessExecutor {
             return Err(anyhow!("Step '{}' has no command to execute", step_id));
         }
 
-        // Try to use adapter first, fall back to original command
-        let tool_name = &command_args[0];
-        let final_command_args = self
-            .try_build_command_with_adapter(tool_name, &command_args, inputs)
-            .unwrap_or_else(|| {
-                eprintln!("🔧 Using original command for tool: {}", tool_name);
-                command_args.clone()
-            });
+        // Workflow files already contain the complete argv contract. Rebuilding
+        // them with an adapter's defaults discards workflow-specific flags.
+        let tool_name = command_args[0].clone();
+        let final_command_args = command_args;
 
         // Resolve tool path using ToolDiscoveryService
         let resolved_tool_path = {
             let discovery = self.tool_discovery.read().await;
-            match discovery.get_tool_record(tool_name, false).await {
+            match discovery.get_tool_record(&tool_name, false).await {
                 Some(tool_record) => {
                     if tool_record.installed && tool_record.status == "available" {
-                        // Use the discovered tool path
-                        match tool_record.path {
-                            Some(path) => path,
-                            None => {
-                                eprintln!("Warning: Tool '{}' marked as available but has no path, using tool name", tool_name);
-                                tool_name.clone()
-                            }
-                        }
+                        tool_record.path.ok_or_else(|| {
+                            anyhow!(
+                                "Tool '{}' is marked available but has no verified executable path",
+                                tool_name
+                            )
+                        })?
                     } else if !tool_record.installed {
                         // Tool exists in catalog but not installed
                         return Err(anyhow!(
@@ -209,39 +259,90 @@ impl ProcessExecutor {
                             tool_record.missing_dependencies
                         ));
                     } else {
-                        // Tool installed but not available (degraded/error state)
-                        eprintln!(
-                            "Warning: Tool '{}' is in '{}' state. Error: {:?}. Attempting execution anyway...",
+                        return Err(anyhow!(
+                            "Tool '{}' is not ready (status: '{}'). Last error: {:?}",
                             tool_name,
                             tool_record.status,
                             tool_record.last_error
-                        );
-                        match tool_record.path {
-                            Some(path) => path,
-                            None => tool_name.clone(),
-                        }
+                        ));
                     }
                 }
                 None => {
-                    // Tool not found in catalog, try to use it directly (might be in PATH)
-                    eprintln!(
-                        "Warning: Tool '{}' not found in catalog, attempting direct execution",
+                    return Err(anyhow!(
+                        "Workflow requested undeclared tool '{}'; register it before execution",
                         tool_name
-                    );
-                    tool_name.clone()
+                    ));
                 }
             }
         };
 
-        let timeout_duration = Duration::from_secs(step.timeout.unwrap_or(300));
+        let settings = self.settings.read().await.clone();
+        let timeout_duration = Duration::from_secs(
+            step.timeout
+                .unwrap_or(settings.default_step_timeout_seconds),
+        );
         let mut cmd = Command::new(&resolved_tool_path);
         cmd.args(&final_command_args[1..])
             .current_dir(working_directory)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if step.stdin.is_some() {
+            cmd.stdin(Stdio::piped());
+        } else {
+            cmd.stdin(Stdio::null());
+        }
+
+        if let Some(environment) = &step.env {
+            for (key, value) in environment {
+                cmd.env(
+                    key,
+                    self.resolve_template_variables(value, working_directory, inputs, artifacts),
+                );
+            }
+        }
         configure_tokio_command(&mut cmd);
 
         let mut child = cmd.spawn()?;
+
+        if let Some(stdin_template) = &step.stdin {
+            let mut input = self.resolve_template_variables(
+                stdin_template,
+                working_directory,
+                inputs,
+                artifacts,
+            );
+            if input.len() > 65_536 {
+                Self::terminate_process_tree(child.id());
+                let _ = child.kill().await;
+                return Err(anyhow!("Step '{}' resolved stdin is too large", step_id));
+            }
+            if !input.ends_with('\n') {
+                input.push('\n');
+            }
+            let write_result = match child.stdin.take() {
+                Some(mut child_stdin) => {
+                    async {
+                        child_stdin.write_all(input.as_bytes()).await?;
+                        child_stdin.shutdown().await
+                    }
+                    .await
+                }
+                None => Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "child stdin was not piped",
+                )),
+            };
+            if let Err(error) = write_result {
+                Self::terminate_process_tree(child.id());
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                return Err(anyhow!(
+                    "Failed to write stdin for step '{}': {}",
+                    step_id,
+                    error
+                ));
+            }
+        }
 
         let stdout = child
             .stdout
@@ -252,135 +353,142 @@ impl ProcessExecutor {
             .take()
             .ok_or_else(|| anyhow!("Failed to capture stderr"))?;
 
-        // Stream output in real-time
-        let app_handle_clone = self.app_handle.clone();
+        let child_pid = child.id();
+
+        // Drain stdout and stderr independently. The previous select loop stopped
+        // as soon as either stream closed and could silently lose the remainder.
+        let events_clone = self.events.clone();
         let execution_id_clone = execution_id.to_string();
         let step_id_clone = step_id.to_string();
 
-        tokio::spawn(async move {
-            let _ = Self::stream_output(
-                stdout,
-                stderr,
-                &app_handle_clone,
-                &execution_id_clone,
-                &step_id_clone,
-            )
-            .await;
-        });
+        let stdout_task = tokio::spawn(Self::stream_output(
+            stdout,
+            events_clone,
+            execution_id_clone,
+            step_id_clone,
+            "workflow:stdout",
+            settings.max_output_lines_per_stream,
+        ));
+        let stderr_task = tokio::spawn(Self::stream_output(
+            stderr,
+            self.events.clone(),
+            execution_id.to_string(),
+            step_id.to_string(),
+            "workflow:stderr",
+            settings.max_output_lines_per_stream,
+        ));
 
-        // Wait for process completion with timeout
-        let result = timeout(timeout_duration, child.wait()).await;
+        // Wait for normal completion, timeout, or explicit cancellation.
+        let result = tokio::select! {
+            result = timeout(timeout_duration, child.wait()) => Some(result),
+            _ = Self::wait_for_cancellation(&mut cancellation) => None,
+        };
 
         let exit_code = match result {
-            Ok(Ok(status)) => status.code().unwrap_or(-1),
-            Ok(Err(e)) => {
+            Some(Ok(Ok(status))) => status.code().unwrap_or(-1),
+            Some(Ok(Err(e))) => {
                 eprintln!("Process error: {}", e);
                 -1
             }
-            Err(_) => {
+            Some(Err(_)) => {
                 // Timeout occurred
+                Self::terminate_process_tree(child_pid);
                 let _ = child.kill().await;
-                let _ = self.app_handle.emit(
-                    "workflow:step_failed",
-                    serde_json::json!({
-                        "execution_id": execution_id,
-                        "step_id": step_id,
-                        "error": "Step timed out",
-                        "timestamp": Utc::now().to_rfc3339()
-                    }),
-                );
+                let _ = child.wait().await;
+                let _ = stdout_task.await;
+                let _ = stderr_task.await;
                 return Err(anyhow!(
                     "Step '{}' timed out after {} seconds",
                     step_id,
                     timeout_duration.as_secs()
                 ));
             }
+            None => {
+                Self::terminate_process_tree(child_pid);
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                let _ = stdout_task.await;
+                let _ = stderr_task.await;
+                return Err(anyhow!("Execution cancelled"));
+            }
         };
 
-        // Emit step completion event
-        if exit_code == 0 {
-            let _ = self.app_handle.emit(
-                "workflow:step_completed",
-                serde_json::json!({
-                    "execution_id": execution_id,
-                    "step_id": step_id,
-                    "exit_code": exit_code,
-                    "timestamp": Utc::now().to_rfc3339()
-                }),
-            );
-        } else {
-            let _ = self.app_handle.emit(
-                "workflow:step_failed",
-                serde_json::json!({
-                    "execution_id": execution_id,
-                    "step_id": step_id,
-                    "error": format!("Process exited with code {}", exit_code),
-                    "timestamp": Utc::now().to_rfc3339()
-                }),
-            );
-        }
+        let stdout = match stdout_task.await {
+            Ok(Ok(lines)) => lines,
+            Ok(Err(error)) => {
+                eprintln!("Failed to read step stdout: {}", error);
+                Vec::new()
+            }
+            Err(error) => {
+                eprintln!("Stdout reader task failed: {}", error);
+                Vec::new()
+            }
+        };
+        let stderr = match stderr_task.await {
+            Ok(Ok(lines)) => lines,
+            Ok(Err(error)) => {
+                eprintln!("Failed to read step stderr: {}", error);
+                Vec::new()
+            }
+            Err(error) => {
+                eprintln!("Stderr reader task failed: {}", error);
+                Vec::new()
+            }
+        };
 
         // Collect artifacts
         let artifacts = self
-            .collect_artifacts(step, working_directory, execution_id)
+            .collect_artifacts(
+                step,
+                working_directory,
+                execution_id,
+                inputs,
+                artifacts,
+                &stdout,
+            )
             .await?;
 
-        Ok(artifacts)
+        Ok(StepOutcome {
+            artifacts,
+            exit_code,
+            stdout,
+            stderr,
+            started_at,
+            completed_at: Utc::now(),
+        })
     }
 
-    async fn stream_output(
-        stdout: tokio::process::ChildStdout,
-        stderr: tokio::process::ChildStderr,
-        app_handle: &AppHandle,
-        execution_id: &str,
-        step_id: &str,
-    ) -> Result<()> {
-        let stdout_reader = BufReader::new(stdout);
-        let stderr_reader = BufReader::new(stderr);
+    async fn stream_output<R>(
+        stream: R,
+        events: SharedEventSink,
+        execution_id: String,
+        step_id: String,
+        event_name: &'static str,
+        max_captured_lines: usize,
+    ) -> Result<Vec<String>>
+    where
+        R: tokio::io::AsyncRead + Unpin,
+    {
+        let mut lines = BufReader::new(stream).lines();
+        let mut captured = Vec::new();
 
-        let mut stdout_lines = stdout_reader.lines();
-        let mut stderr_lines = stderr_reader.lines();
+        while let Some(line) = lines.next_line().await? {
+            let _ = events.emit(
+                event_name,
+                serde_json::json!({
+                    "execution_id": execution_id,
+                    "step_id": step_id,
+                    "line": line,
+                    "timestamp": Utc::now().to_rfc3339()
+                }),
+            );
 
-        loop {
-            tokio::select! {
-                line = stdout_lines.next_line() => {
-                    match line {
-                        Ok(Some(line)) => {
-                            let _ = app_handle.emit("workflow:stdout", serde_json::json!({
-                                "execution_id": execution_id,
-                                "step_id": step_id,
-                                "line": line,
-                                "timestamp": Utc::now().to_rfc3339()
-                            }));
-                        }
-                        Ok(None) => break,
-                        Err(e) => {
-                            eprintln!("Error reading stdout: {}", e);
-                            break;
-                        }
-                    }
-                }
-                line = stderr_lines.next_line() => {
-                    match line {
-                        Ok(Some(line)) => {
-                            let _ = app_handle.emit("workflow:stderr", serde_json::json!({
-                                "execution_id": execution_id,
-                                "step_id": step_id,
-                                "line": line,
-                                "timestamp": Utc::now().to_rfc3339()
-                            }));
-                        }
-                        Ok(None) => break,
-                        Err(e) => {
-                            eprintln!("Error reading stderr: {}", e);
-                            break;
-                        }
-                    }
-                }
+            if captured.len() < max_captured_lines {
+                captured.push(line);
             }
         }
 
-        Ok(())
+        Ok(captured)
     }
 
     async fn collect_artifacts(
@@ -388,22 +496,48 @@ impl ProcessExecutor {
         step: &WorkflowStep,
         working_directory: &str,
         execution_id: &str,
+        inputs: &HashMap<String, String>,
+        artifacts_by_step: &HashMap<String, Vec<WorkflowArtifact>>,
+        stdout: &[String],
     ) -> Result<Vec<WorkflowArtifact>> {
         let mut artifacts = Vec::new();
-        let empty_artifacts_map = HashMap::new();
 
         // Collect artifacts based on step outputs
         for output in &step.outputs {
             let artifact_path = self.resolve_template_variables(
                 &output.path,
                 working_directory,
-                &HashMap::new(),
-                &empty_artifacts_map,
+                inputs,
+                artifacts_by_step,
             );
-            let full_path = PathBuf::from(working_directory).join(&artifact_path);
+            let artifact_path = PathBuf::from(artifact_path);
+            let full_path = if artifact_path.is_absolute() {
+                artifact_path
+            } else {
+                PathBuf::from(working_directory).join(artifact_path)
+            };
+
+            if output.artifact_type == "stdout" && !full_path.exists() && !stdout.is_empty() {
+                let working_root = PathBuf::from(working_directory);
+                if full_path.parent() != Some(working_root.as_path()) {
+                    return Err(anyhow!(
+                        "Stdout artifact '{}' must be a direct child of the scan working directory",
+                        output.name
+                    ));
+                }
+                tokio::fs::write(&full_path, format!("{}\n", stdout.join("\n"))).await?;
+            }
 
             if full_path.exists() {
-                let content = tokio::fs::read_to_string(&full_path).await.ok();
+                let canonical_path = tokio::fs::canonicalize(&full_path).await?;
+                if !canonical_path.starts_with(working_directory) {
+                    return Err(anyhow!(
+                        "Artifact '{}' resolves outside the scan working directory",
+                        output.name
+                    ));
+                }
+
+                let content = tokio::fs::read_to_string(&canonical_path).await.ok();
 
                 let mut artifact = WorkflowArtifact {
                     id: Uuid::new_v4().to_string(),
@@ -411,7 +545,7 @@ impl ProcessExecutor {
                     step_id: step.id.clone(),
                     name: output.name.clone(),
                     artifact_type: output.artifact_type.clone(),
-                    file_path: Some(full_path.to_string_lossy().to_string()),
+                    file_path: Some(canonical_path.to_string_lossy().to_string()),
                     content,
                     metadata_: None,
                     size: None,
@@ -431,116 +565,49 @@ impl ProcessExecutor {
             }
         }
 
-        // Also collect common artifacts that might have been generated
-        let common_artifacts = self.find_common_artifacts(working_directory).await?;
-        for mut artifact in common_artifacts {
-            // Enrich common artifacts too
-            if let Err(e) = self.artifact_manager.enrich_artifact(&mut artifact).await {
-                eprintln!(
-                    "Warning: Failed to enrich common artifact '{}': {}",
-                    artifact.name, e
-                );
-            }
-            artifacts.push(artifact);
-        }
-
         Ok(artifacts)
     }
 
-    async fn find_common_artifacts(
-        &self,
-        working_directory: &str,
-    ) -> Result<Vec<WorkflowArtifact>> {
-        let mut artifacts = Vec::new();
+    async fn wait_for_cancellation(cancellation: &mut watch::Receiver<bool>) {
+        loop {
+            if *cancellation.borrow() {
+                return;
+            }
 
-        let common_files = vec![
-            "subdomains.txt",
-            "ports.txt",
-            "nuclei_output.jsonl",
-            "nuclei_output.json",
-            "httpx_output.txt",
-            "gau_output.txt",
-            "waybackurls_output.txt",
-            "ffuf_output.json",
-            "gobuster_output.txt",
-            "sqlmap_output.txt",
-            "arjun_output.txt",
-        ];
-
-        for filename in common_files {
-            let file_path = PathBuf::from(working_directory).join(filename);
-            if file_path.exists() {
-                let content = tokio::fs::read_to_string(&file_path).await.ok();
-
-                artifacts.push(WorkflowArtifact {
-                    id: Uuid::new_v4().to_string(),
-                    execution_id: "".to_string(), // Will be set by caller
-                    step_id: "".to_string(),      // Will be set by caller
-                    name: filename.to_string(),
-                    artifact_type: "file".to_string(),
-                    file_path: Some(file_path.to_string_lossy().to_string()),
-                    content,
-                    metadata_: None,
-                    size: None,
-                    hash: None,
-                    created_at: Utc::now(),
-                });
+            if cancellation.changed().await.is_err() {
+                std::future::pending::<()>().await;
             }
         }
-
-        Ok(artifacts)
     }
 
-    /// Try to use an adapter to build the command if available
-    /// Returns Some(command_args) if an adapter was used, None otherwise
-    fn try_build_command_with_adapter(
-        &self,
-        tool_name: &str,
-        original_args: &[String],
-        inputs: &HashMap<String, String>,
-    ) -> Option<Vec<String>> {
-        let registry = AdapterRegistry::new();
+    fn terminate_process_tree(root_pid: Option<u32>) {
+        use sysinfo::{PidExt, ProcessExt, Signal, System, SystemExt};
 
-        // Check if we have an adapter for this tool
-        if !registry.has_adapter(tool_name) {
-            return None;
+        let Some(root_pid) = root_pid else {
+            return;
+        };
+
+        let mut system = System::new_all();
+        system.refresh_processes();
+        let root = sysinfo::Pid::from_u32(root_pid);
+        let mut descendants = Vec::new();
+        let mut frontier = vec![root];
+
+        while let Some(parent) = frontier.pop() {
+            for (pid, process) in system.processes() {
+                if process.parent() == Some(parent) && !descendants.contains(pid) {
+                    descendants.push(*pid);
+                    frontier.push(*pid);
+                }
+            }
         }
 
-        eprintln!("📦 Using adapter for tool: {}", tool_name);
-
-        // Try to extract target from inputs or original args
-        let target = inputs.get("target").cloned().or_else(|| {
-            // Try to find a domain/URL-like argument
-            original_args
-                .iter()
-                .find(|arg| arg.contains(".") && !arg.starts_with("-"))
-                .cloned()
-        });
-
-        // Try to extract output file from original args
-        let output_file = original_args.iter().enumerate().find_map(|(i, arg)| {
-            if (arg == "-o" || arg == "--output" || arg == "-oJ") && i + 1 < original_args.len() {
-                Some(original_args[i + 1].clone())
-            } else {
-                None
+        for pid in descendants.into_iter().rev() {
+            if let Some(process) = system.process(pid) {
+                let _ = process
+                    .kill_with(Signal::Kill)
+                    .unwrap_or_else(|| process.kill());
             }
-        });
-
-        // If we have a target, use the adapter
-        if let Some(target) = target {
-            match registry.build_command_with_defaults(tool_name, target, output_file) {
-                Ok(command) => {
-                    eprintln!("✅ Adapter built command: {:?}", command);
-                    Some(command)
-                }
-                Err(e) => {
-                    eprintln!("⚠️  Adapter failed to build command: {}", e);
-                    None
-                }
-            }
-        } else {
-            eprintln!("⚠️  No target found for adapter, using original command");
-            None
         }
     }
 

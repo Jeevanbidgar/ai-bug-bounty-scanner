@@ -8,9 +8,10 @@ export interface ToastProps {
   type?: ToastType
   duration?: number
   onClose?: () => void
+  fixed?: boolean
 }
 
-const Toast = ({ message, type = 'info', duration = 3000, onClose }: ToastProps) => {
+const Toast = ({ message, type = 'info', duration = 3000, onClose, fixed = true }: ToastProps) => {
   const [isVisible, setIsVisible] = useState(true)
 
   useEffect(() => {
@@ -47,16 +48,19 @@ const Toast = ({ message, type = 'info', duration = 3000, onClose }: ToastProps)
 
   return (
     <div
-      className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-lg border ${bgColors[type]} shadow-lg animate-slide-in`}
+      role={type === 'error' ? 'alert' : 'status'}
+      className={`${fixed ? 'fixed right-4 top-4 z-50' : 'relative'} flex items-center gap-3 rounded-lg border px-4 py-3 ${bgColors[type]} shadow-lg animate-slide-in`}
     >
       {icons[type]}
       <p className={`text-sm font-medium ${textColors[type]}`}>{message}</p>
       <button
+        type="button"
         onClick={() => {
           setIsVisible(false)
           if (onClose) onClose()
         }}
         className="ml-2 text-gray-400 hover:text-gray-200 transition-colors"
+        aria-label="Dismiss notification"
       >
         <X className="h-4 w-4" />
       </button>
@@ -79,6 +83,7 @@ export const ToastContainer = ({ toasts, onRemove }: ToastContainerProps) => {
           message={toast.message}
           type={toast.type}
           duration={toast.duration}
+          fixed={false}
           onClose={() => onRemove(toast.id)}
         />
       ))}

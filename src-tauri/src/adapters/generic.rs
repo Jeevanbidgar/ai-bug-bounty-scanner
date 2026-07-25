@@ -2,8 +2,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Generic adapter that works for 80% of security tools
-/// Instead of creating 57 custom adapters, this handles common patterns
+/// Legacy generic preset experiment retained for compatibility.
+///
+/// This type is not part of `AdapterRegistry` because its loose flag model cannot express all
+/// audited target, stdin, output, and prerequisite contracts. New shared-pattern tools belong in
+/// validated `AdapterProfile` records; exceptional tools retain specialized adapters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenericAdapter {
     pub tool_name: String,
@@ -319,7 +322,7 @@ impl GenericAdapter {
                 timeout: 600,
                 requires_auth: false,
             },
-            "truffleHog" => ToolConfig {
+            "trufflehog" => ToolConfig {
                 target_flag: "".to_string(),
                 output_flag: None,
                 default_flags: vec!["--json".to_string()],
@@ -500,7 +503,7 @@ impl GenericAdapterManager {
             "linkfinder",
             "getjs",
             "gitdumper",
-            "truffleHog",
+            "trufflehog",
             "wpscan",
             "joomscan",
             "droopescan",
@@ -606,5 +609,12 @@ mod tests {
 
         // Should add https:// prefix
         assert!(cmd.iter().any(|s| s.starts_with("https://")));
+    }
+
+    #[test]
+    fn trufflehog_preset_uses_catalog_casing() {
+        let manager = GenericAdapterManager::new();
+        assert!(manager.has_adapter("trufflehog"));
+        assert!(GenericAdapter::from_preset("TruffleHog").is_ok());
     }
 }

@@ -16,7 +16,7 @@ steps:
     run:
       - subfinder
       - -d
-      - "{{target}}"
+      - "{{domain}}"
       - -o
       - "{{workdir}}/subdomains.txt"
       - -all
@@ -36,7 +36,7 @@ steps:
       - enum
       - -passive
       - -d
-      - "{{target}}"
+      - "{{domain}}"
       - -o
       - "{{workdir}}/amass-subdomains.txt"
       - -timeout
@@ -62,7 +62,6 @@ steps:
       - "-"
       - -rate
       - "1000"
-      - -json
       - -silent
     timeout: 1800
     outputs:
@@ -77,12 +76,13 @@ steps:
       - naabu
     run:
       - nmap
-      - -iL
-      - "{{workdir}}/ports.txt"
+      - "{{host}}"
       - -sV
       - -sC
       - -A
       - -T4
+      - --top-ports
+      - "1000"
       - -oX
       - "{{workdir}}/nmap-detailed.xml"
       - -oN
@@ -105,23 +105,15 @@ steps:
       - "{{workdir}}/ports.txt"
       - -o
       - "{{workdir}}/live-urls.txt"
-      - -title
-      - -status-code
-      - -tech-detect
-      - -web-server
-      - -cdn
-      - -content-length
-      - -method
       - -follow-redirects
       - -random-agent
-      - -json
       - -silent
     timeout: 1200
     outputs:
       - name: live_services
         type: file
         path: "{{workdir}}/live-urls.txt"
-        description: Live HTTP/HTTPS services with metadata
+        description: Plain live URL list for Katana, Nuclei, and SQLMap
   - id: katana
     name: Web Crawling
     description: Crawl web applications to discover endpoints
@@ -153,9 +145,9 @@ steps:
     run:
       - ffuf
       - -u
-      - "{{target}}/FUZZ"
+      - "{{url}}/FUZZ"
       - -w
-      - /usr/share/wordlists/dirb/common.txt
+      - "{{wordlist}}"
       - -o
       - "{{workdir}}/ffuf-results.json"
       - -of
@@ -286,7 +278,7 @@ outputs:
     type: file
   - name: live_services
     path: "{{workdir}}/live-urls.txt"
-    description: Live web services
+    description: Plain live URL list used by downstream workflow steps
     type: file
   - name: crawled_content
     path: "{{workdir}}/crawled-urls.txt"

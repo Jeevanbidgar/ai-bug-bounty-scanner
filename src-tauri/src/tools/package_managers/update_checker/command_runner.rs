@@ -3,28 +3,28 @@
 // Provides a unified interface for executing package manager commands
 // with timeout, logging, and error handling
 
+use super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
+use super::telemetry::TelemetryContext;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
-use super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
-use super::telemetry::TelemetryContext;
 
 /// Result of command execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandResult {
     /// Exit code
     pub exit_code: i32,
-    
+
     /// Standard output
     pub stdout: String,
-    
+
     /// Standard error
     pub stderr: String,
-    
+
     /// Duration of execution
     pub duration: Duration,
-    
+
     /// Whether the command succeeded
     pub success: bool,
 }
@@ -54,7 +54,7 @@ impl CommandResult {
 pub struct CommandRunner {
     /// Default timeout for commands
     default_timeout: Duration,
-    
+
     /// Whether to enable debug logging
     debug_logging: bool,
 }
@@ -68,8 +68,13 @@ impl CommandRunner {
     }
 
     /// Execute a command with the default timeout
-    pub async fn execute(&self, command: &str, args: &[&str]) -> Result<CommandResult, UpdateCheckError> {
-        self.execute_with_timeout(command, args, self.default_timeout).await
+    pub async fn execute(
+        &self,
+        command: &str,
+        args: &[&str],
+    ) -> Result<CommandResult, UpdateCheckError> {
+        self.execute_with_timeout(command, args, self.default_timeout)
+            .await
     }
 
     /// Execute a command with a custom timeout
@@ -79,7 +84,8 @@ impl CommandRunner {
         args: &[&str],
         timeout_duration: Duration,
     ) -> Result<CommandResult, UpdateCheckError> {
-        self.execute_with_timeout_and_telemetry(command, args, timeout_duration, None).await
+        self.execute_with_timeout_and_telemetry(command, args, timeout_duration, None)
+            .await
     }
 
     /// Execute a command with telemetry context
@@ -91,7 +97,7 @@ impl CommandRunner {
         telemetry_context: Option<&TelemetryContext>,
     ) -> Result<CommandResult, UpdateCheckError> {
         let start_time = std::time::Instant::now();
-        
+
         if self.debug_logging {
             eprintln!("🔄 Executing: {} {}", command, args.join(" "));
         }
@@ -101,22 +107,27 @@ impl CommandRunner {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        let output = timeout(timeout_duration, cmd.output()).await
-            .map_err(|_| UpdateCheckError::timeout(
-                "unknown".to_string(),
-                "unknown".to_string(),
-                format!("{} {}", command, args.join(" "))
-            ))?
-            .map_err(|e| UpdateCheckError::command_failed(
-                "unknown".to_string(),
-                "unknown".to_string(),
-                format!("{} {}", command, args.join(" ")),
-                -1,
-                e.to_string(),
-            ))?;
+        let output = timeout(timeout_duration, cmd.output())
+            .await
+            .map_err(|_| {
+                UpdateCheckError::timeout(
+                    "unknown".to_string(),
+                    "unknown".to_string(),
+                    format!("{} {}", command, args.join(" ")),
+                )
+            })?
+            .map_err(|e| {
+                UpdateCheckError::command_failed(
+                    "unknown".to_string(),
+                    "unknown".to_string(),
+                    format!("{} {}", command, args.join(" ")),
+                    -1,
+                    e.to_string(),
+                )
+            })?;
 
         let duration = start_time.elapsed();
-        
+
         let exit_code = output.status.code().unwrap_or(-1);
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -137,9 +148,17 @@ impl CommandRunner {
 
         if self.debug_logging {
             if result.success {
-                eprintln!("✅ Command succeeded in {:?}: {}", duration, result.stdout.trim());
+                eprintln!(
+                    "✅ Command succeeded in {:?}: {}",
+                    duration,
+                    result.stdout.trim()
+                );
             } else {
-                eprintln!("❌ Command failed (exit code {}): {}", exit_code, result.stderr.trim());
+                eprintln!(
+                    "❌ Command failed (exit code {}): {}",
+                    exit_code,
+                    result.stderr.trim()
+                );
             }
         }
 
@@ -153,13 +172,23 @@ impl CommandRunner {
         args: &[&str],
         telemetry_context: &TelemetryContext,
     ) -> Result<CommandResult, UpdateCheckError> {
-        self.execute_with_timeout_and_telemetry(command, args, self.default_timeout, Some(telemetry_context)).await
+        self.execute_with_timeout_and_telemetry(
+            command,
+            args,
+            self.default_timeout,
+            Some(telemetry_context),
+        )
+        .await
     }
 
     /// Execute a command and return only stdout if successful
-    pub async fn execute_stdout(&self, command: &str, args: &[&str]) -> Result<String, UpdateCheckError> {
+    pub async fn execute_stdout(
+        &self,
+        command: &str,
+        args: &[&str],
+    ) -> Result<String, UpdateCheckError> {
         let result = self.execute(command, args).await?;
-        
+
         if result.success {
             Ok(result.stdout)
         } else {
@@ -174,9 +203,13 @@ impl CommandRunner {
     }
 
     /// Execute a command and return only stderr if failed
-    pub async fn execute_stderr(&self, command: &str, args: &[&str]) -> Result<String, UpdateCheckError> {
+    pub async fn execute_stderr(
+        &self,
+        command: &str,
+        args: &[&str],
+    ) -> Result<String, UpdateCheckError> {
         let result = self.execute(command, args).await?;
-        
+
         if result.success {
             Ok(result.stdout)
         } else {
@@ -196,16 +229,18 @@ impl CommandRunner {
         T: serde::de::DeserializeOwned,
     {
         let stdout = self.execute_stdout(command, args).await?;
-        
-        serde_json::from_str(&stdout)
-            .map_err(|e| UpdateCheckError::new(
+
+        serde_json::from_str(&stdout).map_err(|e| {
+            UpdateCheckError::new(
                 UpdateCheckErrorCode::CommandFailed,
                 format!("Failed to parse JSON output: {}", e),
                 super::error_types::UpdateCheckErrorContext::new(
                     "unknown".to_string(),
-                    "unknown".to_string()
-                ).with_diagnostic(stdout),
-            ))
+                    "unknown".to_string(),
+                )
+                .with_diagnostic(stdout),
+            )
+        })
     }
 
     /// Execute a command with custom working directory
@@ -216,9 +251,14 @@ impl CommandRunner {
         working_dir: &std::path::Path,
     ) -> Result<CommandResult, UpdateCheckError> {
         let start_time = std::time::Instant::now();
-        
+
         if self.debug_logging {
-            eprintln!("🔄 Executing in {:?}: {} {}", working_dir, command, args.join(" "));
+            eprintln!(
+                "🔄 Executing in {:?}: {} {}",
+                working_dir,
+                command,
+                args.join(" ")
+            );
         }
 
         let mut cmd = Command::new(command);
@@ -227,22 +267,27 @@ impl CommandRunner {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        let output = timeout(self.default_timeout, cmd.output()).await
-            .map_err(|_| UpdateCheckError::timeout(
-                "unknown".to_string(),
-                "unknown".to_string(),
-                format!("{} {}", command, args.join(" "))
-            ))?
-            .map_err(|e| UpdateCheckError::command_failed(
-                "unknown".to_string(),
-                "unknown".to_string(),
-                format!("{} {}", command, args.join(" ")),
-                -1,
-                e.to_string(),
-            ))?;
+        let output = timeout(self.default_timeout, cmd.output())
+            .await
+            .map_err(|_| {
+                UpdateCheckError::timeout(
+                    "unknown".to_string(),
+                    "unknown".to_string(),
+                    format!("{} {}", command, args.join(" ")),
+                )
+            })?
+            .map_err(|e| {
+                UpdateCheckError::command_failed(
+                    "unknown".to_string(),
+                    "unknown".to_string(),
+                    format!("{} {}", command, args.join(" ")),
+                    -1,
+                    e.to_string(),
+                )
+            })?;
 
         let duration = start_time.elapsed();
-        
+
         let exit_code = output.status.code().unwrap_or(-1);
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -251,9 +296,17 @@ impl CommandRunner {
 
         if self.debug_logging {
             if result.success {
-                eprintln!("✅ Command succeeded in {:?}: {}", duration, result.stdout.trim());
+                eprintln!(
+                    "✅ Command succeeded in {:?}: {}",
+                    duration,
+                    result.stdout.trim()
+                );
             } else {
-                eprintln!("❌ Command failed (exit code {}): {}", exit_code, result.stderr.trim());
+                eprintln!(
+                    "❌ Command failed (exit code {}): {}",
+                    exit_code,
+                    result.stderr.trim()
+                );
             }
         }
 
@@ -274,11 +327,11 @@ mod tests {
     #[tokio::test]
     async fn test_command_runner_success() {
         let runner = CommandRunner::new(Duration::from_secs(5), false);
-        
+
         // Test with a simple command that should succeed
         let result = runner.execute("echo", &["hello"]).await;
         assert!(result.is_ok());
-        
+
         let result = result.unwrap();
         assert!(result.success);
         assert_eq!(result.exit_code, 0);
@@ -288,11 +341,11 @@ mod tests {
     #[tokio::test]
     async fn test_command_runner_failure() {
         let runner = CommandRunner::new(Duration::from_secs(5), false);
-        
+
         // Test with a command that should fail
         let result = runner.execute("false", &[]).await;
         assert!(result.is_ok());
-        
+
         let result = result.unwrap();
         assert!(!result.success);
         assert_eq!(result.exit_code, 1);
@@ -301,11 +354,11 @@ mod tests {
     #[tokio::test]
     async fn test_command_runner_timeout() {
         let runner = CommandRunner::new(Duration::from_millis(100), false);
-        
+
         // Test with a command that should timeout
         let result = runner.execute("sleep", &["1"]).await;
         assert!(result.is_err());
-        
+
         let error = result.unwrap_err();
         assert_eq!(error.code, UpdateCheckErrorCode::Timeout);
     }
@@ -313,10 +366,10 @@ mod tests {
     #[tokio::test]
     async fn test_is_available() {
         let runner = CommandRunner::new(Duration::from_secs(5), false);
-        
+
         // Test with a command that should be available
         assert!(runner.is_available("echo").await);
-        
+
         // Test with a command that should not be available
         assert!(!runner.is_available("nonexistent_command_12345").await);
     }

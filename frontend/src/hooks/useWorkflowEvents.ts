@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { appBridge } from '../bridge/appBridge'
 
 /**
  * Custom hook for managing Tauri workflow event listeners
@@ -10,6 +11,7 @@ interface WorkflowEventHandlers {
   onExecutionStarted?: (data: any) => void
   onExecutionCompleted?: (data: any) => void
   onExecutionFailed?: (data: any) => void
+  onExecutionCancelled?: (data: any) => void
   onStatusUpdate?: (data: any) => void
   onStepStarted?: (data: any) => void
   onStepCompleted?: (data: any) => void
@@ -24,10 +26,10 @@ export const useWorkflowEvents = (
 ) => {
   const unlisten = useRef<(() => void)[]>([])
   const isListening = useRef(false)
+  const handlersRef = useRef(handlers)
+  handlersRef.current = handlers
 
   const cleanup = useCallback(() => {
-    console.log(`🧹 Cleaning up workflow event listeners for execution ${executionId}`)
-    
     // Call all unlisten functions
     unlisten.current.forEach(fn => {
       try {
@@ -40,25 +42,20 @@ export const useWorkflowEvents = (
     // Clear the array
     unlisten.current = []
     isListening.current = false
-  }, [executionId])
+  }, [])
 
   const setupListeners = useCallback(async () => {
-    if (!executionId || isListening.current) {
+    if (isListening.current || !executionId || !appBridge.capabilities.events) {
       return
     }
-
-    console.log(`🎧 Setting up workflow event listeners for execution ${executionId}`)
     
     try {
-      // Check if we're in a Tauri environment
-      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-        const { listen } = await import('@tauri-apps/api/event')
-
-        // Listen to workflow events with proper cleanup
+      // Listen to workflow events with proper cleanup
         const eventNames = [
           'workflow:execution_started',
           'workflow:execution_completed',
           'workflow:execution_failed',
+          'workflow:execution_cancelled',
           'workflow:status_update',
           'workflow:step_started',
           'workflow:step_completed',
@@ -68,44 +65,44 @@ export const useWorkflowEvents = (
         ]
 
         for (const eventName of eventNames) {
-          const unlistenFn = await listen(eventName, (event: any) => {
-            const payload = event.payload
+          const unlistenFn = await appBridge.listen<any>(eventName, (payload) => {
 
             // Only process events for this execution
-            if (payload.execution_id !== executionId) {
+            if (executionId && payload.execution_id !== executionId) {
               return
             }
-
-            console.log(`📨 Workflow event: ${eventName}`, payload)
 
             // Route to appropriate handler
             switch (eventName) {
               case 'workflow:execution_started':
-                handlers.onExecutionStarted?.(payload)
+                handlersRef.current.onExecutionStarted?.(payload)
                 break
               case 'workflow:execution_completed':
-                handlers.onExecutionCompleted?.(payload)
+                handlersRef.current.onExecutionCompleted?.(payload)
                 break
               case 'workflow:execution_failed':
-                handlers.onExecutionFailed?.(payload)
+                handlersRef.current.onExecutionFailed?.(payload)
+                break
+              case 'workflow:execution_cancelled':
+                handlersRef.current.onExecutionCancelled?.(payload)
                 break
               case 'workflow:status_update':
-                handlers.onStatusUpdate?.(payload)
+                handlersRef.current.onStatusUpdate?.(payload)
                 break
               case 'workflow:step_started':
-                handlers.onStepStarted?.(payload)
+                handlersRef.current.onStepStarted?.(payload)
                 break
               case 'workflow:step_completed':
-                handlers.onStepCompleted?.(payload)
+                handlersRef.current.onStepCompleted?.(payload)
                 break
               case 'workflow:step_failed':
-                handlers.onStepFailed?.(payload)
+                handlersRef.current.onStepFailed?.(payload)
                 break
               case 'workflow:stdout':
-                handlers.onStdout?.(payload)
+                handlersRef.current.onStdout?.(payload)
                 break
               case 'workflow:stderr':
-                handlers.onStderr?.(payload)
+                handlersRef.current.onStderr?.(payload)
                 break
             }
           })
@@ -114,20 +111,14 @@ export const useWorkflowEvents = (
         }
 
         isListening.current = true
-        console.log(`✅ Workflow event listeners setup complete for execution ${executionId}`)
-      } else {
-        console.warn('⚠️ Not in Tauri environment, skipping event listeners')
-      }
     } catch (error) {
       console.error('❌ Failed to setup workflow event listeners:', error)
     }
-  }, [executionId, handlers])
+  }, [executionId])
 
   // Setup listeners when execution ID changes
   useEffect(() => {
-    if (executionId) {
-      setupListeners()
-    }
+    setupListeners()
 
     // Cleanup on unmount or when execution ID changes
     return () => {
@@ -140,4 +131,3 @@ export const useWorkflowEvents = (
     cleanup
   }
 }
-

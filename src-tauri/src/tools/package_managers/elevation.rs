@@ -52,12 +52,12 @@ pub async fn execute_with_smart_elevation(
     match execute_command_internal(command, args, timeout_secs).await {
         Ok(output) => {
             eprintln!("   ✓ Success without elevation!");
-            return Ok(ElevationResult {
+            Ok(ElevationResult {
                 success: true,
                 output,
                 elevated: false,
                 error: None,
-            });
+            })
         }
         Err(e) => {
             eprintln!("   ✗ User-scope failed: {}", e);
@@ -67,15 +67,15 @@ pub async fn execute_with_smart_elevation(
                 eprintln!("   → Elevation required, will prompt user");
                 // Return a special result indicating elevation is needed
                 // Frontend will show dialog and call execute_elevated if user approves
-                return Err(format!("ELEVATION_REQUIRED: {}", reason));
+                Err(format!("ELEVATION_REQUIRED: {}", reason))
             } else {
                 // Other error, not elevation-related
-                return Ok(ElevationResult {
+                Ok(ElevationResult {
                     success: false,
                     output: String::new(),
                     elevated: false,
                     error: Some(e),
-                });
+                })
             }
         }
     }
@@ -519,9 +519,7 @@ async fn execute_command_internal(
     timeout_secs: u64,
 ) -> Result<String, String> {
     let mut cmd = Command::new(command);
-    cmd.args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
     configure_tokio_command(&mut cmd);
 
     let result = cmd.spawn();

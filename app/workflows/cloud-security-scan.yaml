@@ -15,7 +15,7 @@ steps:
     run:
       - subfinder
       - -d
-      - "{{target}}"
+      - "{{domain}}"
       - -o
       - "{{workdir}}/subdomains.txt"
       - -all
@@ -28,7 +28,7 @@ steps:
         description: Discovered subdomains
   - id: httpx
     name: Cloud Service Discovery
-    description: Probe for live services and detect cloud providers
+    description: Identify responsive cloud-facing services for downstream checks
     needs:
       - subfinder
     run:
@@ -37,19 +37,13 @@ steps:
       - "{{workdir}}/subdomains.txt"
       - -o
       - "{{workdir}}/live-urls.txt"
-      - -title
-      - -status-code
-      - -tech-detect
-      - -cdn
-      - -web-server
-      - -json
       - -silent
     timeout: 900
     outputs:
       - name: live_services
         type: file
         path: "{{workdir}}/live-urls.txt"
-        description: Live cloud services
+        description: Plain live URL list for downstream Nuclei steps
   - id: nuclei-storage
     name: Cloud Storage Detection
     description: Detect exposed cloud storage buckets (S3, Azure Blob, GCS)
@@ -150,7 +144,7 @@ steps:
 outputs:
   - name: live_services
     path: "{{workdir}}/live-urls.txt"
-    description: Live cloud services
+    description: Plain live URL list used by downstream cloud checks
     type: file
   - name: storage_issues
     path: "{{workdir}}/nuclei-storage.jsonl"

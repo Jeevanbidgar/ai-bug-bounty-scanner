@@ -3,6 +3,7 @@ use ai_bug_bounty_scanner::tools::package_managers::version_checker::{
 };
 
 #[tokio::test]
+#[ignore = "manual smoke test: requires a globally installed npm package and registry access"]
 async fn test_npm_update_check() {
     println!("\n=== Testing NPM Update Check ===");
 
@@ -30,6 +31,7 @@ async fn test_npm_update_check() {
 }
 
 #[tokio::test]
+#[ignore = "manual smoke test: requires a locally installed gem and registry access"]
 async fn test_gem_update_check() {
     println!("\n=== Testing GEM Update Check ===");
 
@@ -57,6 +59,7 @@ async fn test_gem_update_check() {
 }
 
 #[tokio::test]
+#[ignore = "manual smoke test: requires a locally installed Cargo package and registry access"]
 async fn test_cargo_update_check() {
     println!("\n=== Testing CARGO Update Check ===");
 
@@ -84,6 +87,7 @@ async fn test_cargo_update_check() {
 }
 
 #[tokio::test]
+#[ignore = "manual smoke test: requires npm and registry access"]
 async fn test_npm_package_not_installed() {
     println!("\n=== Testing NPM with non-existent package ===");
 

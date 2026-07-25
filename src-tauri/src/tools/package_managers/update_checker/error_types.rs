@@ -10,31 +10,31 @@ use std::fmt;
 pub enum UpdateCheckErrorCode {
     /// Package manager not installed or not available
     ManagerNotAvailable,
-    
+
     /// Package not found or not installed
     PackageNotFound,
-    
+
     /// Network error during check
     NetworkError,
-    
+
     /// Command execution failed
     CommandFailed,
-    
+
     /// Command timed out
     Timeout,
-    
+
     /// Invalid version format
     InvalidVersion,
-    
+
     /// Permission denied
     PermissionDenied,
-    
+
     /// Rate limited by remote service
     RateLimited,
-    
+
     /// Invalid configuration
     InvalidConfig,
-    
+
     /// Unknown error
     Unknown,
 }
@@ -61,19 +61,19 @@ impl fmt::Display for UpdateCheckErrorCode {
 pub struct UpdateCheckErrorContext {
     /// Package manager that failed
     pub manager: String,
-    
+
     /// Package name being checked
     pub package: String,
-    
+
     /// Command that was executed (if applicable)
     pub command: Option<String>,
-    
+
     /// Exit code (if applicable)
     pub exit_code: Option<i32>,
-    
+
     /// Standard error output
     pub stderr: Option<String>,
-    
+
     /// Additional diagnostic information
     pub diagnostic: Option<String>,
 }
@@ -116,26 +116,30 @@ impl UpdateCheckErrorContext {
 pub struct UpdateCheckError {
     /// Error code
     pub code: UpdateCheckErrorCode,
-    
+
     /// Human-readable error message
     pub message: String,
-    
+
     /// Context information
     pub context: UpdateCheckErrorContext,
-    
+
     /// Whether this error is retryable
     pub retryable: bool,
 }
 
 impl UpdateCheckError {
-    pub fn new(code: UpdateCheckErrorCode, message: String, context: UpdateCheckErrorContext) -> Self {
+    pub fn new(
+        code: UpdateCheckErrorCode,
+        message: String,
+        context: UpdateCheckErrorContext,
+    ) -> Self {
         let retryable = matches!(
             code,
             UpdateCheckErrorCode::NetworkError
                 | UpdateCheckErrorCode::Timeout
                 | UpdateCheckErrorCode::RateLimited
         );
-        
+
         Self {
             code,
             message,
@@ -160,7 +164,13 @@ impl UpdateCheckError {
         )
     }
 
-    pub fn command_failed(manager: String, package: String, command: String, exit_code: i32, stderr: String) -> Self {
+    pub fn command_failed(
+        manager: String,
+        package: String,
+        command: String,
+        exit_code: i32,
+        stderr: String,
+    ) -> Self {
         Self::new(
             UpdateCheckErrorCode::CommandFailed,
             format!("Command '{}' failed with exit code {}", command, exit_code),
@@ -185,8 +195,7 @@ impl UpdateCheckError {
         Self::new(
             UpdateCheckErrorCode::NetworkError,
             format!("Network error: {}", error),
-            UpdateCheckErrorContext::new(manager, package)
-                .with_diagnostic(error),
+            UpdateCheckErrorContext::new(manager, package).with_diagnostic(error),
         )
     }
 
@@ -214,7 +223,7 @@ impl UpdateCheckError {
         } else {
             "Rate limited by remote service".to_string()
         };
-        
+
         Self::new(
             UpdateCheckErrorCode::RateLimited,
             message,

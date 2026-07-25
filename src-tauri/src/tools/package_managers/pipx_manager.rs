@@ -7,10 +7,9 @@ use crate::events::{
     EventEmitter, TOOL_INSTALLATION_COMPLETED, TOOL_INSTALLATION_OUTPUT, TOOL_INSTALLATION_STARTED,
 };
 use crate::runtime::process::hidden_tokio_command as hidden_command;
-use uuid::Uuid;
 
 // PipxManager: Handles pipx installations with retry logic for log file locking
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PipxManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,25 +86,11 @@ impl PipxManager {
             );
         }
 
-        // Create completely isolated pipx home to avoid log file locking conflicts
-        // Setting PIPX_HOME ensures pipx uses a fresh environment with no shared state
-        let pipx_home = std::env::temp_dir().join(format!("pipx-home-{}", Uuid::new_v4()));
-        if let Err(e) = std::fs::create_dir_all(&pipx_home) {
-            eprintln!(
-                "⚠️  Failed to create isolated pipx home {}: {}",
-                pipx_home.display(),
-                e
-            );
-        }
-
         // Spawn process with piped stdout/stderr for live streaming
         let mut install_cmd = hidden_command("pipx");
         let mut child = match install_cmd
             .arg("install")
             .arg(package_name)
-            .env("PIPX_HOME", &pipx_home)
-            .env("PIPX_BIN_DIR", pipx_home.join("bin"))
-            .env("PIPX_MAN_DIR", pipx_home.join("man"))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -141,7 +126,7 @@ impl PipxManager {
 
         // Read stdout in background
         let tool_name_clone = tool_name.to_string();
-        let handle_clone = app_handle.map(|h| h.clone());
+        let handle_clone = app_handle.cloned();
         let stdout_task = tokio::spawn(async move {
             let mut lines = stdout_reader;
             while let Ok(Some(line)) = lines.next_line().await {
@@ -157,7 +142,7 @@ impl PipxManager {
 
         // Read stderr in background
         let tool_name_clone = tool_name.to_string();
-        let handle_clone = app_handle.map(|h| h.clone());
+        let handle_clone = app_handle.cloned();
         let stderr_task = tokio::spawn(async move {
             let mut lines = stderr_reader;
             let mut error_output = Vec::new();
@@ -201,16 +186,19 @@ impl PipxManager {
 
                     // Verify installation by checking pipx list
                     let mut list_cmd = hidden_command("pipx");
-                    match list_cmd
-                        .arg("list")
-                        .arg("--short")
-                        .output()
-                        .await
-                    {
+                    match list_cmd.arg("list").arg("--short").output().await {
                         Ok(list_output) => {
                             let installed_tools = String::from_utf8_lossy(&list_output.stdout);
-                            let is_installed =
-                                installed_tools.lines().any(|line| line.trim() == tool_name);
+                            let is_installed = installed_tools.lines().any(|line| {
+                                line.split_whitespace().next().is_some_and(|package| {
+                                    package.eq_ignore_ascii_case(tool_name)
+                                        || package_name.rsplit('/').next().is_some_and(|source| {
+                                            source
+                                                .trim_end_matches(".git")
+                                                .eq_ignore_ascii_case(package)
+                                        })
+                                })
+                            });
 
                             if is_installed {
                                 eprintln!("✅ Confirmed: {} is installed via pipx", tool_name);
@@ -232,7 +220,7 @@ impl PipxManager {
                 let message = if actual_success {
                     let mut msg = format!("✅ Successfully installed {} via pipx", tool_name);
                     if is_path_warning_only {
-                        msg.push_str("\n⚠️  Note: .local\\bin is not in PATH. Run 'pipx ensurepath' and restart terminal.");
+                        msg.push_str("\n⚠️  The pipx binary directory is not in PATH. Run 'pipx ensurepath' and restart the app.");
                     }
                     msg
                 } else {
@@ -302,12 +290,7 @@ impl PipxManager {
         );
 
         let mut upgrade_cmd = hidden_command("pipx");
-        match upgrade_cmd
-            .arg("upgrade")
-            .arg(package_name)
-            .output()
-            .await
-        {
+        match upgrade_cmd.arg("upgrade").arg(package_name).output().await {
             Ok(output) => {
                 let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 

@@ -2,10 +2,9 @@
 //
 // Integration tests for the complete update checker system
 
-use super::super::traits::{UpdateChecker, UpdateCheckerConfig};
 use super::super::coordinator::UpdateCheckerCoordinator;
 use super::super::factory::UpdateCheckerFactory;
-use super::fixtures::{UpdateCheckerFixtures, TestConfig, TestUtils};
+use super::super::traits::UpdateCheckerConfig;
 use super::mock_adapters::MockUpdateCheckerFactory;
 use std::time::Duration;
 
@@ -17,15 +16,15 @@ mod coordinator_tests {
     async fn test_coordinator_basic() {
         let config = UpdateCheckerConfig::default();
         let coordinator = UpdateCheckerCoordinator::new(config);
-        
+
         // Add a mock checker
         let mock_checker = MockUpdateCheckerFactory::successful("test".to_string());
         coordinator.add_checker(mock_checker).await;
-        
+
         // Test update check
         let result = coordinator.check_update("test-package").await;
         assert!(result.is_ok());
-        
+
         let result = result.unwrap();
         assert_eq!(result.package, "test-package");
         assert_eq!(result.managers_checked, 1);
@@ -37,17 +36,17 @@ mod coordinator_tests {
     async fn test_coordinator_multiple_checkers() {
         let config = UpdateCheckerConfig::default();
         let coordinator = UpdateCheckerCoordinator::new(config);
-        
+
         // Add multiple mock checkers
         let checkers = MockUpdateCheckerFactory::create_multiple();
         for checker in checkers {
             coordinator.add_checker(checker).await;
         }
-        
+
         // Test update check
         let result = coordinator.check_update("test-package").await;
         assert!(result.is_ok());
-        
+
         let result = result.unwrap();
         assert_eq!(result.package, "test-package");
         assert_eq!(result.managers_checked, 2);
@@ -60,19 +59,19 @@ mod coordinator_tests {
     async fn test_coordinator_cache() {
         let config = UpdateCheckerConfig::default();
         let coordinator = UpdateCheckerCoordinator::new(config);
-        
+
         // Add a mock checker
         let mock_checker = MockUpdateCheckerFactory::successful("test".to_string());
         coordinator.add_checker(mock_checker).await;
-        
+
         // First check should populate cache
         let result1 = coordinator.check_update("test-package").await;
         assert!(result1.is_ok());
-        
+
         // Second check should use cache
         let result2 = coordinator.check_update("test-package").await;
         assert!(result2.is_ok());
-        
+
         // Both results should be the same
         assert_eq!(result1.unwrap().has_update, result2.unwrap().has_update);
     }
@@ -81,15 +80,15 @@ mod coordinator_tests {
     async fn test_coordinator_error_handling() {
         let config = UpdateCheckerConfig::default();
         let coordinator = UpdateCheckerCoordinator::new(config);
-        
+
         // Add an error checker
         let error_checker = MockUpdateCheckerFactory::error("test".to_string());
         coordinator.add_checker(error_checker).await;
-        
+
         // Test update check
         let result = coordinator.check_update("test-package").await;
         assert!(result.is_ok()); // Coordinator should handle errors gracefully
-        
+
         let result = result.unwrap();
         assert_eq!(result.package, "test-package");
         assert_eq!(result.managers_checked, 0);
@@ -104,15 +103,15 @@ mod coordinator_tests {
             ..Default::default()
         };
         let coordinator = UpdateCheckerCoordinator::new(config);
-        
+
         // Add a timeout checker
         let timeout_checker = MockUpdateCheckerFactory::timeout("test".to_string());
         coordinator.add_checker(timeout_checker).await;
-        
+
         // Test update check
         let result = coordinator.check_update("test-package").await;
         assert!(result.is_ok()); // Coordinator should handle timeouts gracefully
-        
+
         let result = result.unwrap();
         assert_eq!(result.package, "test-package");
         assert_eq!(result.managers_checked, 0); // Timeout should result in no successful checks
@@ -124,24 +123,24 @@ mod coordinator_tests {
     async fn test_coordinator_batch_updates() {
         let config = UpdateCheckerConfig::default();
         let coordinator = UpdateCheckerCoordinator::new(config);
-        
+
         // Add a mock checker
         let mock_checker = MockUpdateCheckerFactory::successful("test".to_string());
         coordinator.add_checker(mock_checker).await;
-        
+
         // Test batch update check
         let package_names = vec![
             "package1".to_string(),
             "package2".to_string(),
             "package3".to_string(),
         ];
-        
+
         let results = coordinator.check_updates_batch(&package_names).await;
         assert!(results.is_ok());
-        
+
         let results = results.unwrap();
         assert_eq!(results.len(), 3);
-        
+
         for result in results {
             assert!(result.has_update);
             assert!(result.best_result.is_some());
@@ -152,15 +151,15 @@ mod coordinator_tests {
     async fn test_coordinator_metrics() {
         let config = UpdateCheckerConfig::default();
         let coordinator = UpdateCheckerCoordinator::new(config);
-        
+
         // Add a mock checker
         let mock_checker = MockUpdateCheckerFactory::successful("test".to_string());
         coordinator.add_checker(mock_checker).await;
-        
+
         // Perform some checks
         coordinator.check_update("package1").await.unwrap();
         coordinator.check_update("package2").await.unwrap();
-        
+
         // Check metrics
         let summary = coordinator.get_metrics_summary().await;
         assert_eq!(summary.total_checks, 2);
@@ -172,15 +171,15 @@ mod coordinator_tests {
     async fn test_coordinator_cache_stats() {
         let config = UpdateCheckerConfig::default();
         let coordinator = UpdateCheckerCoordinator::new(config);
-        
+
         // Add a mock checker
         let mock_checker = MockUpdateCheckerFactory::successful("test".to_string());
         coordinator.add_checker(mock_checker).await;
-        
+
         // Perform some checks
         coordinator.check_update("package1").await.unwrap();
         coordinator.check_update("package2").await.unwrap();
-        
+
         // Check cache stats
         let stats = coordinator.get_cache_stats().await;
         // FIXME: Expected 2, but getting 4. Likely implementation detail or test artifact.
@@ -198,20 +197,20 @@ mod factory_tests {
     async fn test_factory_create_all_checkers() {
         let config = UpdateCheckerConfig::default();
         let checkers = UpdateCheckerFactory::create_all_checkers(&config).await;
-        
+
         // Should create some checkers (exact number depends on platform)
         assert!(!checkers.is_empty());
-        
+
         // Check that checkers are sorted by priority
         for i in 1..checkers.len() {
-            assert!(checkers[i-1].priority() <= checkers[i].priority());
+            assert!(checkers[i - 1].priority() <= checkers[i].priority());
         }
     }
 
     #[tokio::test]
     async fn test_factory_create_checker_by_name() {
         let config = UpdateCheckerConfig::default();
-        
+
         // Test creating a specific checker
         let result = UpdateCheckerFactory::create_checker_by_name("go", &config).await;
         // Result depends on whether go is available on the system
@@ -229,7 +228,7 @@ mod factory_tests {
     #[tokio::test]
     async fn test_factory_unknown_manager() {
         let config = UpdateCheckerConfig::default();
-        
+
         // Test creating an unknown checker
         let result = UpdateCheckerFactory::create_checker_by_name("unknown", &config).await;
         assert!(result.is_none());
@@ -253,14 +252,14 @@ mod factory_tests {
         assert!(managers.contains(&"npm"));
         assert!(managers.contains(&"gem"));
         assert!(managers.contains(&"cargo"));
-        
+
         // Platform-specific managers
         #[cfg(target_os = "macos")]
         assert!(managers.contains(&"homebrew"));
-        
+
         #[cfg(target_os = "linux")]
         assert!(managers.contains(&"apt"));
-        
+
         #[cfg(target_os = "windows")]
         assert!(managers.contains(&"winget"));
     }
@@ -275,21 +274,19 @@ mod end_to_end_tests {
         // Test the complete flow from factory to coordinator
         let config = UpdateCheckerConfig::default();
         let coordinator = UpdateCheckerCoordinator::new(config.clone());
-        
+
         // Add all available checkers
         let checkers = UpdateCheckerFactory::create_all_checkers(&config).await;
         for checker in checkers {
             coordinator.add_checker(checker).await;
         }
-        
+
         // Test update check
         let result = coordinator.check_update("test-package").await;
         assert!(result.is_ok());
-        
+
         let result = result.unwrap();
         assert_eq!(result.package, "test-package");
-        // The exact number of managers checked depends on what's available on the system
-        assert!(result.managers_checked >= 0);
     }
 
     #[tokio::test]
@@ -297,18 +294,18 @@ mod end_to_end_tests {
         // Test that the system can recover from errors
         let config = UpdateCheckerConfig::default();
         let coordinator = UpdateCheckerCoordinator::new(config);
-        
+
         // Add a mix of successful and error checkers
         let successful_checker = MockUpdateCheckerFactory::successful("success".to_string());
         let error_checker = MockUpdateCheckerFactory::error("error".to_string());
-        
+
         coordinator.add_checker(successful_checker).await;
         coordinator.add_checker(error_checker).await;
-        
+
         // Test update check
         let result = coordinator.check_update("test-package").await;
         assert!(result.is_ok());
-        
+
         let result = result.unwrap();
         assert_eq!(result.package, "test-package");
         assert_eq!(result.managers_checked, 1);
@@ -324,24 +321,24 @@ mod end_to_end_tests {
             ..Default::default()
         };
         let coordinator = UpdateCheckerCoordinator::new(config);
-        
+
         // Add a mock checker
         let mock_checker = MockUpdateCheckerFactory::successful("test".to_string());
         coordinator.add_checker(mock_checker).await;
-        
+
         // Start multiple concurrent checks
         let handles: Vec<_> = (0..5)
             .map(|i| {
                 let coordinator = coordinator.clone();
-                tokio::spawn(async move {
-                    coordinator.check_update(&format!("package{}", i)).await
-                })
+                tokio::spawn(
+                    async move { coordinator.check_update(&format!("package{}", i)).await },
+                )
             })
             .collect();
-        
+
         // Wait for all checks to complete
         let results: Vec<_> = futures::future::join_all(handles).await;
-        
+
         // All checks should succeed
         for result in results {
             assert!(result.is_ok());

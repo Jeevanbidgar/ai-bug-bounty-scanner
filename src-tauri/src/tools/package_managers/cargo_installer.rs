@@ -65,7 +65,7 @@ impl CargoInstaller {
 
         let mut install_cmd = hidden_command("cargo");
         let mut child = install_cmd
-            .args(&["install", package_name])
+            .args(["install", package_name])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -156,7 +156,7 @@ impl CargoInstaller {
 
         let mut update_cmd = hidden_command("cargo");
         let mut child = update_cmd
-            .args(&["install", "--force", package_name])
+            .args(["install", "--force", package_name])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -262,7 +262,7 @@ impl CargoInstaller {
 
         let mut uninstall_cmd = hidden_command("cargo");
         let output = uninstall_cmd
-            .args(&["uninstall", package_name])
+            .args(["uninstall", package_name])
             .output()
             .await
             .context("Failed to uninstall cargo package")?;

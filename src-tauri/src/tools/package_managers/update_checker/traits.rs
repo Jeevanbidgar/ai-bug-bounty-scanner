@@ -2,43 +2,43 @@
 //
 // Defines the core interfaces for update checking across package managers
 
+use super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
 
 /// Enhanced result structure for update checks
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateCheckResult {
     /// Whether an update is available
     pub has_update: bool,
-    
+
     /// Current installed version
     pub current_version: Option<String>,
-    
+
     /// Latest available version
     pub latest_version: Option<String>,
-    
+
     /// Package manager identifier
     pub package_manager: String,
-    
+
     /// Error information if check failed
     pub error: Option<String>,
-    
+
     /// Error code for programmatic handling
     pub error_code: Option<UpdateCheckErrorCode>,
-    
+
     /// Source of the version information
     pub source: Option<String>,
-    
+
     /// Type of update (patch, minor, major)
     pub update_type: Option<UpdateType>,
-    
+
     /// Diagnostic information for troubleshooting
     pub diagnostic: Option<String>,
-    
+
     /// Timestamp when check was performed
     pub checked_at: Option<chrono::DateTime<chrono::Utc>>,
-    
+
     /// Duration of the check operation
     pub duration: Option<Duration>,
 }
@@ -125,7 +125,11 @@ impl MockUpdateChecker {
             available,
             has_update,
             current_version: Some("1.0.0".to_string()),
-            latest_version: if has_update { Some("1.1.0".to_string()) } else { Some("1.0.0".to_string()) },
+            latest_version: if has_update {
+                Some("1.1.0".to_string())
+            } else {
+                Some("1.0.0".to_string())
+            },
         }
     }
 }
@@ -133,19 +137,30 @@ impl MockUpdateChecker {
 /// Core trait for update checkers
 pub trait UpdateChecker: Send + Sync {
     /// Check for updates for a specific package
-    fn check_update(&self, package_name: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>>;
-    
+    fn check_update(
+        &self,
+        package_name: &str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>>
+                + Send
+                + '_,
+        >,
+    >;
+
     /// Get the package manager identifier
     fn manager_name(&self) -> &str;
-    
+
     /// Check if this manager is available on the current platform
-    fn is_available(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>>;
-    
+    fn is_available(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>>;
+
     /// Get the command timeout for this manager
     fn timeout(&self) -> Duration {
         Duration::from_secs(30)
     }
-    
+
     /// Get the priority of this manager (lower = higher priority)
     fn priority(&self) -> u8 {
         100
@@ -153,12 +168,21 @@ pub trait UpdateChecker: Send + Sync {
 }
 
 impl UpdateChecker for MockUpdateChecker {
-    fn check_update(&self, _package_name: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        _package_name: &str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>>
+                + Send
+                + '_,
+        >,
+    > {
         let has_update = self.has_update;
         let current_version = self.current_version.clone();
         let latest_version = self.latest_version.clone();
         let name = self.name.clone();
-        
+
         Box::pin(async move {
             Ok(UpdateCheckResult::success(
                 has_update,
@@ -175,7 +199,9 @@ impl UpdateChecker for MockUpdateChecker {
         &self.name
     }
 
-    fn is_available(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+    fn is_available(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
         let available = self.available;
         Box::pin(async move { available })
     }
@@ -189,22 +215,21 @@ impl UpdateChecker for MockUpdateChecker {
     }
 }
 
-
 /// Configuration for update checkers
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateCheckerConfig {
     /// Default timeout for commands
     pub default_timeout: Duration,
-    
+
     /// Maximum number of concurrent checks
     pub max_concurrent: usize,
-    
+
     /// Cache duration for results
     pub cache_duration: Duration,
-    
+
     /// Whether to enable debug logging
     pub debug_logging: bool,
-    
+
     /// Whether to enable metrics collection
     pub enable_metrics: bool,
 }

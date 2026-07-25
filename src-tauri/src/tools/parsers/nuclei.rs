@@ -1,9 +1,9 @@
-use serde::Deserialize;
 use super::traits::{OutputParser, ParsedFinding};
-use anyhow::Result;
-use std::path::Path;
+use anyhow::{Context, Result};
+use serde::Deserialize;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::path::Path;
 
 #[derive(Debug, Deserialize)]
 struct NucleiClassification {
@@ -42,7 +42,12 @@ impl OutputParser for NucleiParser {
 
     fn can_parse(&self, file_path: &Path) -> bool {
         // Basic check: is it a .json or .jsonl file?
-        file_path.extension().map_or(false, |ext| ext == "json" || ext == "jsonl")
+        file_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("jsonl")
+            })
     }
 
     fn parse(&self, file_path: &Path) -> Result<Vec<ParsedFinding>> {
@@ -50,28 +55,33 @@ impl OutputParser for NucleiParser {
         let reader = BufReader::new(file);
         let mut findings = Vec::new();
 
-        for line in reader.lines() {
+        for (line_index, line) in reader.lines().enumerate() {
             let line = line?;
-            if line.trim().is_empty() { continue; }
-
-            // Nuclei output is usually JSONL (one JSON per line)
-            // We interpret each line as a potential finding
-            if let Ok(record) = serde_json::from_str::<NucleiResult>(&line) {
-                findings.push(ParsedFinding {
-                    title: record.info.name.unwrap_or(record.template_id),
-                    severity: record.info.severity,
-                    description: record.info.description,
-                    cvss: record.info.classification.and_then(|c| c.cvss_score),
-                    url: record.matched_at.clone(),
-                    parameter: None,
-                    payload: None,
-                    remediation: record.info.remediation,
-                    evidence: record.curl_command.or_else(|| 
-                        record.extracted_results.map(|r| r.join("\n"))
-                    ),
-                    raw_data: Some(line),
-                });
+            if line.trim().is_empty() {
+                continue;
             }
+
+            let record = serde_json::from_str::<NucleiResult>(&line).with_context(|| {
+                format!(
+                    "invalid Nuclei JSONL record at line {} in {}",
+                    line_index + 1,
+                    file_path.display()
+                )
+            })?;
+            findings.push(ParsedFinding {
+                title: record.info.name.unwrap_or(record.template_id),
+                severity: record.info.severity,
+                description: record.info.description,
+                cvss: record.info.classification.and_then(|c| c.cvss_score),
+                url: record.matched_at.clone(),
+                parameter: None,
+                payload: None,
+                remediation: record.info.remediation,
+                evidence: record
+                    .curl_command
+                    .or_else(|| record.extracted_results.map(|r| r.join("\n"))),
+                raw_data: Some(line),
+            });
         }
 
         Ok(findings)
@@ -87,16 +97,26 @@ mod tests {
     #[test]
     fn test_parse_nuclei_jsonl() {
         let jsonl = r#"{"template-id":"cve-2021-1234","info":{"name":"Test CVE","severity":"critical","description":"Test Desc"},"matched-at":"http://example.com","type":"http"}"#;
-        
+
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "{}", jsonl).unwrap();
-        
+
         let parser = NucleiParser;
         let findings = parser.parse(file.path()).unwrap();
-        
+
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].title, "Test CVE");
         assert_eq!(findings[0].severity, Some("critical".to_string()));
         assert_eq!(findings[0].url, Some("http://example.com".to_string()));
+    }
+
+    #[test]
+    fn rejects_malformed_nonempty_records() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "not-json").unwrap();
+
+        let error = NucleiParser.parse(file.path()).unwrap_err();
+
+        assert!(error.to_string().contains("line 1"));
     }
 }

@@ -2,13 +2,16 @@
 //
 // Factory for creating and configuring update checkers for different package managers
 
-use super::traits::{UpdateChecker, UpdateCheckerConfig};
-use super::command_runner::CommandRunner;
+#[cfg(target_os = "linux")]
+use super::adapters::AptUpdateChecker;
+#[cfg(target_os = "windows")]
+use super::adapters::WingetUpdateChecker;
 use super::adapters::{
-    GoUpdateChecker, NpmUpdateChecker, PipxUpdateChecker, 
-    AptUpdateChecker, WingetUpdateChecker, HomebrewUpdateChecker,
-    GemUpdateChecker, CargoUpdateChecker,
+    CargoUpdateChecker, GemUpdateChecker, GoUpdateChecker, HomebrewUpdateChecker, NpmUpdateChecker,
+    PipxUpdateChecker,
 };
+use super::command_runner::CommandRunner;
+use super::traits::{UpdateChecker, UpdateCheckerConfig};
 
 /// Factory for creating update checkers
 pub struct UpdateCheckerFactory;
@@ -21,7 +24,7 @@ impl UpdateCheckerFactory {
 
         // Create real package manager checkers
         // Note: These will only be added if the package manager is available on the system
-        
+
         // Go checker (high priority for Go tools)
         let go_checker = GoUpdateChecker::new(command_runner.clone());
         if go_checker.is_available().await {
@@ -81,16 +84,14 @@ impl UpdateCheckerFactory {
 
         // Sort by priority (lower priority number = higher priority)
         checkers.sort_by_key(|c| c.priority());
-        
+
         eprintln!("✅ Loaded {} package manager checkers", checkers.len());
         for checker in &checkers {
             eprintln!("   - {}", checker.manager_name());
         }
-        
+
         checkers
     }
-
-
 
     /// Create a specific checker by name
     pub async fn create_checker_by_name(
@@ -98,7 +99,7 @@ impl UpdateCheckerFactory {
         config: &UpdateCheckerConfig,
     ) -> Option<Box<dyn UpdateChecker>> {
         let command_runner = CommandRunner::new(config.default_timeout, config.debug_logging);
-        
+
         let checker: Option<Box<dyn UpdateChecker>> = match manager_name {
             "go" => {
                 let checker = GoUpdateChecker::new(command_runner.clone());
@@ -187,34 +188,36 @@ impl UpdateCheckerFactory {
             }
             _ => None,
         };
-        
+
         if let Some(ref checker) = checker {
             eprintln!("✅ Loaded checker: {}", checker.manager_name());
         } else {
             eprintln!("⚠️  Checker '{}' not available", manager_name);
         }
-        
+
         checker
     }
 
     /// Get list of supported package managers
     pub fn supported_managers() -> Vec<&'static str> {
-        vec!["go", "pipx", "homebrew", "apt", "winget", "npm", "gem", "cargo"]
+        vec![
+            "go", "pipx", "homebrew", "apt", "winget", "npm", "gem", "cargo",
+        ]
     }
 
     /// Get platform-specific managers
     pub fn platform_managers() -> Vec<&'static str> {
         let mut managers = vec!["go", "pipx", "npm", "gem", "cargo"];
-        
+
         #[cfg(target_os = "macos")]
         managers.push("homebrew");
-        
+
         #[cfg(target_os = "linux")]
         managers.push("apt");
-        
+
         #[cfg(target_os = "windows")]
         managers.push("winget");
-        
+
         managers
     }
 }
@@ -236,13 +239,13 @@ mod tests {
         let managers = UpdateCheckerFactory::platform_managers();
         assert!(managers.contains(&"go"));
         assert!(managers.contains(&"pipx"));
-        
+
         #[cfg(target_os = "macos")]
         assert!(managers.contains(&"homebrew"));
-        
+
         #[cfg(target_os = "linux")]
         assert!(managers.contains(&"apt"));
-        
+
         #[cfg(target_os = "windows")]
         assert!(managers.contains(&"winget"));
     }

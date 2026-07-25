@@ -2,11 +2,11 @@
 //
 // Implements update checking for pipx packages using pipx runpip <pkg> pip list --outdated
 
-use std::time::Duration;
-use super::super::traits::{UpdateChecker, UpdateCheckResult, UpdateType};
-use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
 use super::super::command_runner::CommandRunner;
+use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
+use super::super::traits::{UpdateCheckResult, UpdateChecker, UpdateType};
 use super::super::version::Version;
+use std::time::Duration;
 
 /// Pipx update checker
 pub struct PipxUpdateChecker {
@@ -24,11 +24,23 @@ impl PipxUpdateChecker {
     }
 
     /// Check for updates using `pipx runpip <pkg> pip list --outdated --format=json`
-    async fn check_outdated(&self, package_name: &str) -> Result<Option<(String, String)>, UpdateCheckError> {
-        let output = self.command_runner.execute(
-            "pipx",
-            &["runpip", package_name, "list", "--outdated", "--format=json"],
-        ).await?;
+    async fn check_outdated(
+        &self,
+        package_name: &str,
+    ) -> Result<Option<(String, String)>, UpdateCheckError> {
+        let output = self
+            .command_runner
+            .execute(
+                "pipx",
+                &[
+                    "runpip",
+                    package_name,
+                    "list",
+                    "--outdated",
+                    "--format=json",
+                ],
+            )
+            .await?;
 
         if !output.success {
             return Err(UpdateCheckError::command_failed(
@@ -69,7 +81,8 @@ impl PipxUpdateChecker {
                 super::super::error_types::UpdateCheckErrorContext::new(
                     "pipx".to_string(),
                     package_name.to_string(),
-                ).with_diagnostic(output.stdout),
+                )
+                .with_diagnostic(output.stdout),
             )),
         }
     }
@@ -96,19 +109,31 @@ impl PipxUpdateChecker {
 }
 
 impl UpdateChecker for PipxUpdateChecker {
-    fn check_update(&self, package_name: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        package_name: &str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>>
+                + Send
+                + '_,
+        >,
+    > {
         let command_runner = self.command_runner.clone();
         let package_name = package_name.to_string();
-        
+
         Box::pin(async move {
             let checker = PipxUpdateChecker::new(command_runner);
             // Check for updates
             let result = checker.check_outdated(&package_name).await?;
-            
+
             match result {
                 Some((current_version, latest_version)) => {
                     // Compare versions
-                    let has_update = match (Version::parse(&current_version), Version::parse(&latest_version)) {
+                    let has_update = match (
+                        Version::parse(&current_version),
+                        Version::parse(&latest_version),
+                    ) {
                         (Some(current_v), Some(latest_v)) => latest_v > current_v,
                         _ => current_version != latest_version, // Fallback to string comparison
                     };
@@ -147,12 +172,12 @@ impl UpdateChecker for PipxUpdateChecker {
         "pipx"
     }
 
-    fn is_available(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+    fn is_available(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
         let command_runner = self.command_runner.clone();
-        
-        Box::pin(async move {
-            command_runner.is_available("pipx").await
-        })
+
+        Box::pin(async move { command_runner.is_available("pipx").await })
     }
 
     fn timeout(&self) -> Duration {

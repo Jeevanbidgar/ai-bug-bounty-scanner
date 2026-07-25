@@ -1,0 +1,25 @@
+name: Dalfox XSS Assessment
+description: Test an authorized web endpoint for reflected and DOM cross-site scripting with Dalfox v3.
+category: web
+inputs: {}
+steps:
+  - id: dalfox
+    name: Dalfox XSS assessment
+    needs: []
+    run:
+      - dalfox
+      - scan
+      - "{{url}}"
+      - --format
+      - json
+      - --output
+      - "{{workdir}}/dalfox.json"
+      - --no-color
+    success_exit_codes:
+      - 0
+      - 1
+    timeout: 1800
+    outputs:
+      - name: dalfox_results
+        path: "{{workdir}}/dalfox.json"
+        type: json

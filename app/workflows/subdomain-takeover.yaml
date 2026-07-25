@@ -15,7 +15,7 @@ steps:
     run:
       - subfinder
       - -d
-      - "{{target}}"
+      - "{{domain}}"
       - -o
       - "{{workdir}}/subdomains.txt"
       - -all
@@ -35,7 +35,7 @@ steps:
       - enum
       - -passive
       - -d
-      - "{{target}}"
+      - "{{domain}}"
       - -o
       - "{{workdir}}/amass-subdomains.txt"
       - -timeout
@@ -48,7 +48,7 @@ steps:
         description: Amass discovered subdomains
   - id: httpx
     name: HTTP Probing
-    description: Probe subdomains and detect CNAMEs
+    description: Probe subdomains and retain a plain URL list for takeover validators
     needs:
       - subfinder
       - amass
@@ -58,19 +58,14 @@ steps:
       - "{{workdir}}/subdomains.txt"
       - -o
       - "{{workdir}}/live-subdomains.txt"
-      - -title
-      - -status-code
-      - -cname
-      - -cdn
       - -follow-redirects
-      - -json
       - -silent
     timeout: 900
     outputs:
       - name: live_subdomains
         type: file
         path: "{{workdir}}/live-subdomains.txt"
-        description: Live subdomains with CNAME data
+        description: Plain live URL list for downstream Nuclei steps
   - id: nuclei-takeover
     name: Takeover Vulnerability Detection
     description: Detect potential subdomain takeover vulnerabilities
@@ -129,7 +124,7 @@ outputs:
     type: file
   - name: live_subdomains
     path: "{{workdir}}/live-subdomains.txt"
-    description: Live subdomains with metadata
+    description: Plain live URLs used by takeover and DNS validators
     type: file
   - name: takeover_vulnerabilities
     path: "{{workdir}}/nuclei-takeover.jsonl"

@@ -15,11 +15,17 @@ pub mod nuclei;
 pub mod gau;
 pub mod waybackurls;
 
-// Generic adapter (supports 30+ tools with common patterns)
+// Legacy generic preset experiment; retained for compatibility but not registered for execution
 pub mod generic;
+
+// Validated profiles for common command-line patterns
+pub mod profile;
+
+// Quarantined local CLI capability inference for newly installed catalog tools
+pub mod auto;
 
 // Central adapter registry
 pub mod registry;
 
 // Re-export commonly used types for convenience
-pub use registry::{AdapterInfo, AdapterRegistry, AdapterType};
+pub use registry::{AdapterInfo, AdapterRegistry, AdapterType, CommandPreview};

@@ -435,7 +435,7 @@ pub async fn check_npm_update(package_name: &str) -> Result<VersionCheckResult, 
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
             json["dependencies"][package_name]["version"]
                 .as_str()
-                .map(|v| normalize_version(v))
+                .map(normalize_version)
         } else {
             None
         }
@@ -535,21 +535,12 @@ pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, 
         let stdout = String::from_utf8_lossy(&list_output.stdout);
         // Output format: "package_name (version, version2, ...)"
         // Extract the first version
-        if let Some(line) = stdout.lines().next() {
-            if let Some(versions_part) = line.split('(').nth(1) {
-                if let Some(first_version) = versions_part.split(',').next() {
-                    Some(normalize_version(
-                        first_version.trim().trim_end_matches(')'),
-                    ))
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+        stdout
+            .lines()
+            .next()
+            .and_then(|line| line.split('(').nth(1))
+            .and_then(|versions| versions.split(',').next())
+            .map(|version| normalize_version(version.trim().trim_end_matches(')')))
     } else {
         None
     };
@@ -581,21 +572,12 @@ pub async fn check_gem_update(package_name: &str) -> Result<VersionCheckResult, 
 
     // Parse the output for the latest version
     // Output format: "package_name (version, version2, ...)"
-    let latest_version = if let Some(line) = stdout.lines().next() {
-        if let Some(versions_part) = line.split('(').nth(1) {
-            if let Some(first_version) = versions_part.split(',').next() {
-                Some(normalize_version(
-                    first_version.trim().trim_end_matches(')'),
-                ))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let latest_version = stdout
+        .lines()
+        .next()
+        .and_then(|line| line.split('(').nth(1))
+        .and_then(|versions| versions.split(',').next())
+        .map(|version| normalize_version(version.trim().trim_end_matches(')')));
 
     if let Some(latest) = latest_version {
         // Compare versions

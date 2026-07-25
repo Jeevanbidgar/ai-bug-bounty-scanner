@@ -24,12 +24,17 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [],
-    "externalBin": [],
+    "resources": {
+      "../app/workflows/": "workflows/"
+    },
+    "externalBin": [
+      "binaries/unihackd",
+      "binaries/unihack-mcp"
+    ],
     "category": "DeveloperTool",
     "copyright": "",
-    "longDescription": "AI-powered security tool orchestration platform",
-    "shortDescription": "Security tool orchestrator",
+    "longDescription": "Cross-platform security tool orchestration workbench",
+    "shortDescription": "Cross-platform security tool orchestrator",
     "macOS": {
       "entitlements": null,
       "exceptionDomain": "",
@@ -53,7 +58,7 @@
       {
         "fullscreen": false,
         "resizable": true,
-  "title": "UniHack",
+        "title": "UniHack",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -67,7 +72,15 @@
       }
     ],
     "security": {
-      "csp": null
+      "capabilities": ["main-capability"],
+      "csp": {
+        "default-src": "'self' customprotocol: asset:",
+        "connect-src": "ipc: http://ipc.localhost",
+        "font-src": "'self' data:",
+        "img-src": "'self' asset: http://asset.localhost blob: data:",
+        "style-src": "'self' 'unsafe-inline'",
+        "script-src": "'self'"
+      }
     }
   }
 }

@@ -169,7 +169,7 @@ impl GemInstaller {
 
             let mut brew_cmd = hidden_command("brew");
             let mut child = brew_cmd
-                .args(&["install", "ruby"])
+                .args(["install", "ruby"])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -231,7 +231,7 @@ impl GemInstaller {
         // Run gem install with detected path
         let mut install_cmd = hidden_command(&gem_path);
         let mut child = install_cmd
-            .args(&["install", package_name])
+            .args(["install", package_name])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -415,7 +415,7 @@ impl GemInstaller {
             // First attempt without elevation (for user gems in ~/.local/share/gem)
             let mut update_cmd = hidden_command("gem");
             let mut child = update_cmd
-                .args(&["update", package_name])
+                .args(["update", package_name])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -530,7 +530,7 @@ impl GemInstaller {
                 tool_name,
                 &format!("✅ Successfully updated {}\n", tool.name),
             );
-            return Ok(format!("Successfully updated {}", tool.name));
+            Ok(format!("Successfully updated {}", tool.name))
         }
 
         // Windows - no elevation needed
@@ -538,7 +538,7 @@ impl GemInstaller {
         {
             let mut update_cmd = hidden_command("gem");
             let mut child = update_cmd
-                .args(&["update", package_name])
+                .args(["update", package_name])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -581,7 +581,7 @@ impl GemInstaller {
                 tool_name,
                 &format!("✅ Successfully updated {}\n", tool.name),
             );
-            return Ok(format!("Successfully updated {}", tool.name));
+            Ok(format!("Successfully updated {}", tool.name))
         }
     }
 
@@ -594,7 +594,7 @@ impl GemInstaller {
 
         let mut uninstall_cmd = hidden_command("gem");
         let output = uninstall_cmd
-            .args(&["uninstall", "-x", package_name])
+            .args(["uninstall", "-x", package_name])
             .output()
             .await
             .context("Failed to uninstall gem package")?;

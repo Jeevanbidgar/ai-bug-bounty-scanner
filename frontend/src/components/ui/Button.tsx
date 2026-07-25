@@ -11,14 +11,15 @@ export const Button = ({
   size = 'md',
   className = '',
   children,
+  type = 'button',
   ...props
 }: ButtonProps) => {
-  const baseClasses = 'inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none'
+  const baseClasses = 'inline-flex items-center justify-center rounded-xl font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-400/70 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-50 disabled:pointer-events-none active:translate-y-px'
 
   const variantClasses = {
-    default: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
-    outline: 'border border-gray-600 bg-transparent text-gray-300 hover:bg-gray-700 focus:ring-gray-500',
-    ghost: 'text-gray-300 hover:bg-gray-700 focus:ring-gray-500'
+    default: 'border border-cyan-300/20 bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-[0_8px_24px_rgba(6,182,212,0.18)] hover:from-cyan-400 hover:to-blue-500',
+    outline: 'border border-white/10 bg-white/[0.035] text-slate-200 hover:border-cyan-400/30 hover:bg-cyan-400/[0.08]',
+    ghost: 'text-slate-300 hover:bg-white/[0.06] hover:text-white'
   }
 
   const sizeClasses = {
@@ -30,7 +31,7 @@ export const Button = ({
   const classes = `${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`
 
   return (
-    <button className={classes} {...props}>
+    <button type={type} className={classes} {...props}>
       {children}
     </button>
   )

@@ -2,8 +2,8 @@
 //
 // Provides test data and fixtures for update checker tests
 
+use super::super::error_types::UpdateCheckErrorCode;
 use super::super::traits::{UpdateCheckResult, UpdateType};
-use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
 use std::time::Duration;
 
 /// Test fixtures for update checker results
@@ -179,9 +179,12 @@ impl MockCommandOutputs {
             go_list_versions: "github.com/test/tool v1.0.0 v1.0.1 v1.1.0".to_string(),
             npm_list: r#"{"dependencies":{"test-package":{"version":"1.0.0"}}}"#.to_string(),
             npm_outdated: r#"{"test-package":{"current":"1.0.0","latest":"1.1.0"}}"#.to_string(),
-            pipx_outdated: r#"[{"name":"test-package","version":"1.0.0","latest_version":"1.1.0"}]"#.to_string(),
+            pipx_outdated:
+                r#"[{"name":"test-package","version":"1.0.0","latest_version":"1.1.0"}]"#
+                    .to_string(),
             apt_policy: "Installed: 1.0.0\nCandidate: 1.1.0".to_string(),
-            winget_upgrade: "Name  Id  Version  Available\ntest-package test-package 1.0.0 1.1.0".to_string(),
+            winget_upgrade: "Name  Id  Version  Available\ntest-package test-package 1.0.0 1.1.0"
+                .to_string(),
             homebrew_outdated: "test-package (1.0.0) < 1.1.0".to_string(),
             gem_list: "test-package (1.0.0)".to_string(),
             gem_search: "test-package (1.1.0)".to_string(),
@@ -224,6 +227,12 @@ impl MockCommandOutputs {
             cargo_list: "".to_string(),
             cargo_search: "".to_string(),
         }
+    }
+}
+
+impl Default for MockCommandOutputs {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -289,11 +298,17 @@ mod tests {
 
         let no_update_result = UpdateCheckerFixtures::no_update();
         assert!(!no_update_result.has_update);
-        assert_eq!(no_update_result.current_version, no_update_result.latest_version);
+        assert_eq!(
+            no_update_result.current_version,
+            no_update_result.latest_version
+        );
 
         let error_result = UpdateCheckerFixtures::error_result();
         assert!(error_result.error.is_some());
-        assert_eq!(error_result.error_code, Some(UpdateCheckErrorCode::CommandFailed));
+        assert_eq!(
+            error_result.error_code,
+            Some(UpdateCheckErrorCode::CommandFailed)
+        );
     }
 
     #[test]

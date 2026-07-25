@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { listen } from '@tauri-apps/api/event';
 import { X, Terminal, Check, AlertCircle, Loader2, Minimize2, Maximize2 } from 'lucide-react';
 import { Badge } from './ui/Badge';
 import apiService from '../services/api';
+import { appBridge } from '../bridge/appBridge';
 
 interface InstallationProgressModalProps {
   isOpen: boolean;
@@ -116,48 +116,35 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
     }, 5 * 60 * 1000); // 5 minutes
 
     // Listen for installation events
-    const unlistenStart = listen('tool:installation_started', (event: any) => {
-      console.log('📦 Installation started event:', event.payload);
-      if (event.payload.tool_name === toolName) {
+    const unlistenStart = appBridge.listen<any>('tool:installation_started', (payload) => {
+      if (payload.tool_name === toolName) {
         setStatus('installing');
         setOutputLines([{
           type: 'stdout',
-          line: `🚀 Starting ${event.payload.installation_method || event.payload.install_method || 'installation'}...`,
-          timestamp: event.payload.timestamp
+          line: `Starting ${payload.installation_method || payload.install_method || 'installation'}...`,
+          timestamp: payload.timestamp
         }]);
       }
     });
 
-    const unlistenOutput = listen('tool:installation_output', (event: any) => {
-      console.log('📝 Installation output event:', event.payload);
-      // New format from cargo/gem/npm/go installers: {event_id, output}
-      // Accept all events (no tool_name filtering since backend doesn't send it)
-      if (event.payload.output) {
+    const unlistenOutput = appBridge.listen<any>('tool:installation_output', (payload) => {
+      if (payload.tool_name === toolName && payload.line) {
         setOutputLines(prev => [...prev, {
-          type: 'stdout',  // Backend doesn't distinguish, default to stdout
-          line: event.payload.output,
-          timestamp: new Date().toISOString()
-        }]);
-      } 
-      // Legacy format from other installers: {tool_name, output_type, line, timestamp}
-      else if (event.payload.tool_name === toolName && event.payload.line) {
-        setOutputLines(prev => [...prev, {
-          type: event.payload.output_type,
-          line: event.payload.line,
-          timestamp: event.payload.timestamp
+          type: payload.output_type,
+          line: payload.line,
+          timestamp: payload.timestamp
         }]);
       }
     });
 
-    const unlistenComplete = listen('tool:installation_completed', (event: any) => {
-      console.log('✅ Installation completed event:', event.payload);
-      if (event.payload.tool_name === toolName) {
-        setStatus(event.payload.success ? 'completed' : 'failed');
-        setFinalMessage(event.payload.message);
+    const unlistenComplete = appBridge.listen<any>('tool:installation_completed', (payload) => {
+      if (payload.tool_name === toolName) {
+        setStatus(payload.success ? 'completed' : 'failed');
+        setFinalMessage(payload.message);
         setOutputLines(prev => [...prev, {
-          type: event.payload.success ? 'stdout' : 'stderr',
-          line: event.payload.message,
-          timestamp: event.payload.timestamp
+          type: payload.success ? 'stdout' : 'stderr',
+          line: payload.message,
+          timestamp: payload.timestamp
         }]);
       }
     });
@@ -293,6 +280,16 @@ export const InstallationProgressModal: React.FC<InstallationProgressModalProps>
             </button>
           </div>
         </div>
+
+        {finalMessage && status !== 'installing' && (
+          <div className={`mx-6 mt-4 rounded border p-3 text-sm ${
+            status === 'completed'
+              ? 'border-green-700 bg-green-950/40 text-green-200'
+              : 'border-red-700 bg-red-950/40 text-red-200'
+          }`}>
+            {finalMessage}
+          </div>
+        )}
 
         {/* Output Terminal */}
         <div className="flex-1 overflow-auto bg-black p-4 font-mono text-sm">

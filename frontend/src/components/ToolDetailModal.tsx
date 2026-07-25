@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
-import { X, CheckCircle, XCircle, AlertTriangle, Loader2, Play, RefreshCw, Copy, ExternalLink, Check, Download, Trash2, ArrowUpCircle, Info } from 'lucide-react'
+import { X, CheckCircle, XCircle, AlertTriangle, Loader2, Play, RefreshCw, Download, Trash2, ArrowUpCircle, Info } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/Card'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
-import type { Tool, CoordinatedUpdateResult } from '../services/api'
-import { invoke } from '@tauri-apps/api/core'
+import type { Tool, ToolInstallationInfo } from '../services/api'
 import { useToast } from '../hooks/useToast'
 import Toast from './ui/Toast'
 import apiService from '../services/api'
@@ -15,11 +14,6 @@ interface ToolDetailModalProps {
   onClose: () => void
   onToolUpdate?: (updatedTool: Tool) => void
   onInstallStart?: (toolName: string) => void
-}
-
-interface OsInfo {
-  platform: 'windows' | 'macos' | 'linux' | 'unknown'
-  arch: string
 }
 
 const INSTALL_METHOD_LABELS: Record<string, string> = {
@@ -80,22 +74,29 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
   const [isTestRunning, setIsTestRunning] = useState(false)
   const [testOutput, setTestOutput] = useState<string | null>(null)
   const [testError, setTestError] = useState<string | null>(null)
-  const [osInfo, setOsInfo] = useState<OsInfo | null>(null)
-  const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [isRechecking, setIsRechecking] = useState(false)
   const [isInstalling, setIsInstalling] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const [isUninstalling, setIsUninstalling] = useState(false)
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false)
-  const [latestVersion, setLatestVersion] = useState<string | null>(null)
-  const [enhancedUpdateResult, setEnhancedUpdateResult] = useState<CoordinatedUpdateResult | null>(null)
   const [showUpdateDetails, setShowUpdateDetails] = useState(false)
-  const [installationInfo, setInstallationInfo] = useState<any>(null)
+  const [installationInfo, setInstallationInfo] = useState<ToolInstallationInfo | null>(null)
   const [selectedInstallMethod, setSelectedInstallMethod] = useState<string | null>(null)
   const { toasts, success, error: showError, info, removeToast } = useToast()
+  const operationInProgress = isInstalling || isUpdating || isUninstalling
+
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !operationInProgress) onClose()
+    }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [onClose, operationInProgress])
 
   const availableMethods = useMemo(() => {
+    if (installationInfo) {
+      return installationInfo.automated_install_methods
+    }
     const unique = new Set<string>()
     if (tool.install_method) {
       unique.add(tool.install_method)
@@ -103,7 +104,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     if (installationInfo?.install_method) {
       unique.add(installationInfo.install_method)
     }
-    ;(tool.alternative_install_methods || []).forEach(method => {
+    (tool.alternative_install_methods || []).forEach(method => {
       if (method) {
         unique.add(method)
       }
@@ -124,18 +125,8 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
 
     const preferences: string[] = []
 
-    switch (osInfo?.platform) {
-      case 'macos':
-        preferences.push('homebrew')
-        break
-      case 'windows':
-        preferences.push('winget')
-        break
-      case 'linux':
-        preferences.push('apt')
-        break
-      default:
-        break
+    if (installationInfo?.recommended_install_method) {
+      preferences.push(installationInfo.recommended_install_method)
     }
 
     if (tool.install_method) {
@@ -152,7 +143,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     }
 
     return availableMethods[0]
-  }, [availableMethods, installationInfo, osInfo?.platform, tool.install_method])
+  }, [availableMethods, installationInfo, tool.install_method])
 
   const recommendedMethodLabel = recommendedMethod ? formatInstallMethod(recommendedMethod) : 'Recommended'
   const recommendedMethodDescription = recommendedMethod
@@ -165,15 +156,6 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
   )
 
   useEffect(() => {
-    const fetchOsInfo = async () => {
-      try {
-        const osData = await invoke<OsInfo>('get_os_info')
-        setOsInfo(osData)
-      } catch (error) {
-        console.error('Failed to get OS info:', error)
-      }
-    }
-
     const fetchInstallationInfo = async () => {
       try {
         const installData = await apiService.getToolInstallationInfo(tool.name)
@@ -203,76 +185,20 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
           const result = await apiService.checkToolUpdate(tool.name)
           if (result.has_update) {
             setUpdateAvailable(true)
-            setLatestVersion(result.latest_version)
           } else {
             setUpdateAvailable(false)
-            setLatestVersion(null)
           }
         } catch (error) {
           console.error('Failed to check for updates:', error)
           setUpdateAvailable(false)
-          setLatestVersion(null)
         }
       }
     }
 
-    fetchOsInfo()
     fetchInstallationInfo()
     fetchVersion()
     checkForUpdates()
   }, [tool.name, tool.installed])
-
-  const getInstallCommands = (toolName: string, platform: string): { name: string, command: string, link?: string }[] => {
-    const commonToolCommands: Record<string, Record<string, { name: string, command: string, link?: string }[]>> = {
-      'amass': {
-        'windows': [{ name: 'Chocolatey', command: 'choco install amass', link: 'https://chocolatey.org/' }, { name: 'Go', command: 'go install -v github.com/owasp-amass/amass/v4/...@master' }],
-        'macos': [{ name: 'Homebrew', command: 'brew install amass' }, { name: 'Go', command: 'go install -v github.com/owasp-amass/amass/v4/...@master' }],
-        'linux': [{ name: 'Snap', command: 'sudo snap install amass' }, { name: 'Go', command: 'go install -v github.com/owasp-amass/amass/v4/...@master' }]
-      },
-      'nuclei': {
-        'windows': [{ name: 'Go', command: 'go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest' }],
-        'macos': [{ name: 'Homebrew', command: 'brew install nuclei' }, { name: 'Go', command: 'go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest' }],
-        'linux': [{ name: 'Go', command: 'go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest' }]
-      },
-      'nmap': {
-        'windows': [{ name: 'Download', command: 'Download from nmap.org', link: 'https://nmap.org/download.html' }],
-        'macos': [{ name: 'Homebrew', command: 'brew install nmap' }],
-        'linux': [{ name: 'APT', command: 'sudo apt install nmap' }, { name: 'DNF', command: 'sudo dnf install nmap' }]
-      },
-      'ffuf': {
-        'windows': [{ name: 'Go', command: 'go install github.com/ffuf/ffuf@latest' }],
-        'macos': [{ name: 'Homebrew', command: 'brew install ffuf' }, { name: 'Go', command: 'go install github.com/ffuf/ffuf@latest' }],
-        'linux': [{ name: 'Go', command: 'go install github.com/ffuf/ffuf@latest' }]
-      },
-      'subfinder': {
-        'windows': [{ name: 'Go', command: 'go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest' }],
-        'macos': [{ name: 'Homebrew', command: 'brew install subfinder' }, { name: 'Go', command: 'go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest' }],
-        'linux': [{ name: 'Go', command: 'go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest' }]
-      },
-      'httpx': {
-        'windows': [{ name: 'Go', command: 'go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest' }],
-        'macos': [{ name: 'Homebrew', command: 'brew install httpx' }, { name: 'Go', command: 'go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest' }],
-        'linux': [{ name: 'Go', command: 'go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest' }]
-      },
-      'gobuster': {
-        'windows': [{ name: 'Go', command: 'go install github.com/OJ/gobuster/v3@latest' }],
-        'macos': [{ name: 'Homebrew', command: 'brew install gobuster' }, { name: 'Go', command: 'go install github.com/OJ/gobuster/v3@latest' }],
-        'linux': [{ name: 'APT', command: 'sudo apt install gobuster' }, { name: 'Go', command: 'go install github.com/OJ/gobuster/v3@latest' }]
-      },
-    }
-
-    return commonToolCommands[toolName.toLowerCase()]?.[platform] || []
-  }
-
-  const handleCopyCommand = async (command: string) => {
-    try {
-      await navigator.clipboard.writeText(command)
-      setCopiedCommand(command)
-      setTimeout(() => setCopiedCommand(null), 2000)
-    } catch (error) {
-      console.error('Failed to copy command:', error)
-    }
-  }
 
   const getStatusBadge = () => {
     if (tool.installed) {
@@ -296,14 +222,11 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     setTestOutput(null)
 
     try {
-      // This would call a backend command to test run the tool
-      // For now, we'll simulate it
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      if (tool.raw_version) {
-        setTestOutput(tool.raw_version)
+      const result = await apiService.testTool(tool.name)
+      if (result.success) {
+        setTestOutput(`${result.output || 'Command completed successfully'}\n\nPath: ${result.path}\nDuration: ${result.durationMs} ms`)
       } else {
-        setTestOutput(`${tool.name} is installed at ${tool.path}`)
+        setTestError(`Health check exited with code ${result.exitCode ?? 'unknown'}.${result.output ? `\n${result.output}` : ''}`)
       }
     } catch (error) {
       setTestError(error instanceof Error ? error.message : 'Failed to run test')
@@ -317,8 +240,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     const previousStatus = tool.installed
 
     try {
-      // Call the Tauri command directly to check just this tool
-      const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
+      const updatedTool = await apiService.recheckTool(tool.name)
 
       if (updatedTool) {
         // Update the local state
@@ -392,7 +314,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
           success(result.message)
 
           // Recheck tool status after installation
-          const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
+          const updatedTool = await apiService.recheckTool(tool.name)
           if (updatedTool) {
             // Fetch version
             try {
@@ -422,7 +344,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
           success(result.message)
 
           // Recheck tool status after installation
-          const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
+          const updatedTool = await apiService.recheckTool(tool.name)
           if (updatedTool) {
             // Fetch version
             try {
@@ -464,7 +386,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
         success(result.message)
 
         // Recheck tool status after update
-        const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
+        const updatedTool = await apiService.recheckTool(tool.name)
         if (updatedTool) {
           // Fetch new version
           try {
@@ -478,7 +400,6 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
 
           setTool(updatedTool)
           setUpdateAvailable(false) // Reset update flag
-          setLatestVersion(null)
 
           // Notify parent component
           if (onToolUpdate) {
@@ -496,49 +417,8 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     }
   }
 
-  const handleCheckForUpdates = async () => {
-    setIsCheckingUpdate(true)
-
-    try {
-      info(`Checking for ${tool.name} updates...`)
-
-      // Use optimized single-manager check (fast, targeted)
-      const result = await apiService.checkToolUpdate(tool.name)
-
-      if (result.error) {
-        showError(`Update check failed: ${result.error}`)
-        return
-      }
-
-      if (result.has_update) {
-        setUpdateAvailable(true)
-        setLatestVersion(result.latest_version)
-        success(`Update available! Current: ${result.current_version}, Latest: ${result.latest_version}`)
-      } else {
-        setUpdateAvailable(false)
-        setLatestVersion(null)
-        success(`${tool.name} is up to date (v${result.current_version})`)
-      }
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to check for updates'
-      showError(errorMessage)
-    } finally {
-      setIsCheckingUpdate(false)
-    }
-  }
-
-  const handleViewUpdateDetails = async () => {
-    try {
-      // Load enhanced update results (checks all package managers)
-      info(`Loading detailed update information...`)
-      const enhancedResult = await apiService.checkToolUpdateEnhanced(tool.name)
-      setEnhancedUpdateResult(enhancedResult)
-      setShowUpdateDetails(true)
-    } catch (error) {
-      console.error('Failed to load enhanced update details:', error)
-      showError('Failed to load detailed update information')
-    }
+  const handleViewUpdateDetails = () => {
+    setShowUpdateDetails(true)
   }
 
   const handleUninstall = async () => {
@@ -555,7 +435,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
       success(message)
 
       // Recheck tool status after uninstallation
-      const updatedTool = await invoke<Tool>('recheck_tool', { toolName: tool.name })
+      const updatedTool = await apiService.recheckTool(tool.name)
       if (updatedTool) {
         setTool(updatedTool)
 
@@ -572,20 +452,24 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
     }
   }
 
-  const autoInstallMethods = ['go', 'pipx', 'git-pip', 'apt', 'cargo', 'gem', 'homebrew', 'npm', 'winget']
-  const canInstall = installationInfo ? autoInstallMethods.includes(installationInfo.install_method) : false
-  const requiresManualInstall = installationInfo ? installationInfo.install_method === 'manual' : false
-  const installCommands = osInfo ? getInstallCommands(tool.name, osInfo.platform) : []
+  const canInstall = availableMethods.length > 0
+  const requiresManualInstall = Boolean(installationInfo?.available_install_methods.includes('manual') && !canInstall)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-gray-900 rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onMouseDown={() => { if (!operationInProgress) onClose() }}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tool-detail-title"
+        className="bg-gray-900 rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         {/* Header */}
         <div className="sticky top-0 bg-gray-900 border-b border-gray-700 px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
             {getStatusIcon()}
             <div>
-              <h2 className="text-2xl font-bold text-white">{tool.name}</h2>
+              <h2 id="tool-detail-title" className="text-2xl font-bold text-white">{tool.name}</h2>
               <p className="text-sm text-gray-400">{tool.category}</p>
             </div>
           </div>
@@ -595,6 +479,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
               onClick={onClose}
               variant="ghost"
               size="sm"
+              aria-label="Close tool details"
               className="text-gray-400 hover:text-white"
             >
               <X className="h-5 w-5" />
@@ -751,7 +636,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
           )}
 
           {/* Installation Helper */}
-          {!tool.installed && osInfo && (
+          {!tool.installed && installationInfo && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -759,58 +644,11 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                   Installation Instructions
                 </CardTitle>
                 <CardDescription>
-                  {tool.name} is not installed. Here are some ways to install it on your system ({osInfo.platform}):
+                  Approved installation paths for {installationInfo.platform}. The backend rejects methods not listed here.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {installCommands.length > 0 ? (
-                  <div className="space-y-3">
-                    {installCommands.map((installMethod, index) => (
-                      <div key={index} className="bg-gray-800 rounded-lg p-4 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-300">{installMethod.name}:</span>
-                          {installMethod.link && (
-                            <a
-                              href={installMethod.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-400 hover:text-blue-300 flex items-center gap-1 text-sm"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                              Docs
-                            </a>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <code className="flex-1 bg-gray-900 text-green-300 p-2 rounded text-sm font-mono">
-                            {installMethod.command}
-                          </code>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleCopyCommand(installMethod.command)}
-                            className="flex-shrink-0"
-                          >
-                            {copiedCommand === installMethod.command ? (
-                              <>
-                                <Check className="h-4 w-4 text-green-500" />
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="h-4 w-4" />
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 mt-4">
-                      <p className="text-sm text-blue-300">
-                        <strong>💡 Tip:</strong> After installing {tool.name}, click the "Recheck Status" button below to verify the installation.
-                      </p>
-                    </div>
-                  </div>
-                ) : canInstall ? (
+                {canInstall ? (
                   <div className="bg-green-900/20 border border-green-700 rounded-lg p-4 space-y-3">
                     <p className="text-sm text-green-300 font-medium flex items-center gap-2">
                       <CheckCircle className="h-4 w-4" />
@@ -837,45 +675,11 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                         🔧 Manual Installation Required
                       </p>
                       <p className="text-sm text-gray-400">
-                        {installationInfo?.install_method === 'manual'
-                          ? `${tool.name} requires manual installation. This tool cannot be automatically installed by our app.`
+                        {requiresManualInstall
+                          ? `${tool.name} requires a manual installation that does not yet have an audited automation recipe.`
                           : `No automatic installation commands are currently configured for ${tool.name}.`
                         }
                       </p>
-                    </div>
-
-                    <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 space-y-3">
-                      <p className="text-sm text-blue-300 font-medium">
-                        📖 How to Install:
-                      </p>
-                      <ol className="text-sm text-gray-300 space-y-2 list-decimal list-inside">
-                        <li>Search for "{tool.name} installation" in your preferred search engine</li>
-                        <li>Visit the official GitHub repository or documentation</li>
-                        <li>Follow the platform-specific installation instructions</li>
-                        <li>After installation, click "Recheck Status" below to verify</li>
-                      </ol>
-                    </div>
-
-                    {/* Quick search links */}
-                    <div className="flex gap-2 justify-center">
-                      <a
-                        href={`https://github.com/search?q=${encodeURIComponent(tool.name)}&type=repositories`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm transition-colors"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Search GitHub
-                      </a>
-                      <a
-                        href={`https://www.google.com/search?q=${encodeURIComponent(tool.name + ' installation guide')}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm transition-colors"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Search Google
-                      </a>
                     </div>
                   </div>
                 )}
@@ -973,6 +777,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                 <div className="flex flex-wrap gap-2">
                   {/* Primary method button */}
                   <button
+                    type="button"
                     onClick={() => setSelectedInstallMethod(recommendedMethod)}
                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${(selectedInstallMethod === recommendedMethod || selectedInstallMethod === null)
                       ? 'bg-blue-600 text-white'
@@ -986,6 +791,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
                   {/* Alternative method buttons */}
                   {otherMethods.map((method) => (
                     <button
+                      type="button"
                       key={method}
                       onClick={() => setSelectedInstallMethod(method)}
                       className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${selectedInstallMethod === method
@@ -1115,6 +921,7 @@ const ToolDetailModal = ({ tool: initialTool, onClose, onToolUpdate, onInstallSt
           <Toast
             key={toast.id}
             {...toast}
+            fixed={false}
             onClose={() => removeToast(toast.id)}
           />
         ))}

@@ -2,11 +2,11 @@
 //
 // Implements update checking for WinGet packages using winget upgrade
 
-use std::time::Duration;
-use super::super::traits::{UpdateChecker, UpdateCheckResult, UpdateType};
-use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
 use super::super::command_runner::CommandRunner;
+use super::super::error_types::{UpdateCheckError, UpdateCheckErrorCode};
+use super::super::traits::{UpdateCheckResult, UpdateChecker, UpdateType};
 use super::super::version::Version;
+use std::time::Duration;
 
 /// WinGet update checker
 pub struct WingetUpdateChecker {
@@ -24,11 +24,14 @@ impl WingetUpdateChecker {
     }
 
     /// Check for updates using `winget upgrade --id <package_id>`
-    async fn check_upgrade(&self, package_id: &str) -> Result<Option<(String, String)>, UpdateCheckError> {
-        let output = self.command_runner.execute(
-            "winget",
-            &["upgrade", "--id", package_id],
-        ).await?;
+    async fn check_upgrade(
+        &self,
+        package_id: &str,
+    ) -> Result<Option<(String, String)>, UpdateCheckError> {
+        let output = self
+            .command_runner
+            .execute("winget", &["upgrade", "--id", package_id])
+            .await?;
 
         // WinGet upgrade returns exit code 1 if there are updates available
         // and 0 if no updates are available
@@ -63,7 +66,8 @@ impl WingetUpdateChecker {
                     super::super::error_types::UpdateCheckErrorContext::new(
                         "winget".to_string(),
                         package_id.to_string(),
-                    ).with_diagnostic(output.stdout),
+                    )
+                    .with_diagnostic(output.stdout),
                 )),
             }
         } else if output.stdout.contains("No applicable update found") {
@@ -75,7 +79,8 @@ impl WingetUpdateChecker {
                 super::super::error_types::UpdateCheckErrorContext::new(
                     "winget".to_string(),
                     package_id.to_string(),
-                ).with_diagnostic(output.stdout),
+                )
+                .with_diagnostic(output.stdout),
             ))
         }
     }
@@ -102,49 +107,61 @@ impl WingetUpdateChecker {
 }
 
 impl UpdateChecker for WingetUpdateChecker {
-    fn check_update(&self, package_name: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>> + Send + '_>> {
+    fn check_update(
+        &self,
+        package_name: &str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<UpdateCheckResult, UpdateCheckError>>
+                + Send
+                + '_,
+        >,
+    > {
         let command_runner = self.command_runner.clone();
         let package_name = package_name.to_string();
-        
+
         Box::pin(async move {
             let checker = WingetUpdateChecker::new(command_runner);
             // Check for updates
             let result = checker.check_upgrade(&package_name).await?;
-            
+
             match result {
-            Some((current_version, latest_version)) => {
-            // Compare versions
-            let has_update = match (Version::parse(&current_version), Version::parse(&latest_version)) {
-            (Some(current_v), Some(latest_v)) => latest_v > current_v,
-            _ => current_version != latest_version, // Fallback to string comparison
-            };
-    
-            let update_type = if has_update {
-            Self::determine_update_type(&current_version, &latest_version)
-            } else {
-            None
-            };
-    
-            Ok(UpdateCheckResult::success(
-            has_update,
-            Some(current_version),
-            Some(latest_version),
-            "winget".to_string(),
-            Some("winget upgrade".to_string()),
-            update_type,
-            ))
-            }
-            None => {
-            // No update available
-            Ok(UpdateCheckResult::success(
-            false,
-            Some("installed".to_string()),
-            Some("installed".to_string()),
-            "winget".to_string(),
-            Some("winget upgrade".to_string()),
-            None,
-            ))
-            }
+                Some((current_version, latest_version)) => {
+                    // Compare versions
+                    let has_update = match (
+                        Version::parse(&current_version),
+                        Version::parse(&latest_version),
+                    ) {
+                        (Some(current_v), Some(latest_v)) => latest_v > current_v,
+                        _ => current_version != latest_version, // Fallback to string comparison
+                    };
+
+                    let update_type = if has_update {
+                        Self::determine_update_type(&current_version, &latest_version)
+                    } else {
+                        None
+                    };
+
+                    Ok(UpdateCheckResult::success(
+                        has_update,
+                        Some(current_version),
+                        Some(latest_version),
+                        "winget".to_string(),
+                        Some("winget upgrade".to_string()),
+                        update_type,
+                    ))
+                }
+                None => {
+                    // No update available
+                    Ok(UpdateCheckResult::success(
+                        false,
+                        Some("installed".to_string()),
+                        Some("installed".to_string()),
+                        "winget".to_string(),
+                        Some("winget upgrade".to_string()),
+                        None,
+                    ))
+                }
             }
         })
     }
@@ -153,12 +170,12 @@ impl UpdateChecker for WingetUpdateChecker {
         "winget"
     }
 
-    fn is_available(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+    fn is_available(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
         let command_runner = self.command_runner.clone();
-        
-        Box::pin(async move {
-            command_runner.is_available("winget").await
-        })
+
+        Box::pin(async move { command_runner.is_available("winget").await })
     }
 
     fn timeout(&self) -> Duration {

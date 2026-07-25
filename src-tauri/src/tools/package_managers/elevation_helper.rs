@@ -13,6 +13,7 @@
 /// ```
 use tokio::process::Command;
 
+#[derive(Default)]
 pub struct ElevationHelper;
 
 impl ElevationHelper {

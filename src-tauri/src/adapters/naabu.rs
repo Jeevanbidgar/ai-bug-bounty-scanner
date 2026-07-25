@@ -23,6 +23,7 @@ impl Default for NaabuConfig {
     }
 }
 
+#[derive(Default)]
 pub struct NaabuAdapter;
 
 impl NaabuAdapter {

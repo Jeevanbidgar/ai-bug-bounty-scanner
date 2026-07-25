@@ -164,7 +164,7 @@ impl NpmInstaller {
 
             let mut brew_cmd = hidden_command("brew");
             let mut child = brew_cmd
-                .args(&["install", "node"])
+                .args(["install", "node"])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -400,7 +400,7 @@ impl NpmInstaller {
         // Extract command name (usually same as package name, but could differ)
         let command_name = if package_name.contains('/') {
             // Scoped package like @org/package - use last part
-            package_name.split('/').last().unwrap_or(package_name)
+            package_name.split('/').next_back().unwrap_or(package_name)
         } else {
             package_name
         };
@@ -492,7 +492,7 @@ impl NpmInstaller {
                 tool_name,
                 &format!("✅ Successfully updated {}\n", tool.name),
             );
-            return Ok(format!("Successfully updated {}", tool.name));
+            Ok(format!("Successfully updated {}", tool.name))
         }
 
         // Windows - no elevation needed, npm handles permissions
@@ -500,7 +500,7 @@ impl NpmInstaller {
         {
             let mut update_cmd = hidden_command("npm");
             let mut child = update_cmd
-                .args(&["update", "-g", package_name])
+                .args(["update", "-g", package_name])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -543,7 +543,7 @@ impl NpmInstaller {
                 tool_name,
                 &format!("✅ Successfully updated {}\n", tool.name),
             );
-            return Ok(format!("Successfully updated {}", tool.name));
+            Ok(format!("Successfully updated {}", tool.name))
         }
     }
 
@@ -556,7 +556,7 @@ impl NpmInstaller {
 
         let mut uninstall_cmd = hidden_command("npm");
         let output = uninstall_cmd
-            .args(&["uninstall", "-g", package_name])
+            .args(["uninstall", "-g", package_name])
             .output()
             .await
             .context("Failed to uninstall npm package")?;

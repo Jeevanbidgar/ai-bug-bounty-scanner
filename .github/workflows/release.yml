@@ -1,0 +1,177 @@
+name: UniHack beta installers
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unihack-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+            artifact: linux-x86_64
+          - name: Windows x64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            artifact: windows-x86_64
+          - name: macOS Apple Silicon
+            runner: macos-15
+            target: aarch64-apple-darwin
+            bundles: dmg
+            artifact: macos-arm64
+          - name: macOS Intel
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            bundles: dmg
+            artifact: macos-x86_64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            wget
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Set up Rust target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: release-${{ matrix.target }}
+
+      - name: Install locked JavaScript dependencies
+        run: |
+          npm ci
+          npm ci --prefix frontend
+
+      - name: Prepare daemon and MCP sidecars
+        run: npm run prepare:sidecars -- --target ${{ matrix.target }}
+
+      - name: Build desktop installer
+        run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Stage named installer files
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          bundle_root="src-tauri/target/${{ matrix.target }}/release/bundle"
+          mkdir -p release-assets
+
+          case "${{ matrix.artifact }}" in
+            linux-x86_64)
+              deb="$(find "$bundle_root/deb" -maxdepth 1 -type f -name '*.deb' -print -quit)"
+              appimage="$(find "$bundle_root/appimage" -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+              test -n "$deb"
+              test -n "$appimage"
+              cp "$deb" "release-assets/UniHack-${version}-linux-x86_64.deb"
+              cp "$appimage" "release-assets/UniHack-${version}-linux-x86_64.AppImage"
+              ;;
+            windows-x86_64)
+              installer="$(find "$bundle_root/nsis" -maxdepth 1 -type f -name '*.exe' -print -quit)"
+              test -n "$installer"
+              cp "$installer" "release-assets/UniHack-${version}-windows-x86_64-setup.exe"
+              ;;
+            macos-arm64)
+              dmg="$(find "$bundle_root/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+              test -n "$dmg"
+              cp "$dmg" "release-assets/UniHack-${version}-macos-arm64.dmg"
+              ;;
+            macos-x86_64)
+              dmg="$(find "$bundle_root/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+              test -n "$dmg"
+              cp "$dmg" "release-assets/UniHack-${version}-macos-x86_64.dmg"
+              ;;
+          esac
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: unihack-${{ matrix.artifact }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish GitHub prerelease
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: unihack-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Create or update prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" release-assets/* --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" release-assets/* \
+              --prerelease \
+              --verify-tag \
+              --title "UniHack ${GITHUB_REF_NAME} beta" \
+              --notes-file docs/BETA_RELEASE_NOTES.md
+          fi

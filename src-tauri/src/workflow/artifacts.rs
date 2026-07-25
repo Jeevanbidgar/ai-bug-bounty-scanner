@@ -133,14 +133,15 @@ impl ArtifactManager {
         artifacts: &HashMap<String, Vec<WorkflowArtifact>>,
     ) -> Option<String> {
         // Parse reference: "artifacts.step_id.artifact_name"
-        let parts: Vec<&str> = reference.split('.').collect();
+        let reference = reference.strip_prefix("artifacts.")?;
 
-        if parts.len() != 3 || parts[0] != "artifacts" {
+        // Artifact names commonly include an extension (for example
+        // `output.txt`), so only split once after the step identifier.
+        let (step_id, artifact_name) = reference.split_once('.')?;
+
+        if step_id.is_empty() || artifact_name.is_empty() {
             return None;
         }
-
-        let step_id = parts[1];
-        let artifact_name = parts[2];
 
         // Find artifact in the specified step
         if let Some(step_artifacts) = artifacts.get(step_id) {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { appBridge } from '../bridge/appBridge'
 
 /**
  * Custom hook for managing system-wide Tauri event listeners
@@ -11,7 +12,7 @@ export interface SystemEventHandlers {
   // Tool Installation Events
   onToolInstallationStarted?: (data: {
     tool_name: string
-    install_method: string
+    installation_method: string
     timestamp: string
   }) => void
   onToolInstallationCompleted?: (data: {
@@ -61,10 +62,10 @@ export interface SystemEventHandlers {
 export const useSystemEvents = (handlers: SystemEventHandlers) => {
   const unlisten = useRef<(() => void)[]>([])
   const isListening = useRef(false)
+  const handlersRef = useRef(handlers)
+  handlersRef.current = handlers
 
   const cleanup = useCallback(() => {
-    console.log('🧹 Cleaning up system event listeners')
-    
     // Call all unlisten functions
     unlisten.current.forEach(fn => {
       try {
@@ -81,17 +82,12 @@ export const useSystemEvents = (handlers: SystemEventHandlers) => {
 
   const setupListeners = useCallback(async () => {
     if (isListening.current) {
-      console.log('⚠️ System event listeners already setup, skipping')
       return
     }
-
-    console.log('🎧 Setting up system event listeners')
     
     try {
       // Check if we're in a Tauri environment
-      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-        const { listen } = await import('@tauri-apps/api/event')
-
+      if (appBridge.capabilities.events) {
         // Listen to tool installation events
         const toolEvents = [
           'tool:installation_started',
@@ -100,23 +96,20 @@ export const useSystemEvents = (handlers: SystemEventHandlers) => {
         ]
 
         for (const eventName of toolEvents) {
-          const unlistenFn = await listen(eventName, (event: any) => {
-            const payload = event.payload
-            console.log(`📨 Tool event: ${eventName}`, payload)
-
+          const unlistenFn = await appBridge.listen<any>(eventName, (payload) => {
             switch (eventName) {
               case 'tool:installation_started':
-                handlers.onToolInstallationStarted?.(payload)
+                handlersRef.current.onToolInstallationStarted?.(payload)
                 break
               case 'tool:installation_completed':
                 if (payload.success) {
-                  handlers.onToolInstallationCompleted?.(payload)
+                  handlersRef.current.onToolInstallationCompleted?.(payload)
                 } else {
-                  handlers.onToolInstallationFailed?.(payload)
+                  handlersRef.current.onToolInstallationFailed?.(payload)
                 }
                 break
               case 'tool:installation_failed':
-                handlers.onToolInstallationFailed?.(payload)
+                handlersRef.current.onToolInstallationFailed?.(payload)
                 break
             }
           })
@@ -133,22 +126,19 @@ export const useSystemEvents = (handlers: SystemEventHandlers) => {
         ]
 
         for (const eventName of scanEvents) {
-          const unlistenFn = await listen(eventName, (event: any) => {
-            const payload = event.payload
-            console.log(`📨 Scan event: ${eventName}`, payload)
-
+          const unlistenFn = await appBridge.listen<any>(eventName, (payload) => {
             switch (eventName) {
               case 'scan:started':
-                handlers.onScanStarted?.(payload)
+                handlersRef.current.onScanStarted?.(payload)
                 break
               case 'scan:completed':
-                handlers.onScanCompleted?.(payload)
+                handlersRef.current.onScanCompleted?.(payload)
                 break
               case 'scan:failed':
-                handlers.onScanFailed?.(payload)
+                handlersRef.current.onScanFailed?.(payload)
                 break
               case 'scan:progress_update':
-                handlers.onScanProgress?.(payload)
+                handlersRef.current.onScanProgress?.(payload)
                 break
             }
           })
@@ -160,25 +150,22 @@ export const useSystemEvents = (handlers: SystemEventHandlers) => {
         const notificationEvents = ['system:notification']
 
         for (const eventName of notificationEvents) {
-          const unlistenFn = await listen(eventName, (event: any) => {
-            const payload = event.payload
-            console.log(`📨 System event: ${eventName}`, payload)
-
-            handlers.onSystemNotification?.(payload)
+          const unlistenFn = await appBridge.listen<any>(eventName, (payload) => {
+            handlersRef.current.onSystemNotification?.({
+              ...payload,
+              level: payload.level ?? payload.notification_type ?? 'info',
+            })
           })
 
           unlisten.current.push(unlistenFn)
         }
 
         isListening.current = true
-        console.log(`✅ System event listeners setup complete (${unlisten.current.length} listeners)`)
-      } else {
-        console.warn('⚠️ Not in Tauri environment, skipping event listeners')
       }
     } catch (error) {
       console.error('❌ Failed to setup system event listeners:', error)
     }
-  }, [handlers])
+  }, [])
 
   // Setup listeners on mount
   useEffect(() => {
