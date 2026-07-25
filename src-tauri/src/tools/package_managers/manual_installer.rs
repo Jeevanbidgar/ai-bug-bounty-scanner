@@ -701,18 +701,22 @@ impl ManualInstaller {
                         perms.set_mode(0o755);
                         std::fs::set_permissions(&source_path, perms)
                             .map_err(|e| format!("Failed to set permissions: {}", e))?;
+
+                        Ok(StepResult {
+                            message: format!(
+                                "Created symlink {} -> {}",
+                                target,
+                                source_path.display()
+                            ),
+                            new_working_dir: None,
+                            installed_path: Some(target.clone()),
+                        })
                     }
 
                     #[cfg(not(unix))]
                     {
-                        return Err("Symlink creation not supported on this platform".to_string());
+                        Err("Symlink creation not supported on this platform".to_string())
                     }
-
-                    Ok(StepResult {
-                        message: format!("Created symlink {} -> {}", target, source_path.display()),
-                        new_working_dir: None,
-                        installed_path: Some(target.clone()),
-                    })
                 }
             }
 

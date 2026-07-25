@@ -188,7 +188,10 @@ impl NpmInstaller {
             self.emit_output(tool_name, "✅ Node.js installed successfully\n");
         }
 
-        Ok(())
+        #[cfg(not(target_os = "windows"))]
+        {
+            Ok(())
+        }
     }
 
     /// Install a tool using npm globally

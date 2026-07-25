@@ -780,29 +780,26 @@ impl ToolDiscoveryService {
             let candidates = vec![candidate];
 
             for candidate_path in candidates {
-                if candidate_path.exists() {
+                #[cfg(unix)]
+                {
                     if let Ok(metadata) = std::fs::metadata(&candidate_path) {
-                        #[cfg(unix)]
-                        {
-                            use std::os::unix::fs::PermissionsExt;
-                            let permissions = metadata.permissions();
-                            if permissions.mode() & 0o111 != 0 {
-                                if let Some(path_str) = candidate_path.to_str() {
-                                    eprintln!(
-                                        "✅ Found {} in {}: {}",
-                                        tool_name, search_dir, path_str
-                                    );
-                                    return Some(path_str.to_string());
-                                }
-                            }
-                        }
-
-                        #[cfg(windows)]
-                        {
+                        use std::os::unix::fs::PermissionsExt;
+                        let permissions = metadata.permissions();
+                        if permissions.mode() & 0o111 != 0 {
                             if let Some(path_str) = candidate_path.to_str() {
                                 eprintln!("✅ Found {} in {}: {}", tool_name, search_dir, path_str);
                                 return Some(path_str.to_string());
                             }
+                        }
+                    }
+                }
+
+                #[cfg(windows)]
+                {
+                    if candidate_path.is_file() {
+                        if let Some(path_str) = candidate_path.to_str() {
+                            eprintln!("✅ Found {} in {}: {}", tool_name, search_dir, path_str);
+                            return Some(path_str.to_string());
                         }
                     }
                 }
@@ -1078,6 +1075,9 @@ impl ToolDiscoveryService {
     }
 
     async fn get_winget_paths(&self) -> Vec<PathBuf> {
+        #[cfg(target_os = "windows")]
+        let mut paths = vec![];
+        #[cfg(not(target_os = "windows"))]
         let paths = vec![];
 
         eprintln!("🔍 Getting WinGet-specific paths...");

@@ -46,6 +46,10 @@ pub use winget_manager::WingetManager;
 
 #[cfg(target_os = "linux")]
 pub use installation::install_apt_package;
+#[cfg(target_os = "windows")]
+pub use installation::{install_go_windows, install_winget_windows};
+#[cfg(target_os = "windows")]
+pub use version_checker::check_winget_update;
 
 use serde::{Deserialize, Serialize};
 
