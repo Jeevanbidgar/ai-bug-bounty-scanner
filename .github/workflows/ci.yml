@@ -189,6 +189,8 @@ jobs:
           npm ci --prefix frontend
 
       - name: Run platform Rust tests
+        env:
+          TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked --target ${{ matrix.target }}
 
       - name: Prepare target-specific daemon and MCP sidecars
