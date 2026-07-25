@@ -7,6 +7,8 @@ use std::process::Stdio;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+#[cfg(target_os = "linux")]
+use crate::tools::package_managers::elevation_helper::ElevationHelper;
 #[cfg(target_os = "windows")]
 use crate::tools::package_managers::winget_manager::WingetManager;
 

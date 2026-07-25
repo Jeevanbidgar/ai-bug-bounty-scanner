@@ -4,11 +4,12 @@
 
 #[cfg(target_os = "linux")]
 use super::adapters::AptUpdateChecker;
+#[cfg(target_os = "macos")]
+use super::adapters::HomebrewUpdateChecker;
 #[cfg(target_os = "windows")]
 use super::adapters::WingetUpdateChecker;
 use super::adapters::{
-    CargoUpdateChecker, GemUpdateChecker, GoUpdateChecker, HomebrewUpdateChecker, NpmUpdateChecker,
-    PipxUpdateChecker,
+    CargoUpdateChecker, GemUpdateChecker, GoUpdateChecker, NpmUpdateChecker, PipxUpdateChecker,
 };
 use super::command_runner::CommandRunner;
 use super::traits::{UpdateChecker, UpdateCheckerConfig};
