@@ -78,7 +78,7 @@ jobs:
         run: npx --prefix frontend playwright install chromium
 
       - name: Run responsive frontend tests
-        run: npm run test:e2e --prefix frontend
+        run: npm run test:e2e --prefix frontend -- --grep-invert "@visual"
 
       - name: Check Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
@@ -89,9 +89,34 @@ jobs:
       - name: Run Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets --locked
 
+  visual:
+    name: macOS visual regression gates
+    runs-on: macos-15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Install Playwright browser
+        run: npx --prefix frontend playwright install chromium
+
+      - name: Run macOS visual baselines
+        run: npm run test:e2e --prefix frontend -- --grep "@visual"
+
   package:
     name: Package ${{ matrix.name }}
-    needs: quality
+    needs:
+      - quality
+      - visual
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

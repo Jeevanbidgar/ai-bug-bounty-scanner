@@ -84,6 +84,7 @@ test('notification center records, reads, and clears local events', async ({ pag
 test('command palette exposes adapters and refresh action', async ({ page }) => {
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K')
   const dialog = page.getByRole('dialog', { name: 'UniHack command palette' })
+  await expect(dialog).toBeVisible()
   await dialog.getByPlaceholder(/navigate or run/i).fill('adapter')
   await dialog.getByRole('button', { name: /open adapter contracts/i }).click()
   await expect(page).toHaveURL(/\/adapters$/)
@@ -329,7 +330,7 @@ test('tool catalog cards stay compact and keyboard accessible', async ({ page })
   await expect.poll(() => consoleErrors).toEqual([])
 })
 
-test('tool catalog visual baseline', async ({ page }, testInfo) => {
+test('tool catalog visual baseline @visual', async ({ page }, testInfo) => {
   test.skip(!['minimum-800x600', 'desktop-1440x900'].includes(testInfo.project.name), 'Representative visual baselines only')
   await page.goto('/tools')
   await expect(page.getByRole('heading', { name: 'Security Tools' })).toBeVisible()
@@ -337,7 +338,7 @@ test('tool catalog visual baseline', async ({ page }, testInfo) => {
   await expect(page).toHaveScreenshot('tools.png', { fullPage: true })
 })
 
-test('desktop mission shell visual baseline', async ({ page }, testInfo) => {
+test('desktop mission shell visual baseline @visual', async ({ page }, testInfo) => {
   test.skip(!['minimum-800x600', 'desktop-1440x900'].includes(testInfo.project.name), 'Representative visual baselines only')
   await expect(page.getByRole('heading', { name: /security toolchain/i })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Mission topology' })).toBeVisible()
