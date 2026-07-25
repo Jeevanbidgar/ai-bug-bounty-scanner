@@ -338,7 +338,7 @@ impl ToolDiscoveryService {
         let mut available_tools = Vec::new();
         let definitions = self.definitions.read().await;
 
-        for (tool_name, _) in definitions.iter() {
+        for tool_name in definitions.keys() {
             if self
                 .check_tool_availability(tool_name)
                 .await

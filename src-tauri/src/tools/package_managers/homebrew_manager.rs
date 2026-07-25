@@ -516,8 +516,7 @@ fn parse_outdated_output(output: &str) -> Option<(String, String)> {
                 let installed_version = installed_segment
                     .split([',', ' '])
                     .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .next_back()
+                    .rfind(|s| !s.is_empty())
                     .unwrap_or(installed_segment.trim())
                     .to_string();
 
@@ -531,6 +530,7 @@ fn parse_outdated_output(output: &str) -> Option<(String, String)> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "macos")]
     use super::*;
 
     #[cfg(target_os = "macos")]

@@ -408,7 +408,7 @@ async fn execute_with_sudo_askpass(
 ) -> Result<ElevationResult, String> {
     // Set SUDO_ASKPASS to use GUI password prompt
     // Common askpass helpers: zenity, kdialog, ssh-askpass
-    let askpass_helpers = vec![
+    let askpass_helpers = [
         "/usr/bin/zenity",
         "/usr/bin/kdialog",
         "/usr/bin/ssh-askpass",
@@ -599,7 +599,7 @@ pub async fn check_elevation_support() -> ElevationMethod {
             .map(|o| o.status.success())
             .unwrap_or(false);
 
-        let askpass_helpers = vec![
+        let askpass_helpers = [
             "/usr/bin/zenity",
             "/usr/bin/kdialog",
             "/usr/bin/ssh-askpass",
