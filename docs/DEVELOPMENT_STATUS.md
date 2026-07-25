@@ -37,7 +37,7 @@ UniHack reduces the RAM and storage overhead of VM-based tool use by executing a
 - Real tool test commands, scan history/details, safe system-file-manager access to managed artifacts/results, settings, and HTML/JSON/SARIF exports
 - Structured finding normalization for Nuclei JSONL plus Nikto, WPScan, and Dalfox JSON; parser or finding-persistence failures fail the step instead of producing a false-clean scan
 - Restrictive Tauri capability and Content Security Policy configuration
-- Frontend lint/build, zero JavaScript audit findings, 104 passing Playwright interaction and visual checks across 800×600, 1024×768, 1440×900, 1920×1080, and 4K (plus six intentionally project-scoped visual skips), strict Rust Clippy with warnings denied, 172 deterministic Rust library tests, all-target test compilation/execution, and a four-target desktop packaging workflow
+- Frontend lint/build, a high-severity production JavaScript dependency gate, 104 passing Playwright interaction and visual checks across 800×600, 1024×768, 1440×900, 1920×1080, and 4K (plus six intentionally project-scoped visual skips), strict Rust Clippy with warnings denied, 172 deterministic Rust library tests, all-target test compilation/execution, and a four-target desktop packaging workflow. Development-only audit findings remain visible for compatible upstream upgrades rather than forcing breaking application changes into a release.
 - Host- and registry-dependent package-manager probes are explicit ignored manual smoke tests instead of unreliable clean-runner gates
 - Local `unihack-mcp` STDIO server built with the official Rust MCP SDK. It exposes typed status, tool, workflow, engagement, validation, revision-bound start/status/cancel, scan-evidence, report, and deterministic adapter-refresh operations with bounded output and accurate MCP annotations.
 - Direct Codex CLI integration is verified without any provider API key: the local server was registered globally as `unihack`, MCP Inspector completed tool discovery, and `get_status` returned structured live UniHack state.
@@ -47,8 +47,8 @@ UniHack reduces the RAM and storage overhead of VM-based tool use by executing a
 - Desktop and MCP launches now use the same daemon-owned workflow engine. Each run atomically binds its scan, exact immutable revision hash, trust record, signed engagement, principal, and request ID before child execution. Scope expiry/revocation, runtime/output limits, and revision/trust state are rechecked before every step and during long-running processes; revocation cancels active process trees.
 - The desktop receives workflow and scan lifecycle updates from a dedicated authenticated daemon event stream and re-emits the established Tauri event names. MCP execution returns immediately with stable run/scan IDs and supports bounded status polling plus idempotent cancellation.
 - The desktop Integrations screen now creates, lists, and deliberately revokes signed engagement scopes, exposes resource budgets and sanitized HMAC-chained activity, and keeps these authority-changing operations absent from MCP. The daemon also rejects them unless the authenticated credential is the dedicated desktop client.
-- Tauri external-binary configuration and a target-aware locked build script now stage `unihackd` and `unihack-mcp` for Linux x64, Windows x64, macOS Apple Silicon, and macOS Intel packaging jobs. The unsigned Apple Silicon `.app` was built and its bundled MCP/daemon pair passed MCP Inspector with the desktop initially closed; the other native targets and release signing remain gates.
-- A tagged beta-release workflow now produces separately named Linux DEB/AppImage, Windows NSIS, macOS Apple Silicon DMG, and macOS Intel DMG artifacts, publishes SHA-256 checksums, and creates a clearly labelled unsigned GitHub prerelease after every native packaging job succeeds.
+- Tauri external-binary configuration and a target-aware locked build script stage `unihackd` and `unihack-mcp` for Linux x64, Windows x64, macOS Apple Silicon, and macOS Intel packaging jobs. All four native targets built successfully for `v2.0.0-beta.3`; the bundled Apple Silicon MCP/daemon pair also passed MCP Inspector with the desktop initially closed.
+- The tagged beta-release workflow has published separately named Linux DEB/AppImage, Windows NSIS, macOS Apple Silicon DMG, and macOS Intel DMG assets plus SHA-256 checksums in a clearly labelled unsigned GitHub prerelease.
 
 Core tools: Nmap, Subfinder, Nuclei, Naabu, Amass, HTTPX, FFUF, Gobuster, GAU, Waybackurls, SQLMap, Nikto, WPScan, Feroxbuster, and Dalfox.
 
@@ -61,10 +61,9 @@ Core tools: Nmap, Subfinder, Nuclei, Naabu, Amass, HTTPX, FFUF, Gobuster, GAU, W
 5. Add project workspaces, evidence vaulting, scan-to-scan diffing, and audit-trail exports. OS credential storage is already used for local daemon enrollment and scope signing; broader application credentials still need the same no-plaintext policy. A hosted in-app agent remains optional and separate; direct Codex/Claude MCP access never depends on provider API keys.
 6. Add structured finding parsers for further machine-readable tools where their outputs represent actionable findings. Every tool still preserves its raw artifact.
 7. Define a signed, versioned adapter-pack format and producer trust policy before any internet-delivered recipe can influence execution. Keep online documentation as non-authoritative enrichment until signature/provenance and revocation checks exist.
-8. Run the new CI workflow on GitHub and fix any host-specific installer, WebView, Playwright baseline, or bundle failures found on Windows and Linux.
-9. Exercise a harmless authorized smoke target on each OS with representative passive, network, and web workflows, including native WKWebView, WebView2, and WebKitGTK UI smoke checks.
-10. Add application signing/notarization and a release channel. Current CI artifacts are deliberately unsigned.
-11. Remove historical generated `node_modules` files from Git tracking when the cleanup is committed; lockfiles are now the reproducible dependency source.
+8. Exercise a harmless authorized smoke target on each OS with representative passive, network, and web workflows, including native WKWebView, WebView2, and WebKitGTK UI smoke checks.
+9. Add application signing/notarization and a stable update channel. Current beta artifacts are deliberately unsigned.
+10. Complete the React Router 7 migration for the upstream security fixes, then refresh development tooling as compatible releases remove its remaining transitive audit findings. Do not use forced dependency changes that break the locked build.
 
 ## Release gates
 

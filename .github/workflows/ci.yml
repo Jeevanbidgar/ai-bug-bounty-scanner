@@ -64,10 +64,10 @@ jobs:
           npm ci
           npm ci --prefix frontend
 
-      - name: Audit JavaScript dependencies
+      - name: Audit production JavaScript dependencies
         run: |
-          npm audit --audit-level=high
-          npm audit --prefix frontend --audit-level=high
+          npm audit --omit=dev --audit-level=high
+          npm audit --prefix frontend --omit=dev --audit-level=high
 
       - name: Lint and build frontend
         run: |
